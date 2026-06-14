@@ -1,0 +1,88 @@
+{
+  "slowloris": [
+    {
+      "caso": "slowloris_leve",
+      "score": -0.6956866408135975,
+      "zona": "BLOCK",
+      "riesgo": 92
+    },
+    {
+      "caso": "slowloris_medio",
+      "score": -0.6807145101999228,
+      "zona": "LIMIT",
+      "riesgo": 65
+    },
+    {
+      "caso": "slowloris_severo",
+      "score": -0.7129543735851178,
+      "zona": "BLOCK",
+      "riesgo": 94
+    },
+    {
+      "caso": "slowloris_masivo",
+      "score": -0.7778072654274604,
+      "zona": "BLOCK",
+      "riesgo": 100
+    }
+  ],
+  "dns_amplification": [
+    {
+      "caso": "dns_ampl_leve",
+      "score": -0.675324375623116,
+      "zona": "LIMIT",
+      "riesgo": 64
+    },
+    {
+      "caso": "dns_ampl_medio",
+      "score": -0.6872069489680607,
+      "zona": "LIMIT",
+      "riesgo": 66
+    },
+    {
+      "caso": "dns_ampl_masivo",
+      "score": -0.6904219417460957,
+      "zona": "BLOCK",
+      "riesgo": 91
+    }
+  ],
+  "rdp_brute_force": [
+    {
+      "caso": "rdp_bf_leve",
+      "score": -0.601917460629818,
+      "zona": "LIMIT",
+      "riesgo": 53
+    },
+    {
+      "caso": "rdp_bf_masivo",
+      "score": -0.5878083761938515,
+      "zona": "LIMIT",
+      "riesgo": 51
+    },
+    {
+      "caso": "rdp_scan",
+      "score": -0.6584169065058273,
+      "zona": "LIMIT",
+      "riesgo": 61
+    }
+  ],
+  "ntp_amplification": [
+    {
+      "caso": "ntp_ampl_leve",
+      "score": -0.6693023937151908,
+      "zona": "LIMIT",
+      "riesgo": 63
+    },
+    {
+      "caso": "ntp_ampl_severo",
+      "score": -0.6693023937151908,
+      "zona": "LIMIT",
+      "riesgo": 63
+    }
+  ],
+  "resumen": {
+    "total": 12,
+    "detectados": 12,
+    "no_detectados": 0,
+    "tasa_deteccion_pct": 100.0
+  }
+}

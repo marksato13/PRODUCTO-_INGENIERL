@@ -1,0 +1,68 @@
+{
+  "pkt_rate": {
+    "normal_mean": 1170.2207650636726,
+    "normal_std": 1239.6167508222372,
+    "normal_p95": 1000.0,
+    "normal_p99": 10000.0,
+    "umbral_sospechoso": 3649.454266708147,
+    "umbral_anomalo": 4889.071017530385,
+    "anom_mean": 3111.0183728189477,
+    "anom_std": 3503.7898864937983,
+    "anom_p5": 1000.0
+  },
+  "byte_rate": {
+    "normal_mean": 88364.7510641111,
+    "normal_std": 181967.6078205444,
+    "normal_p95": 60000.0,
+    "normal_p99": 1077000.0,
+    "umbral_sospechoso": 452299.9667051999,
+    "umbral_anomalo": 634267.5745257443,
+    "anom_mean": 370339.82255891716,
+    "anom_std": 584176.5809953612,
+    "anom_p5": 60000.0
+  },
+  "pkts_toserver": {
+    "normal_mean": 1.8939581663144085,
+    "normal_std": 4.416430932510067,
+    "normal_p95": 6.0,
+    "normal_p99": 26.0,
+    "umbral_sospechoso": 10.726820031334542,
+    "umbral_anomalo": 15.143250963844608,
+    "anom_mean": 2.964658517594779,
+    "anom_std": 18.7280197532549,
+    "anom_p5": 1.0
+  },
+  "bytes_toserver": {
+    "normal_mean": 248.60374608264704,
+    "normal_std": 1028.2562334011109,
+    "normal_p95": 489.0,
+    "normal_p99": 6255.0,
+    "umbral_sospechoso": 2305.1162128848687,
+    "umbral_anomalo": 3333.3724462859795,
+    "anom_mean": 334.47812600887494,
+    "anom_std": 1399.9065298088863,
+    "anom_p5": 60.0
+  },
+  "duration": {
+    "normal_mean": 0.03961540704030318,
+    "normal_std": 1.8004050793690842,
+    "normal_p95": 0.001,
+    "normal_p99": 0.62,
+    "umbral_sospechoso": 3.6404255657784717,
+    "umbral_anomalo": 5.440830645147556,
+    "anom_mean": 0.09102606141555837,
+    "anom_std": 2.6884948323620153,
+    "anom_p5": 0.0
+  },
+  "avg_pkt_size": {
+    "normal_mean": 39.22826107492999,
+    "normal_std": 39.816277021652596,
+    "normal_p95": 97.9090909090909,
+    "normal_p99": 251.0612244897959,
+    "umbral_sospechoso": 118.86081511823518,
+    "umbral_anomalo": 158.67709213988778,
+    "anom_mean": 63.49237372762623,
+    "anom_std": 57.89626537468416,
+    "anom_p5": 30.0
+  }
+}

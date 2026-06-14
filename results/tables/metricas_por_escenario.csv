@@ -1,0 +1,11 @@
+Escenario,Tipo,Flows,Detectados,Porcentaje,Score_med,Score_std
+HTTP Normal (A1),normal,345,16,4.6,-0.4277,0.0635
+SSH Legitimo (A2),normal,58,0,0.0,-0.4102,0.0409
+Transferencia (A3),normal,29,0,0.0,-0.4484,0.0454
+Trafico Sostenido (A4),normal,252,19,7.5,-0.4252,0.0712
+SYN Flood (B1),anom,50000,43928,87.9,-0.6383,0.0603
+Port Scan (B2),anom,3258,3254,99.9,-0.6508,0.0285
+UDP Flood (B3),anom,18168,18166,100.0,-0.7142,0.0252
+ICMP Flood (B4),anom,23460,23458,100.0,-0.6982,0.015
+HTTP Abuse (B5),anom,22595,6926,30.7,-0.5133,0.12
+Brute Force (B6),anom,2061,18,0.9,-0.4376,0.0395

@@ -1,0 +1,16 @@
+{
+  "is_tcp": 1.0076,
+  "byte_ratio": 0.7564,
+  "pkt_rate": 0.7385,
+  "is_udp": 0.7271,
+  "byte_rate": 0.6517,
+  "is_icmp": 0.541,
+  "avg_pkt_size": 0.4884,
+  "pkt_ratio": 0.2619,
+  "dest_port": 0.1161,
+  "pkts_toserver": 0.0787,
+  "bytes_toserver": 0.0699,
+  "bytes_toclient": 0.0697,
+  "pkts_toclient": 0.0646,
+  "duration": 0.0225
+}
