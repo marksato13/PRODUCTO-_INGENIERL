@@ -1,0 +1,74 @@
+================================================================
+PLAN DE CAPTURA DE TRÁFICO — FASE 2
+Sistema de Detección Temprana de Anomalías de Red
+PPI — Universidad Peruana Unión 2026
+Estudiante: Rubén Mark Salazar Tocas
+================================================================
+
+1. OBJETIVO
+-----------
+Generar un dataset etiquetado de flujos de red capturados con
+Suricata 7.0.3 (eve.json) que represente tráfico normal y
+anómalo del laboratorio controlado.
+
+2. TOPOLOGÍA
+------------
+  192.168.0.20  Ubuntu Desktop  — origen tráfico normal
+  192.168.0.100 Kali Linux      — origen tráfico anómalo
+  192.168.0.110 Ubuntu Suricata — sensor (captura en ens35)
+  192.168.0.120 Ubuntu Server   — destino (nginx:80, SSH:22)
+
+3. ESCENARIOS
+-------------
+GRUPO A — Tráfico normal (desde Desktop → Server)
+  A1  HTTP normal        curl/wget  10 min  3 repeticiones
+  A2  SSH legítimo       ssh        8 min   3 repeticiones
+  A3  Transferencia      scp/wget   10 min  3 repeticiones
+  A4  Tráfico sostenido  curl+ssh   15 min  3 repeticiones
+
+GRUPO B — Tráfico anómalo (desde Kali → Server)
+  B1  SYN flood          hping3     2 min   1 repetición
+  B2  Port scan          nmap -sS   2 min   1 repetición
+  B3  UDP flood          hping3     2 min   1 repetición
+  B4  ICMP flood         hping3     2 min   1 repetición
+  B5  HTTP abuse         curl loop  5 min   1 repetición
+  B6  Brute force SSH    hydra      1 min   1 repetición
+
+GRUPO C — Tráfico mixto (Desktop + Kali simultáneos)
+  C1  HTTP + SYN flood   curl + hping3   10 min  1 repetición
+  C2  SSH + port scan    ssh + nmap      10 min  1 repetición
+  C3  Descarga + UDP     wget + hping3   10 min  1 repetición
+
+4. CONVENCIÓN DE NOMBRES
+------------------------
+  YYYYMMDD_grupo_escenario_NN_eve.json.gz
+  Ejemplo: 20260602_normal_http_01_eve.json.gz
+           20260602_anom_synflood_01_eve.json.gz
+           20260602_mixto_http_syn_01_eve.json.gz
+
+5. ESTRUCTURA DE ALMACENAMIENTO
+---------------------------------
+  data/raw/    — archivos eve.json.gz por corrida
+  data/        — datasets procesados (raw, labeled, clean)
+  docs/bitacora/ — bitacora_escenarios.txt
+
+6. PAUSA ENTRE CORRIDAS
+-----------------------
+  Mínimo 2 minutos entre escenarios para separar flujos en eve.json.
+
+7. HERRAMIENTA DE CAPTURA
+--------------------------
+  Suricata 7.0.3 en interfaz ens35
+  Output: eve.json en /var/log/suricata/eve.json
+  Evento de interés: event_type = flow
+
+8. ETIQUETADO
+-------------
+  label=0 : archivos con prefijo 'normal_'
+  label=1 : archivos con prefijo 'anom_' o 'mixto_'
+  Refinamiento por src_ip:
+    src_ip == 192.168.0.20  → label=0 (Desktop)
+    src_ip == 192.168.0.100 → label=1 (Kali)
+    src_ip random (floods)  → label=1
+
+================================================================

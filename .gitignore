@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+*.pkl
+*.gz
+*.zip
+data/raw/
+data/*.csv
+results/*.csv
+results/*.pdf
+results/*.log
+logs/
+*.egg-info/
+.DS_Store

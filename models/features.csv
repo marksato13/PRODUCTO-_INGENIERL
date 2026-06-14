@@ -1,0 +1,14 @@
+pkts_toserver
+pkts_toclient
+bytes_toserver
+bytes_toclient
+duration
+pkt_rate
+byte_rate
+pkt_ratio
+byte_ratio
+avg_pkt_size
+is_tcp
+is_udp
+is_icmp
+dest_port

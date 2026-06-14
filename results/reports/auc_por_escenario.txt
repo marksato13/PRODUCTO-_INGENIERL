@@ -1,0 +1,20 @@
+=================================================================
+AUC-ROC POR ESCENARIO — PPI UPeU 2026
+Generado: 2026-06-03 19:04
+=================================================================
+
+Escenario                       AUC   Det% Score_med
+----------------------------------------------------
+SYN Flood (B1)               0.9529  72.2%   -0.6064  [OK]
+Port Scan (B2)               0.9721  99.9%   -0.6508  [OK]
+UDP Flood (B3)               0.9905 100.0%   -0.7142  [OK]
+ICMP Flood (B4)              0.9861 100.0%   -0.6998  [OK]
+HTTP Abuse (B5)              0.8630  56.6%   -0.5892  [OK]
+Brute Force (B6)             0.6770   0.9%   -0.4376  [X]
+Mixto C1                     0.9737 100.0%   -0.6529  [OK]
+Mixto C2                     0.9277  57.1%   -0.6088  [OK]
+Mixto C3                     0.9801  99.3%   -0.6765  [OK]
+
+AUC global (todos los escenarios): ver auc_roc_umbrales.png
+AUC=1.0 → discriminación perfecta | AUC=0.5 → aleatorio
+=================================================================

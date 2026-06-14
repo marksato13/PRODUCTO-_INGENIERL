@@ -1,0 +1,16 @@
+=======================================================
+LATENCIA DEL PIPELINE — FASE 4
+PPI — Universidad Peruana Union 2026
+=======================================================
+
+Pipeline: eve.json → features → scaler → IsolationForest
+
+Flows medidos      : 1000
+Latencia media     : 34.533 ms
+Latencia minima    : 34.224 ms
+Latencia maxima    : 38.717 ms
+Latencia P95       : 34.768 ms
+Throughput         : 29 flows/segundo
+
+Requiere < 500ms segun plan: CUMPLE
+=======================================================

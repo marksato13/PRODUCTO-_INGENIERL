@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""
+Fase 4+5 — Motor de decisión + Control inline
+Triple umbral τ1/τ2 (definidos por curva ROC):
+  score > τ1  → PERMIT  (normal)
+  τ2 < score ≤ τ1  → LIMIT  (sospechoso — rate limit 100 pkt/s via hashlimit)
+  score ≤ τ2  → BLOCK  (anómalo — DROP via ipset)
+"""
+
+import json
+import ipaddress
+import os
+import sys
+import time
+import subprocess
+import logging
+from collections import defaultdict
+from datetime import datetime
+
+import numpy as np
+import joblib
+import urllib.request
+import urllib.parse
+
+# ── Telegram ──────────────────────────────────────────────────
+TG_TOKEN   = "8677152686:AAEUKDJm0gbkc7Vu3NwRcNaxqx3iqQwaa7g"
+TG_CHAT_ID = "8512353253"
+TG_ENABLED = True
+
+# ─────────────────────────────────────────────────────────────────────────────
+EVE_PATH  = "/var/log/suricata/eve.json"
+MODEL_DIR = "/home/m4rk/ppi-surikata-producto/models"
+LOG_PATH  = "/home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+SERVIDOR  = "192.168.0.120"
+
+# Umbrales τ1 y τ2 definidos por curva ROC (reporte_metricas_v1.txt)
+TAU1 = -0.4973   # PERMIT / LIMIT boundary  (Youden, TPR=91%, FPR=9.5%)
+TAU2 = -0.6873   # LIMIT  / BLOCK boundary  (FPR≤2%,  TPR=40.6%)
+
+WHITELIST = {"192.168.0.1", "192.168.0.20", "192.168.0.110",
+             "192.168.0.120", "127.0.0.1", "192.168.0.130", "192.168.0.140"}
+
+SET_BLOCK   = "ppi_blocked"
+SET_LIMIT   = "ppi_limited"
+TIMEOUT_SEC = 300   # segundos que dura el bloqueo/límite
+
+FEATURES = [
+    'pkts_toserver', 'pkts_toclient', 'bytes_toserver', 'bytes_toclient',
+    'duration', 'pkt_rate', 'byte_rate', 'pkt_ratio', 'byte_ratio',
+    'avg_pkt_size', 'is_tcp', 'is_udp', 'is_icmp', 'dest_port',
+]
+
+# ── Detector de Brute Force SSH (ventana temporal) ────────────
+SSH_PORT          = 22
+BF_VENTANA_SEG    = 60    # ventana de observación en segundos
+BF_UMBRAL_LIMIT   = 5     # intentos en ventana → LIMIT
+BF_UMBRAL_BLOCK   = 15    # intentos en ventana → BLOCK directo
+
+# ── Detector de HTTP Abuse (ventana temporal) ─────────────────
+HTTP_PORT          = 80
+HTTP_VENTANA_SEG   = 30   # ventana de observación en segundos
+HTTP_UMBRAL_LIMIT  = 50   # requests en ventana → LIMIT
+HTTP_UMBRAL_BLOCK  = 100  # requests en ventana → BLOCK directo
+
+# ─────────────────────────────────────────────────────────────────────────────
+os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_PATH),
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+log = logging.getLogger(__name__)
+
+
+def telegram_alerta(mensaje: str):
+    """Envía alerta a Telegram de forma no bloqueante."""
+    if not TG_ENABLED:
+        return
+    try:
+        url  = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+        data = urllib.parse.urlencode({"chat_id": TG_CHAT_ID, "text": mensaje}).encode()
+        req  = urllib.request.Request(url, data=data)
+        urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass  # No bloquear el motor si Telegram falla
+
+
+def es_ip_bloqueable(ip: str) -> bool:
+    try:
+        obj = ipaddress.ip_address(ip)
+        return not (obj.is_unspecified or obj.is_multicast or obj.is_reserved
+                    or obj == ipaddress.ip_address('255.255.255.255')
+                    or str(obj).endswith('.255'))
+    except ValueError:
+        return False
+
+
+def load_model():
+    clf    = joblib.load(f"{MODEL_DIR}/isolation_forest.pkl")
+    scaler = joblib.load(f"{MODEL_DIR}/scaler.pkl")
+    log.info(f"Modelo cargado | umbral_base={clf.offset_:.4f} | τ1={TAU1} | τ2={TAU2}")
+    return clf, scaler
+
+
+def flow_duration(e):
+    try:
+        t0 = datetime.fromisoformat(e['flow']['start'].replace('Z', '+00:00'))
+        t1 = datetime.fromisoformat(e['flow']['end'].replace('Z', '+00:00'))
+        return max((t1 - t0).total_seconds(), 0.001)
+    except Exception:
+        return 0.001
+
+
+def extract_features(e):
+    flow  = e.get('flow', {})
+    proto = e.get('proto', '').upper()
+    dur   = flow_duration(e)
+    pts   = flow.get('pkts_toserver',  0) or 0
+    ptc   = flow.get('pkts_toclient',  0) or 0
+    bts   = flow.get('bytes_toserver', 0) or 0
+    btc   = flow.get('bytes_toclient', 0) or 0
+    return np.array([[
+        pts, ptc, bts, btc, dur,
+        (pts + ptc) / dur,
+        (bts + btc) / dur,
+        pts / (ptc + 1),
+        bts / (btc + 1),
+        (bts + btc) / (pts + ptc + 1),
+        int(proto == 'TCP'),
+        int(proto == 'UDP'),
+        int(proto in ('ICMP', 'IPV6-ICMP')),
+        e.get('dest_port', 0) or 0,
+    ]], dtype=float)
+
+
+def _ssh(cmd):
+    result = subprocess.run(
+        ['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5',
+         f'm4rk@{SERVIDOR}', cmd],
+        capture_output=True, text=True, timeout=8
+    )
+    return (result.stdout + result.stderr).strip()
+
+
+def bloquear_ip(ip):
+    try:
+        out = _ssh(
+            f'sudo ipset add {SET_BLOCK} {ip} timeout {TIMEOUT_SEC} -exist 2>&1 '
+            f'&& echo "BLOCKED {ip}"'
+        )
+        return out
+    except Exception as ex:
+        return f"ERROR: {ex}"
+
+
+def limitar_ip(ip):
+    try:
+        out = _ssh(
+            f'sudo ipset add {SET_LIMIT} {ip} timeout {TIMEOUT_SEC} -exist 2>&1 '
+            f'&& echo "LIMITED {ip}"'
+        )
+        return out
+    except Exception as ex:
+        return f"ERROR: {ex}"
+
+
+def inicializar_servidor():
+    try:
+        # ── ipset BLOCK (DROP total) ───────────────────────────
+        _ssh(f'sudo ipset create {SET_BLOCK} hash:ip timeout {TIMEOUT_SEC} 2>/dev/null || true')
+        _ssh(
+            f'sudo iptables -C INPUT -m set --match-set {SET_BLOCK} src -j DROP 2>/dev/null '
+            f'|| sudo iptables -I INPUT -m set --match-set {SET_BLOCK} src -j DROP'
+        )
+
+        # ── ipset LIMIT (rate limit 100 pkt/s via hashlimit) ──
+        _ssh(f'sudo ipset create {SET_LIMIT} hash:ip timeout {TIMEOUT_SEC} 2>/dev/null || true')
+        # Regla hashlimit: DROP paquetes de ppi_limited que excedan 100/s
+        _ssh(
+            f'sudo iptables -C INPUT -m set --match-set {SET_LIMIT} src '
+            f'-m hashlimit --hashlimit-name ppi_limit --hashlimit-above 100/sec '
+            f'--hashlimit-mode srcip --hashlimit-burst 150 -j DROP 2>/dev/null '
+            f'|| sudo iptables -I INPUT 2 -m set --match-set {SET_LIMIT} src '
+            f'-m hashlimit --hashlimit-name ppi_limit --hashlimit-above 100/sec '
+            f'--hashlimit-mode srcip --hashlimit-burst 150 -j DROP'
+        )
+
+        log.info(
+            f"Servidor init: OK | BLOCK=ipset+DROP | "
+            f"LIMIT=ipset+hashlimit(100pkt/s) | τ1={TAU1} τ2={TAU2}"
+        )
+    except Exception as ex:
+        log.warning(f"No se pudo inicializar servidor: {ex}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+def seguir_eve(path):
+    """Sigue eve.json como tail -f, detectando rotación/truncado."""
+    f = open(path, 'r', errors='ignore')
+    f.seek(0, 2)
+    while True:
+        line = f.readline()
+        if line:
+            yield line
+        else:
+            # Detectar rotación: si el tamaño del archivo es menor que la posición actual
+            try:
+                pos_actual   = f.tell()
+                size_archivo = os.path.getsize(path)
+                if size_archivo < pos_actual:
+                    log.info("eve.json rotado/truncado — reabriendo desde el inicio")
+                    f.close()
+                    f = open(path, 'r', errors='ignore')
+                    f.seek(0, 2)
+            except Exception:
+                pass
+            time.sleep(0.2)
+
+
+def decidir(score):
+    """Devuelve 'PERMIT', 'LIMIT' o 'BLOCK' según τ1/τ2."""
+    if score > TAU1:
+        return 'PERMIT'
+    elif score > TAU2:
+        return 'LIMIT'
+    else:
+        return 'BLOCK'
+
+
+def detectar_http_abuse(ip, dest_port, ts_flow, http_requests):
+    """
+    Detector temporal de HTTP abuse.
+    Cuenta requests HTTP por IP en ventana de 30s.
+    Retorna ('BLOCK', n) o ('LIMIT', n) si supera umbral, None si normal.
+    """
+    if dest_port != HTTP_PORT:
+        return None
+
+    ahora = ts_flow if ts_flow else time.time()
+    ventana_inicio = ahora - HTTP_VENTANA_SEG
+    http_requests[ip].append(ahora)
+    http_requests[ip] = [t for t in http_requests[ip] if t >= ventana_inicio]
+    n = len(http_requests[ip])
+    if n >= HTTP_UMBRAL_BLOCK:
+        return ('BLOCK', n)
+    elif n >= HTTP_UMBRAL_LIMIT:
+        return ('LIMIT', n)
+    return None
+
+
+def detectar_brute_force(ip, dest_port, ts_flow, ssh_intentos):
+    """
+    Detector temporal de brute force SSH.
+    Registra cada intento SSH y evalúa la tasa en la ventana.
+    Retorna ('BLOCK', n) o ('LIMIT', n) si supera umbral, None si normal.
+    """
+    if dest_port != SSH_PORT:
+        return None
+
+    ahora = ts_flow if ts_flow else time.time()
+    ventana_inicio = ahora - BF_VENTANA_SEG
+
+    # Añadir timestamp del intento actual
+    ssh_intentos[ip].append(ahora)
+
+    # Purgar intentos fuera de la ventana
+    ssh_intentos[ip] = [t for t in ssh_intentos[ip] if t >= ventana_inicio]
+
+    n = len(ssh_intentos[ip])
+    if n >= BF_UMBRAL_BLOCK:
+        return ('BLOCK', n)
+    elif n >= BF_UMBRAL_LIMIT:
+        return ('LIMIT', n)
+    return None
+
+
+def main():
+    log.info("=" * 60)
+    log.info("Motor de decisión PPI — iniciando")
+    log.info("=" * 60)
+
+    clf, scaler = load_model()
+    inicializar_servidor()
+
+    bloqueados    = set()
+    limitados     = set()
+    ssh_intentos  = defaultdict(list)   # ip → [timestamps] brute force SSH
+    http_requests = defaultdict(list)   # ip → [timestamps] HTTP abuse
+    total_flows   = 0
+    total_anom    = 0
+    total_bf      = 0
+    total_http_ab = 0
+    latencias_ms  = []                  # para calcular latencia media
+
+    log.info(f"Monitoreando {EVE_PATH} ...")
+    log.info(f"Brute Force SSH : ventana={BF_VENTANA_SEG}s "
+             f"umbral_limit={BF_UMBRAL_LIMIT} umbral_block={BF_UMBRAL_BLOCK}")
+    log.info(f"HTTP Abuse      : ventana={HTTP_VENTANA_SEG}s "
+             f"umbral_limit={HTTP_UMBRAL_LIMIT} umbral_block={HTTP_UMBRAL_BLOCK}")
+
+    for line in seguir_eve(EVE_PATH):
+        try:
+            e = json.loads(line.strip())
+        except Exception:
+            continue
+
+        if e.get('event_type') != 'flow':
+            continue
+
+        src_ip = e.get('src_ip', '')
+        if not src_ip or ':' in src_ip or src_ip in WHITELIST:
+            continue
+        if not es_ip_bloqueable(src_ip):
+            continue
+        if (e.get('flow', {}).get('pkts_toserver', 0) or 0) == 0:
+            continue
+
+        total_flows += 1
+
+        try:
+            t_proc_ini = time.time()
+            X     = scaler.transform(extract_features(e))
+            score = clf.score_samples(X)[0]
+            latencia_ms = (time.time() - t_proc_ini) * 1000
+        except Exception as ex:
+            log.debug(f"Feature error: {ex}")
+            continue
+
+        dest_ip   = e.get('dest_ip', '?')
+        dest_port = e.get('dest_port', 0) or 0
+        proto     = e.get('proto', '?')
+
+        # ts_flow: timestamp del flow para detectores temporales
+        try:
+            ts_flow = datetime.fromisoformat(
+                e.get('timestamp', '').replace('Z', '+00:00')).timestamp()
+        except Exception:
+            ts_flow = time.time()
+
+        # ── Detector de HTTP Abuse (override temporal) ────────
+        http_ab = detectar_http_abuse(src_ip, dest_port, ts_flow, http_requests)
+        if http_ab:
+            hab_accion, hab_n = http_ab
+            total_anom   += 1
+            total_http_ab += 1
+            if hab_accion == 'BLOCK' and src_ip not in bloqueados:
+                bloqueados.add(src_ip)
+                limitados.discard(src_ip)
+                resp = bloquear_ip(src_ip)
+                log.warning(
+                    f"HTTP-ABUSE | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} requests={hab_n}/{HTTP_VENTANA_SEG}s | BLOCK → {resp}"
+                )
+                telegram_alerta(
+                    f"🚨 PPI ALERTA — HTTP ABUSE\n"
+                    f"Accion : BLOCK\nIP     : {src_ip}\nPuerto : {dest_port}\n"
+                    f"Requests: {hab_n}/{HTTP_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            elif hab_accion == 'LIMIT' and src_ip not in limitados and src_ip not in bloqueados:
+                limitados.add(src_ip)
+                resp = limitar_ip(src_ip)
+                log.warning(
+                    f"HTTP-ABUSE | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} requests={hab_n}/{HTTP_VENTANA_SEG}s | LIMIT → {resp}"
+                )
+                telegram_alerta(
+                    f"⚠️ PPI ALERTA — HTTP ABUSE\n"
+                    f"Accion : LIMIT (100pkt/s)\nIP     : {src_ip}\nPuerto : {dest_port}\n"
+                    f"Requests: {hab_n}/{HTTP_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+
+        # ── Detector de Brute Force SSH (override temporal) ───
+        bf = detectar_brute_force(src_ip, dest_port, ts_flow, ssh_intentos)
+        if bf:
+            bf_accion, bf_n = bf
+            total_anom += 1
+            total_bf   += 1
+            if bf_accion == 'BLOCK' and src_ip not in bloqueados:
+                bloqueados.add(src_ip)
+                limitados.discard(src_ip)
+                resp = bloquear_ip(src_ip)
+                log.warning(
+                    f"BRUTE-FORCE | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} intentos={bf_n}/{BF_VENTANA_SEG}s | BLOCK → {resp}"
+                )
+                telegram_alerta(
+                    f"🚨 PPI ALERTA — BRUTE FORCE SSH\n"
+                    f"Accion : BLOCK\nIP     : {src_ip}\nPuerto : {dest_port}\n"
+                    f"Intentos: {bf_n}/{BF_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            elif bf_accion == 'LIMIT' and src_ip not in limitados and src_ip not in bloqueados:
+                limitados.add(src_ip)
+                resp = limitar_ip(src_ip)
+                log.warning(
+                    f"BRUTE-FORCE | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} intentos={bf_n}/{BF_VENTANA_SEG}s | LIMIT → {resp}"
+                )
+                telegram_alerta(
+                    f"⚠️ PPI ALERTA — BRUTE FORCE SSH\n"
+                    f"Accion : LIMIT\nIP     : {src_ip}\nPuerto : {dest_port}\n"
+                    f"Intentos: {bf_n}/{BF_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            # Continuar al análisis de score igual (no skip)
+
+        accion = decidir(score)
+
+        if accion == 'BLOCK':
+            total_anom += 1
+            if src_ip not in bloqueados:
+                bloqueados.add(src_ip)
+                if src_ip in limitados:
+                    limitados.discard(src_ip)
+                    _ssh(f'sudo ipset del {SET_LIMIT} {src_ip} 2>/dev/null || true')
+                resp = bloquear_ip(src_ip)
+                log.warning(
+                    f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} score={score:.4f} | BLOCK → {resp}"
+                )
+                telegram_alerta(
+                    f"🚨 PPI ALERTA — ANOMALÍA\n"
+                    f"Accion : BLOCK\nIP     : {src_ip}\nProto  : {proto}\n"
+                    f"Puerto : {dest_port}\nScore  : {score:.4f}\n"
+                    f"Hora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+            else:
+                log.warning(
+                    f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} score={score:.4f} | BLOCK (ya bloqueado)"
+                )
+
+        elif accion == 'LIMIT':
+            total_anom += 1
+            if src_ip not in limitados and src_ip not in bloqueados:
+                limitados.add(src_ip)
+                resp = limitar_ip(src_ip)
+                log.warning(
+                    f"SOSPECHOSO | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} score={score:.4f} | LIMIT → {resp}"
+                )
+            else:
+                log.warning(
+                    f"SOSPECHOSO | src={src_ip} dst={dest_ip}:{dest_port} "
+                    f"proto={proto} score={score:.4f} | LIMIT (ya limitado)"
+                )
+
+        else:  # PERMIT
+            log.debug(
+                f"normal | src={src_ip} dst={dest_ip}:{dest_port} "
+                f"proto={proto} score={score:.4f} | PERMIT"
+            )
+
+        latencias_ms.append(latencia_ms)
+
+        if total_flows % 500 == 0:
+            lat_med = sum(latencias_ms) / len(latencias_ms) if latencias_ms else 0
+            latencias_ms.clear()
+            log.info(
+                f"Estadísticas | flows={total_flows} anomalías={total_anom} "
+                f"bf={total_bf} http_abuse={total_http_ab} "
+                f"bloqueados={len(bloqueados)} limitados={len(limitados)} "
+                f"latencia_media={lat_med:.2f}ms"
+            )
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        log.info("Motor detenido por usuario.")
