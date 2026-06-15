@@ -252,6 +252,13 @@ def api_unblock():
     except: pass
     return jsonify({"ok":True,"msg":f"{ip} desbloqueada"})
 
+@app.route("/api/clear",methods=["POST"])
+def api_clear():
+    with lock:
+        state["eventos"].clear()
+        state["block_counter"] = 0
+    return jsonify({"ok":True,"msg":"Alertas limpiadas"})
+
 @app.route("/api/block",methods=["POST"])
 def api_block():
     ip=(request.json or {}).get("ip","").strip()
@@ -711,7 +718,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
           <button class="sound-btn" id="al-sound-btn" onclick="toggleSound()" style="margin-left:4px">
             <i class="bi bi-volume-mute-fill"></i> Sonido
           </button>
-          <button class="flt-btn" onclick="clearAlerts()"><i class="bi bi-trash"></i> Limpiar vista</button>
+          <button class="flt-btn" onclick="clearAlerts()" style="border-color:var(--red);color:var(--red)"><i class="bi bi-trash3"></i> Limpiar todo</button>
         </div>
       </div>
 
@@ -1059,11 +1066,22 @@ function setAlertFilter(f, btn){
   renderAlertsFeed();
 }
 
-function clearAlerts(){
+async function clearAlerts(){
+  await fetch('/api/clear',{method:'POST'});
   alertsData=[];
-  document.getElementById('alerts-feed').innerHTML=
-    '<div style="text-align:center;padding:60px 0;color:var(--muted)"><i class="bi bi-shield-check" style="font-size:3rem;color:var(--green);display:block;margin-bottom:12px"></i>Vista limpiada</div>';
+  allEvents=[];
+  unreadCnt=0;
+  updateBadge();
   updateAlertCounters();
+  document.getElementById('alerts-feed').innerHTML=
+    '<div style="text-align:center;padding:60px 0;color:var(--muted)"><i class="bi bi-shield-check" style="font-size:3rem;color:var(--green);display:block;margin-bottom:12px"></i>Alertas limpiadas — esperando nuevos eventos</div>';
+  document.getElementById('last-alert-txt').textContent='Sin alertas aún';
+  document.getElementById('al-block-cnt').textContent='0';
+  document.getElementById('al-limit-cnt').textContent='0';
+  // limpiar tabla detecciones también
+  document.getElementById('tbl-body').innerHTML=
+    '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted)">Sin eventos</td></tr>';
+  notify('✅ Alertas limpiadas','cg');
 }
 
 function updateAlertCounters(){
