@@ -6,242 +6,196 @@
 
 ---
 
-## 1. Resumen ejecutivo del problema
+## 1. ¿Por qué se rediseñó el pipeline?
 
-El pipeline original presentaba **tres defectos metodológicos graves** que hacían las métricas
-irreproducibles e indefendibles ante un comité evaluador:
+El flujo original fue construido siguiendo la lógica de un modelo **supervisado** (train/val/test),
+pero Isolation Forest es **no supervisado** — solo necesita datos normales para aprender.
+Ese desajuste generó tres problemas que hacían las métricas indefendibles:
 
-| # | Defecto | Impacto |
+| # | Problema en el flujo anterior | Consecuencia |
 |---|---|---|
-| 1 | **Contaminación de datos**: un solo `eve.json` acumulaba tráfico normal y ataques simultáneos | El IF aprendía sobre datos "normales" que en realidad contenían flows de sesiones de ataque |
-| 2 | **Partición innecesaria**: se generaban `train.csv / val.csv / test.csv` (70/15/15) que el IF nunca usaba | Confusión metodológica: parecía supervisado cuando es completamente no supervisado |
-| 3 | **Sin fuente única de verdad**: tres evaluaciones distintas producían tres métricas distintas (80.4 %, 87.6 %, 99.95 %) | Imposible citar una sola cifra consistente en el informe |
+| 1 | `eve.json` acumulaba tráfico normal **y** ataques en la misma sesión | IF aprendía sobre datos "normales" contaminados por flujos de ataque |
+| 2 | Se generaba `train/val/test.csv` (70/15/15) que IF **nunca usaba** | Confusión metodológica; parecía supervisado cuando no lo es |
+| 3 | Tres evaluaciones distintas → tres métricas distintas (80.4 %, 87.6 %, 99.95 %) | Imposible citar una sola cifra en el informe |
 
-Problemas adicionales derivados:
-
-- `τ1/τ2` con naming invertido entre `reporte_metricas_v1.txt` y `motor_decision.py`
-- Umbrales hardcodeados en `motor_decision.py` → edición manual tras cada re-entrenamiento
-- `auc_por_escenario.py` con fechas hardcodeadas (`20260602_*`) → rompía en otro día
-- Comparación de modelos injusta: RF/DT/LR usaban etiquetas supervisadas; IF no
+**Solución aplicada:** separar la captura en tres grupos con propósito único cada uno,
+eliminar las particiones supervisadas y establecer `metricas_offline.txt` como
+**fuente única de verdad** para AUC, τ1, τ2, Precision, Recall y F1.
 
 ---
 
-## 2. Diagrama del flujo ANTERIOR (incorrecto)
+## 2. Flujo ANTERIOR — incorrecto
 
 ```mermaid
 flowchart TD
-    subgraph CAPTURA["F2 — CAPTURA (flujo anterior ❌)"]
-        direction TB
-        A1([Desktop genera tráfico\nnormal]):::normal
-        A2([Kali lanza ataques]):::attack
-        A1 -->|simultáneos| EVE[(eve.json\nACUMULA TODO)]
-        A2 -->|simultáneos| EVE
-        EVE --> PARSER[parser.py\ndataset_raw.csv]
-        PARSER --> ETIQ[etiquetar_limpiar.py\ndataset_clean.csv]
-        ETIQ --> PART[particionar_estadisticos.py\ntrain 70% / val 15% / test 15%]
-    end
+    Desktop([Desktop]):::normal -->|curl / ssh / scp| EVE
+    Kali([Kali]):::attack    -->|hping3 / nmap / hydra| EVE
 
-    subgraph F3ANT["F3 — MODELADO (flujo anterior ❌)"]
-        direction TB
-        PART -->|ignorado ❌| TRAINCSV[train.csv\nval.csv / test.csv]
-        PARSER -->|filtra src_ip| IFANT[fase3_isolation_forest.py\nIF entrena sobre raw filtrado\ncontaminado ❌]
-        IFANT --> MODELANT[(isolation_forest.pkl\nscaler.pkl)]
-        MODELANT --> ROCANT[auc_roc_umbrales.py\nlee test.csv contaminado ❌\nmétricas inconsistentes]
-        ROCANT --> TAU_HARD[τ1 / τ2 hardcodeados\nen motor_decision.py ❌]
-    end
+    EVE[(eve.json\ntodo mezclado)] --> PAR[parser.py\ndataset_raw.csv]
+    PAR --> ETQ[etiquetar_limpiar.py\ndataset_clean.csv]
+    ETQ --> PRT[particionar_estadisticos.py]
+    PRT --> CSV[(train 70%\nval 15% / test 15%)]
 
-    subgraph F4ANT["F4/F5/F6 — OPERACIÓN (flujo anterior ❌)"]
-        TAU_HARD --> MOTOR[motor_decision.py\nTAU1= -0.4973 hardcoded\nTAU2= -0.6873 hardcoded]
-        MOTOR --> IPSET[enforce.sh / ipset\nBLOCK · LIMIT · PERMIT]
-        IPSET --> F6ANT[f6_corridas.py\nvalidación batch\nsobre test.csv contaminado]
-    end
+    PAR -->|filtra src_ip\ndatos contaminados| IFA[fase3_isolation_forest.py]
+    CSV -. nunca usado por IF .-> IFA
 
-    classDef normal fill:#d4edda,stroke:#28a745
-    classDef attack fill:#f8d7da,stroke:#dc3545
-    classDef bad fill:#fff3cd,stroke:#ffc107
-    classDef model fill:#cce5ff,stroke:#004085
-```
+    IFA --> PKL[(isolation_forest.pkl\nscaler.pkl)]
+    PKL --> ROC[auc_roc_umbrales.py\nlee test.csv contaminado]
+    ROC --> TAU[τ1 y τ2 hardcodeados\nen motor_decision.py]
 
-### Problemas marcados en el diagrama anterior
-
-```
-❌ eve.json acumula TODO → imposible separar "normal puro" de "normal bajo ataque"
-❌ train/val/test.csv generados pero nunca usados por IF
-❌ IF entrena sobre raw.csv filtrado por IP, no sobre sesiones limpias
-❌ test.csv contaminado → métricas sin sentido estadístico
-❌ τ1/τ2 hardcodeados → hay que editar código tras cada re-entrenamiento
-❌ naming τ1/τ2 invertido entre reporte y código
-❌ Fechas hardcodeadas en auc_por_escenario.py
-```
-
----
-
-## 3. Diagrama del flujo NUEVO (correcto)
-
-```mermaid
-flowchart TD
-    subgraph CAPT_A["F2 — GRUPO A: Solo Normal ✓\n(Kali APAGADA)"]
-        DA([Desktop\n192.168.0.20]):::normal
-        SRV([Servidor\n192.168.0.120]):::normal
-        DA -->|curl / ssh / scp| SRV
-        SRV --> GZNA[("*_normal_*.gz\nflows 100% limpios ✓")]
-    end
-
-    subgraph CAPT_B["F2 — GRUPO B: Solo Ataques ✓\n(Desktop QUIETO)"]
-        KALI([Kali\n192.168.0.100]):::attack
-        KALI -->|hping3 / nmap\nhydra / curl-flood| GZNB[("*_anom_*.gz\nflows 100% ataque ✓")]
-    end
-
-    subgraph CAPT_C["F2 — GRUPO C: Mixto ✓\n(Motor DETENIDO)"]
-        DAC([Desktop]):::normal
-        KC([Kali]):::attack
-        DAC -->|tráfico normal| GZNC[("*_mixto_*.gz")]
-        KC  -->|ataques| GZNC
-    end
-
-    subgraph F3TRAIN["F3 — ENTRENAMIENTO LIMPIO ✓\nfase3_entrenar.py"]
-        GZNA --> LOAD[Carga *_normal_*.gz\nfiltro src_ip={Desktop,Servidor}]
-        LOAD --> SPLIT["Split 80/20 aleatorio\nseed=42"]
-        SPLIT -->|80%| SCALER[StandardScaler.fit_transform\nsolo sobre datos de entrenamiento]
-        SCALER --> IF_TRAIN[IsolationForest\nn=300 · contamination=0.05\nrandom_state=42]
-        IF_TRAIN --> PKL[("isolation_forest.pkl\nscaler.pkl\nfeatures.csv")]
-        SPLIT -->|20% reservado| HOLD[("data/normal_holdout.csv\nnunca visto por el modelo ✓")]
-    end
-
-    subgraph F3EVAL["F3 — EVALUACIÓN CON DATOS LIMPIOS ✓\nfase3_evaluar.py"]
-        HOLD --> ROC_IN[ROC: normal_holdout\n+ *_anom_*.gz\nlabels: 0=normal 1=ataque]
-        GZNB --> ROC_IN
-        PKL  --> ROC_IN
-        ROC_IN --> ROC[Curva ROC\nauc_roc.png]
-        ROC --> TAU1["τ1 = Youden max(TPR-FPR)\n→ PERMIT / LIMIT"]
-        ROC --> TAU2["τ2 = FPR ≤ 2% max TPR\n→ LIMIT / BLOCK"]
-        TAU1 --> METRO[("results/metricas_offline.txt\n← FUENTE ÚNICA DE VERDAD ✓")]
-        TAU2 --> METRO
-    end
-
-    subgraph F3ESC["F3 — AUC POR ESCENARIO ✓\nauc_por_escenario.py"]
-        GZNB --> ESC[Evalúa B1…B6 + C1…C3\ndate-agnostic globs\nseed=42]
-        GZNC --> ESC
-        METRO -->|lee τ1| ESC
-        ESC --> RPT[("results/reports/\nauc_por_escenario.txt")]
-    end
-
-    subgraph F4NEW["F4 — MOTOR CON UMBRALES AUTOMÁTICOS ✓\nmotor_decision.py"]
-        METRO -->|lee TAU1 TAU2 al arrancar| MOTORNEW[motor_decision.py\ntail eve.json → score\nPERMIT · LIMIT · BLOCK]
-        PKL   -->|carga en RAM| MOTORNEW
-        MOTORNEW --> IPSET2[enforce.sh / ipset\nppi_blocked · ppi_limited]
-    end
-
-    subgraph F6NEW["F6 — VALIDACIÓN OPERACIONAL ✓\n(Motor ACTIVO)"]
-        IPSET2 --> F6VAL[f6_corridas.py\nMotor activo + tráfico mixto\nlatencia · ITL · bloqueos reales]
-    end
+    TAU --> MOT[motor_decision.py]
+    MOT --> ENF[enforce.sh / ipset\nBLOCK · LIMIT · PERMIT]
+    ENF --> F6A[f6_corridas.py\nsobre test.csv contaminado]
 
     classDef normal fill:#d4edda,stroke:#28a745
     classDef attack fill:#f8d7da,stroke:#dc3545
 ```
 
+**Problemas en este flujo:**
+
+```
+❌ Desktop y Kali generan tráfico simultáneo → eve.json contamina datos normales
+❌ train/val/test.csv creados pero IF los ignora completamente
+❌ IF entrena con datos de sesión contaminada (no sesión "normal pura")
+❌ Evaluación sobre test.csv contaminado → métricas sin validez estadística
+❌ τ1/τ2 hardcodeados → edición manual en cada re-entrenamiento
+❌ Naming de τ1/τ2 invertido entre reporte_metricas_v1.txt y motor_decision.py
+❌ auc_por_escenario.py con fecha hardcodeada (20260602_*) → rompía otro día
+```
+
 ---
 
-## 4. Tabla comparativa fase por fase
+## 3. Flujo NUEVO — correcto
 
-| Fase | Flujo anterior ❌ | Flujo corregido ✓ | Justificación |
+```mermaid
+flowchart TD
+    DA([Desktop]):::normal  -->|curl / ssh / scp\nKali APAGADA| GZA
+    KB([Kali]):::attack     -->|hping3 / nmap / hydra\nDesktop QUIETO| GZB
+    DAC([Desktop]):::normal -->|tráfico normal| GZC
+    KC([Kali]):::attack     -->|ataques\nMotor DETENIDO| GZC
+
+    GZA[("Grupo A\n*_normal_*.gz")]
+    GZB[("Grupo B\n*_anom_*.gz")]
+    GZC[("Grupo C\n*_mixto_*.gz")]
+
+    GZA --> TR["fase3_entrenar.py\nlee solo Grupo A"]
+    TR -->|"80% entrena\nseed=42"| PKL2[("isolation_forest.pkl\nscaler.pkl\nfeatures.csv")]
+    TR -->|"20% reservado\nnunca visto por modelo"| HOL[("normal_holdout.csv")]
+
+    HOL --> EV["fase3_evaluar.py"]
+    GZB --> EV
+    PKL2 --> EV
+    EV --> MET[("metricas_offline.txt\nAUC · τ1 · τ2\nPrecision · Recall · F1")]
+    EV --> PNG[("auc_roc.png")]
+
+    GZB --> ESC["auc_por_escenario.py\nB1-B6 y C1-C3"]
+    GZC --> ESC
+    MET -->|"lee τ1"| ESC
+    ESC --> RPT[("auc_por_escenario.txt")]
+
+    MET -->|"lee TAU1 TAU2\nal arrancar"| MOT2["motor_decision.py\ntail eve.json → score"]
+    PKL2 --> MOT2
+    MOT2 --> ENF2["enforce.sh / ipset\nPERMIT · LIMIT · BLOCK"]
+    ENF2 --> F6B["f6_corridas.py\nMotor ACTIVO\nvalidación operacional"]
+
+    classDef normal fill:#d4edda,stroke:#28a745
+    classDef attack fill:#f8d7da,stroke:#dc3545
+```
+
+**Mejoras en este flujo:**
+
+```
+✓ Grupo A: captura dedicada con Kali apagada → datos normales 100% limpios
+✓ Grupo B: Desktop quieto → datos de ataque puros, sin mezcla
+✓ Grupo C: ambos activos con motor detenido → escenario mixto controlado
+✓ Split 80/20 aleatorio (seed=42) sobre normales puros → holdout nunca visto
+✓ fase3_evaluar.py produce UNA sola ejecución → metricas_offline.txt
+✓ τ1/τ2 derivados automáticamente de ROC; motor los lee sin edición manual
+✓ Naming consistente: τ1=PERMIT/LIMIT, τ2=LIMIT/BLOCK en todos los artefactos
+✓ Globs date-agnostic (*_normal_*.gz) → scripts corren en cualquier fecha
+✓ F6 valida con motor ACTIVO sobre tráfico real, no sobre CSV contaminado
+```
+
+---
+
+## 4. Comparativa fase por fase
+
+| Fase | Antes ❌ | Ahora ✓ | Por qué cambia |
 |---|---|---|---|
-| **F2 — Captura** | Un solo `eve.json` con normal + ataque mezclados | 3 grupos separados: A=normal puro, B=solo ataques, C=mixto | IF es no supervisado: aprende SOLO de normal → los datos de entrenamiento no pueden contener ataques |
-| **F2 — Partición** | `train/val/test.csv` (70/15/15 cronológico) | **Eliminado** — no aplica a IF | IF no usa etiquetas ni partición supervisada; generar esas particiones inducía confusión metodológica |
-| **F3 — Datos de entrenamiento** | `dataset_raw.csv` filtrado por IP (sesión contaminada) | `*_normal_*.gz` de Grupo A (sesión dedicada, Kali apagada) | La contaminación colapsa el delta de scores de ~0.69 a <0.20, haciendo los umbrales inútiles |
-| **F3 — Holdout** | Ninguno — evaluación sobre datos ya vistos | `normal_holdout.csv` (20% nunca visto por IF) | Regla básica de ML: nunca evaluar sobre datos de entrenamiento |
-| **F3 — Evaluación** | Hasta 3 ejecuciones distintas → 3 métricas diferentes | `fase3_evaluar.py` única → `metricas_offline.txt` | Un solo número citado en todo el informe, reproducible con `seed=42` |
-| **F3 — Umbrales τ** | Hardcodeados en `motor_decision.py`; naming invertido | Derivados y escritos en `metricas_offline.txt`; `motor` los lee al arrancar | Elimina edición manual, naming consistente en todos los artefactos |
-| **F3 — Globs** | `20260602_normal_*.gz` (fecha hardcodeada) | `*_normal_*.gz` (date-agnostic) | Portabilidad: scripts corren en cualquier fecha |
-| **F4 — Motor** | TAU1/TAU2 constantes en código | Lee `metricas_offline.txt` al iniciar | Re-entrenamiento automático sin tocar código |
+| **F2 — Captura** | Un solo `eve.json` con normal + ataque mezclados | 3 grupos separados: A=normal, B=ataques, C=mixto | IF entrena SOLO con normales; mezclar contamina el aprendizaje |
+| **F2 — Partición** | `train/val/test.csv` (70/15/15 cronológico) | Eliminado | IF no usa etiquetas ni partición supervisada |
+| **F3 — Entrenamiento** | `dataset_raw.csv` filtrado por IP (sesión contaminada) | `*_normal_*.gz` de Grupo A (sesión dedicada) | Contaminación colapsa delta de scores de 0.69 a <0.20 |
+| **F3 — Holdout** | Ninguno — evaluación sobre datos ya vistos | `normal_holdout.csv` 20% nunca visto por IF | Regla básica de ML: no evaluar sobre datos de entrenamiento |
+| **F3 — Métricas** | Hasta 3 ejecuciones → 3 cifras distintas | `fase3_evaluar.py` → `metricas_offline.txt` único | Una sola cifra citada en informe, diapositivas y motor |
+| **F3 — Umbrales τ** | Hardcodeados; naming invertido entre archivos | Escritos en `metricas_offline.txt`; motor los lee al arrancar | Reproducible y sin edición manual tras re-entrenamiento |
+| **F4 — Motor** | `TAU1=-0.4973` constante en código | Lee `metricas_offline.txt` al iniciar | Actualización automática al re-entrenar |
 | **F6 — Validación** | Sobre `test.csv` contaminado | Motor ACTIVO + tráfico mixto en tiempo real | Valida el sistema completo, no solo el modelo offline |
 
 ---
 
-## 5. Impacto en las métricas
-
-### Por qué el flujo anterior producía 3 valores distintos
+## 5. Por qué el flujo anterior producía 3 métricas distintas
 
 ```
-80.4%  ← Recall en test.csv (cronológico, contaminado, corridas 03-10)
-87.6%  ← Recall en f401_v2.py con dataset_raw filtrado (distinto split)
-99.95% ← Precision reportada en F3_justificacion_modelo.md (con supervised IF)
+Recall 80.4%  ← test.csv cronológico (corridas 03-10, contaminado con ataques)
+Recall 87.6%  ← dataset_raw filtrado en f401_v2.py (distinto split, misma sesión)
+Precision 99.95% ← F3_justificacion_modelo.md (comparación con modelos supervisados)
 ```
 
-Tres ejecuciones, tres pipelines distintos → ninguna cifra era la "verdad".
+Tres pipelines distintos, tres "verdades" → ninguna era defendible.
 
-### Con el flujo corregido
+Con el flujo corregido:
 
 ```
-metricas_offline.txt  ← UNA sola ejecución de fase3_evaluar.py
-                         datos de holdout + Grupo B limpios y separados
-                         AUC / τ1 / τ2 / Precision / Recall / F1
-                         citado igual en informe, diapositivas, motor y reportes
+metricas_offline.txt ← UNA ejecución de fase3_evaluar.py
+                        holdout normal (20%) + Grupo B (ataques puros)
+                        AUC / τ1 / τ2 / Precision / Recall / F1
+                        mismo valor en informe, diapositivas y motor
 ```
 
 ---
 
-## 6. Artefactos del flujo corregido (solo lo necesario)
+## 6. Artefactos: antes vs ahora
 
 ```
-ENTRADAS (F2 — captura):
-  data/raw/*_normal_*.gz     ← Grupo A  (entrenamiento + holdout)
-  data/raw/*_anom_*.gz       ← Grupo B  (evaluación ROC + AUC escenarios)
-  data/raw/*_mixto_*.gz      ← Grupo C  (AUC por escenario mixto)
-
-PROCESO (F3 — offline):
-  scripts/fase3_entrenar.py  → lee _normal_, entrena IF, guarda holdout
-  scripts/fase3_evaluar.py   → ROC + τ1/τ2 + métricas → metricas_offline.txt
-  scripts/auc_por_escenario.py → AUC desglosado B1-B6, C1-C3
-
-ARTEFACTOS GENERADOS (F3):
-  models/isolation_forest.pkl
-  models/scaler.pkl
-  models/features.csv
-  data/normal_holdout.csv
-  results/metricas_offline.txt   ← fuente única de verdad
-  results/auc_roc.png
-  results/reports/auc_por_escenario.txt
-
-ELIMINADOS (ya no necesarios):
-  data/dataset_raw.csv           ← reemplazado por .gz directos
-  data/dataset_clean.csv         ← ídem
-  data/train.csv / val.csv / test.csv  ← no aplican a IF
-  scripts/parser.py (como paso obligatorio)
-  scripts/etiquetar_limpiar.py   ← ídem
-  scripts/particionar_estadisticos.py  ← ídem
+ANTES (generados, mayoría innecesarios para IF):        AHORA (solo lo necesario):
+  data/dataset_raw.csv                                    data/raw/*_normal_*.gz  (Grupo A)
+  data/dataset_clean.csv                                  data/raw/*_anom_*.gz    (Grupo B)
+  data/train.csv  ← IF nunca lo usó                      data/raw/*_mixto_*.gz   (Grupo C)
+  data/val.csv    ← IF nunca lo usó                      data/normal_holdout.csv
+  data/test.csv   ← IF nunca lo usó                      models/isolation_forest.pkl
+  models/isolation_forest.pkl                             models/scaler.pkl
+  models/scaler.pkl                                       models/features.csv
+  results/reporte_metricas_v1.txt  (τ naming invertido)  results/metricas_offline.txt ← único
+  results/umbrales_finales.txt     (duplicado)            results/auc_roc.png
+  results/auc_roc_umbrales.png     (nombre distinto)      results/reports/auc_por_escenario.txt
 ```
 
 ---
 
-## 7. Respuestas para la defensa
+## 7. Respuestas clave para la defensa
 
-**P: ¿Por qué no usaste train/val/test como en un modelo supervisado?**
-> Isolation Forest es un algoritmo de detección de anomalías **no supervisado**. Solo requiere datos
-> normales para aprender la frontera de normalidad. Una partición supervisada 70/15/15 implica etiquetas
-> binarias, que IF no utiliza. Generarla era metodológicamente incorrecto y confuso.
+**¿Por qué no usaste train/val/test?**
+> IF es no supervisado — no usa etiquetas. Generar esas particiones era metodológicamente
+> incorrecto y generaba la falsa apariencia de un modelo supervisado.
 
-**P: ¿Cómo garantizas que los datos de entrenamiento son "normales puros"?**
-> El Grupo A se captura con Kali **completamente apagada** — verificado por conectividad fallida antes
-> de iniciar el script `run_grupo_A.sh`. El filtro adicional `src_ip ∈ {Desktop, Servidor}` elimina
-> cualquier flujo residual.
+**¿Cómo garantizas datos normales puros?**
+> Grupo A se captura con Kali **completamente apagada**. El script verifica conectividad
+> fallida a Kali antes de iniciar. Adicionalmente, `src_filter={Desktop, Servidor}` descarta
+> cualquier flujo residual de otra IP.
 
-**P: ¿Por qué el holdout no es parte del entrenamiento?**
-> `train_test_split(test_size=0.20, shuffle=True, random_state=42)` divide los datos **antes** de
-> ajustar el `StandardScaler`. El scaler ve solo el 80% de entrenamiento; el holdout es escalado
-> posteriormente con `transform` (nunca `fit_transform`), garantizando ausencia de data leakage.
+**¿Por qué el holdout no contamina el entrenamiento?**
+> `train_test_split` divide los datos **antes** de ajustar el `StandardScaler`.
+> El scaler hace `fit_transform` solo sobre el 80%; el holdout recibe solo `transform` →
+> cero data leakage.
 
-**P: ¿Cómo obtienes τ1 y τ2?**
-> De la curva ROC calculada sobre datos nunca vistos (holdout normal + Grupo B):
-> - **τ1** = Índice de Youden: `argmax(TPR − FPR)` → equilibrio detección/falsos positivos
-> - **τ2** = `max TPR | FPR ≤ 2%` → operación de alta precisión con mínimos falsos positivos
+**¿Cómo se derivan τ1 y τ2?**
+> De la curva ROC sobre datos nunca vistos (holdout + Grupo B):
+> τ1 = `argmax(TPR − FPR)` (Youden) · τ2 = `max TPR donde FPR ≤ 2%`
 
-**P: ¿Por qué AUC y no solo accuracy?**
-> AUC-ROC es independiente del umbral de decisión, mide la separabilidad intrínseca del modelo.
-> Accuracy con datos desbalanceados (mayoría normal) infla artificialmente el resultado.
-> AUC = 0.50 → aleatorio; AUC = 1.0 → discriminación perfecta.
+**¿Por qué AUC y no accuracy?**
+> AUC es independiente del umbral y mide separabilidad intrínseca. Con datos
+> desbalanceados (mayoría normal), accuracy infla el resultado artificialmente.
 
 ---
 
-*Documento generado: 2026-06-15*
-*Referencia de scripts: `scripts_f2/grupoA-C/` · `scripts/fase3_*.py`*
+*Generado: 2026-06-15 | Scripts: `scripts_f2/grupoA-C/` · `scripts/fase3_*.py`*
