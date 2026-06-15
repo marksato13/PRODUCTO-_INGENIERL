@@ -488,13 +488,14 @@ def main():
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | BLOCK"
                 )
                 telegram_alerta(
-                    f"⚠️ PPI ALERTA — {tipo}\n"
-                    f"Accion : LIMIT (100pkt/s)\nIP     : {src_ip}\nProto  : {proto}\n"
-                    f"Puerto : {dest_port}\nScore  : {score:.4f}\nGrado  : {grado}\n"
-                    f"Hora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    "🚨 PPI ALERTA — " + tipo + "\n"
+                    "Accion : BLOCK (DROP)\nIP     : " + src_ip
+                    + "\nProto  : " + proto + "\nPuerto : " + str(dest_port)
+                    + "\nScore  : " + f"{score:.4f}" + "\nGrado  : " + grado
+                    + "\nHora   : " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 )
             else:
-                log.warning(
+                log.debug(
                     f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | BLOCK (ya bloqueado)"
                 )
@@ -516,7 +517,7 @@ def main():
                     + "\nHora   : " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 )
             else:
-                log.warning(
+                log.debug(
                     f"SOSPECHOSO | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | LIMIT (ya limitado)"
                 )
