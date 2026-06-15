@@ -276,4 +276,80 @@ ANTES (generados, mayoría innecesarios para IF):        AHORA (solo lo necesari
 
 ---
 
+## 8. Nota para el asesor — Ing. Nemias Saboya Rios
+
+Estimado ingeniero Nemias:
+
+El pipeline original fue construido de forma incremental durante las primeras corridas,
+lo que llevó a una inconsistencia metodológica central: se aplicó la lógica de un modelo
+supervisado (partición 70/15/15, evaluación sobre test.csv) a un algoritmo que es
+inherentemente no supervisado (Isolation Forest). Esa inconsistencia produjo métricas
+que variaban según qué script se ejecutara, haciendo imposible citar una cifra única
+y reproducible en el informe.
+
+El rediseño que documenta este archivo corrige esa inconsistencia en tres niveles:
+
+**1. Nivel de datos:** la captura ahora se organiza en tres grupos con propósito único
+(A = normal puro, B = ataques puros, C = mixto controlado), garantizando que los datos
+de entrenamiento nunca contengan tráfico anómalo. Esto es un requisito fundamental de
+los algoritmos de detección de anomalías basados en densidad o aislamiento.
+
+**2. Nivel de evaluación:** se eliminaron las particiones supervisadas (train/val/test)
+que no aplicaban al modelo. En su lugar, se usa un holdout del 20% de los datos
+normales (nunca visto durante el entrenamiento) combinado con el Grupo B de ataques
+para construir la curva ROC. Esto sigue el protocolo estándar de evaluación para
+detectores de anomalías no supervisados.
+
+**3. Nivel de trazabilidad:** todas las métricas, umbrales y parámetros del modelo
+se escriben en un único archivo (`metricas_offline.txt`) generado por una sola
+ejecución determinista. Cualquier cifra citada en el informe es directamente
+rastreable a ese archivo y a los `.gz` de captura que lo originaron.
+
+Con estas correcciones, el pipeline cumple con los principios de reproducibilidad,
+separación limpia de datos y coherencia metodológica exigibles en un trabajo de
+investigación aplicada a nivel universitario.
+
+Atentamente,
+**Rubén Mark Salazar Tocas**
+
+---
+
+## 9. Glosario de términos técnicos
+
+| Término | Qué significa en este proyecto |
+|---|---|
+| **Isolation Forest (IF)** | Algoritmo de detección de anomalías. Construye árboles de decisión aleatorios; los flows que se "aíslan" rápido (pocos cortes) son anómalos. No necesita etiquetas — aprende solo viendo tráfico normal. |
+| **Flow / flujo** | Resumen de una conexión de red: IP origen, IP destino, puerto, protocolo, cuántos paquetes y bytes se enviaron en cada dirección, y cuánto duró. Suricata escribe un evento `flow` en `eve.json` al cerrar cada conexión. |
+| **eve.json** | Archivo de logs de Suricata. Cada línea es un evento JSON: puede ser `flow`, `alert`, `dns`, etc. Este proyecto solo usa eventos `flow`. |
+| **Score IF** | Número entre -1 y 0 que IF asigna a cada flow. Cercano a 0 = normal (difícil de aislar). Cercano a -1 = anómalo (fácil de aislar). |
+| **τ1 (tau1)** | Umbral superior. Si `score > τ1` → el flow es PERMIT (normal). Si `score ≤ τ1` → sospechoso. Derivado con el índice de Youden. |
+| **τ2 (tau2)** | Umbral inferior. Si `τ2 < score ≤ τ1` → LIMIT (limitar velocidad). Si `score ≤ τ2` → BLOCK (bloquear). Derivado donde FPR ≤ 2 %. |
+| **AUC-ROC** | Área bajo la curva ROC. Mide qué tan bien separa el modelo los flows normales de los anómalos, sin depender de un umbral fijo. AUC = 1.0 → perfecto; AUC = 0.5 → aleatorio. |
+| **Curva ROC** | Gráfico que muestra TPR vs FPR para todos los posibles umbrales. Cuanto más hacia la esquina superior izquierda, mejor el modelo. |
+| **TPR (True Positive Rate / Recall)** | De todos los ataques reales, ¿cuántos detectó el modelo? `TPR = TP / (TP + FN)`. |
+| **FPR (False Positive Rate)** | De todo el tráfico normal, ¿cuánto clasificó como ataque (falsa alarma)? `FPR = FP / (FP + TN)`. |
+| **Precision** | De todos los flows que el modelo marcó como ataque, ¿cuántos realmente lo eran? `Precision = TP / (TP + FP)`. Alta precision = pocas falsas alarmas. |
+| **F1-Score** | Media armónica de Precision y Recall. Equilibra ambas métricas en un solo número. `F1 = 2 · P · R / (P + R)`. |
+| **Índice de Youden** | Criterio para elegir el mejor umbral de la curva ROC: el punto donde `TPR - FPR` es máximo. Equilibra detección y falsas alarmas. |
+| **Holdout** | Porción de datos reservada y nunca usada durante el entrenamiento. Se usa solo para evaluar — simula datos "nuevos" que el modelo no ha visto. |
+| **Data leakage** | Error metodológico donde información del conjunto de evaluación "se filtra" al entrenamiento, inflando artificialmente las métricas. |
+| **StandardScaler** | Transforma cada feature para que tenga media 0 y desviación estándar 1. Necesario porque IF es sensible a la escala de los valores. El scaler aprende (fit) solo con los datos de entrenamiento. |
+| **split 80/20** | División del dataset: 80 % para entrenar el modelo, 20 % reservado como holdout de evaluación. |
+| **contamination=0.05** | Parámetro de IF que indica que se espera que ~5 % de los datos de entrenamiento sean anómalos. Ajusta el umbral interno del modelo. |
+| **n_estimators=300** | Número de árboles de aislamiento que construye IF. Más árboles = resultado más estable y reproducible. |
+| **random_state=42 / seed** | Semilla para los generadores de números aleatorios. Garantiza que el mismo código produzca exactamente el mismo resultado en cualquier ejecución. |
+| **PERMIT / LIMIT / BLOCK** | Tres decisiones del motor: PERMIT = dejar pasar, LIMIT = permitir pero limitar a 100 pkt/s con hashlimit, BLOCK = descartar todos los paquetes con iptables DROP. |
+| **ipset** | Herramienta del kernel Linux para gestionar conjuntos de IPs de forma eficiente. `ppi_blocked` y `ppi_limited` son los dos conjuntos que usa el motor. |
+| **iptables** | Firewall del kernel Linux. El motor inserta reglas que consultan ipset para decidir qué hacer con cada paquete. |
+| **hping3** | Herramienta de Kali para generar paquetes TCP/UDP/ICMP artificiales a alta velocidad. Usada para simular SYN flood, UDP flood e ICMP flood. |
+| **nmap** | Escáner de red. En este proyecto simula un port scan (B2): intenta conectarse a muchos puertos para descubrir servicios abiertos. |
+| **hydra** | Herramienta de fuerza bruta. En B6 intenta adivinar contraseñas SSH enviando cientos de intentos de login. |
+| **Suricata** | Motor IDS/IPS de código abierto que monitorea el tráfico de red en tiempo real y escribe eventos en `eve.json`. |
+| **glob date-agnostic** | Patrón de búsqueda de archivos que no depende de la fecha (`*_normal_*.gz` en lugar de `20260602_normal_*.gz`). Funciona en cualquier día. |
+| **metricas_offline.txt** | Archivo generado por `fase3_evaluar.py` con todas las métricas del modelo. Es la única fuente de verdad — todos los demás scripts y documentos citan este archivo. |
+| **ITL (Interrupción de Tráfico Legítimo)** | Porcentaje de flows normales que el motor bloqueó por error. Objetivo: ITL = 0 %. |
+| **P95 de latencia** | El percentil 95 del tiempo que tarda el motor en procesar un flow. Significa que el 95 % de los flows se procesan en ese tiempo o menos. |
+
+---
+
 *Generado: 2026-06-15 | Scripts: `scripts_f2/grupoA-C/` · `scripts/fase3_*.py`*
