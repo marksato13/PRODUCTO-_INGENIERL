@@ -223,4 +223,108 @@ ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 
 ---
 
-*Documento generado el 2026-06-04 · Proyecto PPI Universidad Peruana Unión*
+## DOCUMENTACIÓN — Índice completo de archivos .md (54 archivos)
+
+> Ruta base: `docs/ppi_documentacion/` en el sensor 192.168.0.110
+
+### Documentos generales (raíz)
+
+| Archivo | Descripción |
+|---|---|
+| `overview_fases.md` | Pipeline F1→F6 · 5 diagramas Mermaid · arquitectura física · métricas finales |
+| `arquitectura_MVP_completa.md` | Árbol de directorios · scripts → artefactos · índice completo |
+| `ENTREGABLES_POR_FASE.md` | Este documento — índice de entregables por fase |
+| `arquitectura_archivos_sensor.md` | Árbol de archivos del sensor con anotación de fase |
+
+### F1 — Entorno de Laboratorio
+
+| Archivo | Descripción |
+|---|---|
+| `F1_entorno_laboratorio/DIAGRAMAS/F1_entorno_laboratorio.md` | **3 diagramas**: topología red, flujo SSH keys, sequence Suricata |
+| `F1_entorno_laboratorio/DOCUMENTACION  GENERAL /F1_entorno_laboratorio.md` | Documento principal F1 |
+| `F1_entorno_laboratorio/DOCUMENTACION  GENERAL /F1_03_Sincronizacion_Horaria_NTP.md` | NTP + timezone America/Lima en 4 VMs |
+| `F1_entorno_laboratorio/F1_01_Alcance_Beneficiarios_Simulacion.md` | Alcance del PPI |
+| `F1_entorno_laboratorio/F1_02_Arquitectura_Laboratorio_Vulnerabilidades.md` | Arquitectura y vulnerabilidades |
+| `F1_entorno_laboratorio/F1_Arquitectura_General.drawio.md` | Diagrama drawio arquitectura |
+
+### F2 — Captura de Tráfico
+
+| Archivo | Descripción |
+|---|---|
+| `F2_captura_trafico/DIAGRAMAS/F2_captura_trafico.md` | **6 diagramas**: escenarios, ciclo corrida, transformación dataset, pie distribución, nomenclatura, conector |
+| `F2_captura_trafico/DOCUMENTACION  GENERAL /F2_captura_trafico.md` | Documento principal F2 |
+| `F2_captura_trafico/DOCUMENTACION  GENERAL /F2_05_Escenarios_Diagramas_Parametros.md` | Parámetros por escenario |
+| `F2_captura_trafico/F2_01_Definicion_Escenarios.md` | Definición A/B/C |
+| `F2_captura_trafico/F2_02_Clasificacion_Anomalias.md` | Clasificación tipos |
+| `F2_captura_trafico/F2_03_Justificacion_Ataques.md` | Justificación académica B1-B6 |
+| `F2_captura_trafico/F2_04_Ataques_No_Entrenados.md` | 12 ataques no entrenados detectados |
+| `F2_captura_trafico/diagramas/F2_Escenario_*.drawio.md` | 3 diagramas drawio escenarios |
+
+### F3 — Modelado Offline
+
+| Archivo | Descripción |
+|---|---|
+| `F3_modelado_offline/DIAGRAMAS/F3_modelado_offline.md` | **7 diagramas**: pipeline, recalibración v1→v2, feature engineering, τ1/τ2, sensibilidad, AUC escenarios, artefactos |
+| `F3_modelado_offline/DIAGRAMAS/F3_sensibilidad_n_flows.md` | Análisis N flows vs AUC (tabla + gráfico) |
+| `F3_modelado_offline/DIAGRAMAS/F3_Arquitectura_Data.drawio.md` | Diagrama drawio componentes |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_modelado_offline.md` | Documento principal F3 |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_justificacion_modelo.md` | Por qué 684 flows · análisis sesgo SSH |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_05_Recalibracion_Modelo.md` | ⭐ **NUEVO** — Evidencia recalibración v1→v2 (timestamps) |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_01_Arquitectura_Data_Engineering.md` | Data engineering F3 |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_02_Tipos_Datos_Recolectados.md` | Tipos de datos |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_03_Limpieza_Transformacion_Features.md` | Limpieza y features |
+| `F3_modelado_offline/DOCUMENTACION  GENERAL /F3_04_Almacenamiento_Escalabilidad.md` | Almacenamiento |
+
+### F4 — Motor de Decisión
+
+| Archivo | Descripción |
+|---|---|
+| `F4_motor_decision/DIAGRAMAS/F4_motor_decision.md` | **7 diagramas**: arquitectura boot→enforce, sequence flow individual, score→grado→tipo, detectores heurísticos, Telegram+dashboard, systemd, 3 capas |
+| `F4_motor_decision/DOCUMENTACION  GENERAL /F4_motor_decision.md` | Documento principal F4 |
+| `F4_motor_decision/DOCUMENTACION  GENERAL /F4_01_Comparacion_Modelos.md` | ⭐ **REAL DATA** — IF vs RF vs OC-SVM vs DT vs LR (5 modelos, CSV empírico) |
+| `F4_motor_decision/DOCUMENTACION  GENERAL /F4_02_Justificacion_Modelo_Final.md` | Justificación elección IF |
+| `F4_motor_decision/DOCUMENTACION  GENERAL /F4_03_Falsos_Positivos_Overfitting.md` | Análisis FP y overfitting |
+| `F4_motor_decision/DOCUMENTACION  GENERAL /F4_04_Aprendizaje_Continuo.md` | Reentrenamiento adaptativo · arquitectura evolutiva |
+
+### F5 — Control Inline
+
+| Archivo | Descripción |
+|---|---|
+| `F5_control_inline/DIAGRAMAS/F5_control_inline.md` | **7 diagramas**: pipeline 9 etapas, netfilter ipset/iptables, canal SSH, ciclo bloqueo, Telegram+Dashboard SSE, boot motor, pruebas live |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_control_inline.md` | Documento principal F5 |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_01_Arquitectura_Integracion.md` | Integración completa 9 etapas |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_02_Costo_Computacional_Escalabilidad.md` | Costo y escalabilidad |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_03_Telegram_Dashboard.md` | Telegram Bot + Dashboard web Flask+SSE |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_04_Instalacion_Dependencias_Sensor.md` | Instalación del entorno |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_05_Disparadores_LIMIT_BLOCK.md` | Disparadores LIMIT/BLOCK |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_06_Plan_Pruebas_Disparadores.md` | Plan de pruebas · T1-T8 + B2 + B5 |
+| `F5_control_inline/DOCUMENTACION  GENERAL /F5_07_Evidencia_Pruebas_Live.md` | ⭐ **NUEVO** — Evidencia live 10 escenarios (logs reales, ipset verificado) |
+| `F5_control_inline/DIAGRAMAS/F5_Arquitectura_Integracion.drawio.md` | Diagrama drawio |
+
+### F6 — Validación y Resultados
+
+| Archivo | Descripción |
+|---|---|
+| `F6_validacion/DIAGRAMAS/F6_validacion.md` | **7 diagramas**: 40 corridas, métricas globales, AUC escenarios, gravedad score→grado→tipo, sequence live, requisitos vs obtenido, integración F1→F6 |
+| `F6_validacion/DOCUMENTACION  GENERAL /F6_validacion.md` | Documento principal F6 |
+| `F6_validacion/DOCUMENTACION  GENERAL /F6_01_Validacion_Resultados.md` | Resultados completos 40 corridas |
+| `F6_validacion/DOCUMENTACION  GENERAL /F6_02_Dashboard.md` | Dashboard web detalle |
+| `F6_validacion/DOCUMENTACION  GENERAL /F6_03_Defensa_Jurado.md` | Preguntas y respuestas para defensa |
+| `F6_validacion/DOCUMENTACION  GENERAL /F6_04_Trabajo_Futuro.md` | Trabajo futuro y extensiones |
+| `F6_validacion/DOCUMENTACION  GENERAL /F6_05_Clasificacion_Anomalias_Gravedad.md` | Escala NORMAL/BAJA/ALTA/CRÍTICA · 9 tipos |
+
+---
+
+## Entregables adicionales (sesión 2026-06-14/15)
+
+| Entregable | Ruta / Ubicación | Descripción |
+|---|---|---|
+| **Dashboard Web** | `scripts/dashboard_web.py` + `ppi-dashboard.service` | Flask + SSE en http://192.168.0.110:8080 · 6 vistas |
+| **Comparación modelos CSV** | `results/reports/comparacion_modelos_f401.csv` | IF vs RF vs OC-SVM vs DT vs LR — datos empíricos reales |
+| **Evidencia pruebas live** | `docs/ppi_documentacion/F5_control_inline/DOCUMENTACION GENERAL/F5_07_Evidencia_Pruebas_Live.md` | 10 escenarios probados con logs y ipset verificado |
+| **Recalibración modelo** | `docs/ppi_documentacion/F3_modelado_offline/DOCUMENTACION GENERAL/F3_05_Recalibracion_Modelo.md` | Evidencia v1→v2 con timestamps de archivos |
+| **GitHub repositorio** | https://github.com/marksato13/PRODUCTO-_INGENIERL | 35+ commits · docs F1-F6 · 44 diagramas Mermaid |
+
+---
+
+*Documento actualizado el 2026-06-15 · Proyecto PPI Universidad Peruana Unión*

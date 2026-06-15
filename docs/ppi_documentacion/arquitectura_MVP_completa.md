@@ -215,6 +215,70 @@ flowchart LR
 
 ---
 
+## Índice completo de documentación (54 archivos .md)
+
+> Base: `docs/ppi_documentacion/` · Sensor 192.168.0.110
+
+| # | Archivo | Tipo | Fase | Contenido clave |
+|---|---|---|---|---|
+| 1 | `overview_fases.md` | General | F1-F6 | 5 diagramas pipeline+arquitectura+métricas |
+| 2 | `arquitectura_MVP_completa.md` | General | F1-F6 | Árbol dirs · scripts→artefactos · este índice |
+| 3 | `ENTREGABLES_POR_FASE.md` | General | F1-F6 | Todos los entregables + 54 docs index |
+| 4 | `arquitectura_archivos_sensor.md` | General | F1-F6 | Árbol archivos sensor con fase anotada |
+| 5 | `F1_.../DIAGRAMAS/F1_entorno_laboratorio.md` | Diagrama | F1 | 3 diagramas: topología, SSH keys, sequence Suricata |
+| 6 | `F1_.../DOCUMENTACION GENERAL/F1_entorno_laboratorio.md` | Doc | F1 | VMs · Suricata · eve.json |
+| 7 | `F1_.../DOCUMENTACION GENERAL/F1_03_Sincronizacion_Horaria_NTP.md` | Doc | F1 | NTP + America/Lima 4 VMs |
+| 8 | `F1_.../F1_01_Alcance_Beneficiarios_Simulacion.md` | Doc | F1 | Alcance PPI |
+| 9 | `F1_.../F1_02_Arquitectura_Laboratorio_Vulnerabilidades.md` | Doc | F1 | Arquitectura y vulnerabilidades |
+| 10 | `F1_.../F1_Arquitectura_General.drawio.md` | Diagrama | F1 | Drawio arquitectura general |
+| 11 | `F2_.../DIAGRAMAS/F2_captura_trafico.md` | Diagrama | F2 | 6 diagramas: escenarios, corrida, dataset, pie, nomenclatura, conector |
+| 12 | `F2_.../DOCUMENTACION GENERAL/F2_captura_trafico.md` | Doc | F2 | Documento principal F2 |
+| 13 | `F2_.../DOCUMENTACION GENERAL/F2_05_Escenarios_Diagramas_Parametros.md` | Doc | F2 | Parámetros A/B/C |
+| 14 | `F2_.../F2_01_Definicion_Escenarios.md` | Doc | F2 | Definición 13 escenarios |
+| 15 | `F2_.../F2_02_Clasificacion_Anomalias.md` | Doc | F2 | Clasificación tipos de anomalía |
+| 16 | `F2_.../F2_03_Justificacion_Ataques.md` | Doc | F2 | Justificación académica B1-B6 |
+| 17 | `F2_.../F2_04_Ataques_No_Entrenados.md` | Doc | F2 | 12 ataques no entrenados detectados al 100% |
+| 18 | `F2_.../diagramas/F2_Escenario_Normal.drawio.md` | Diagrama | F2 | Drawio escenario normal |
+| 19 | `F2_.../diagramas/F2_Escenario_Anomalo.drawio.md` | Diagrama | F2 | Drawio escenario anómalo |
+| 20 | `F2_.../diagramas/F2_Escenario_Mixto.drawio.md` | Diagrama | F2 | Drawio escenario mixto |
+| 21 | `F3_.../DIAGRAMAS/F3_modelado_offline.md` | Diagrama | F3 | **7 diagramas**: pipeline, recalib v1→v2, features, τ1/τ2, sensibilidad, AUC, artefactos |
+| 22 | `F3_.../DIAGRAMAS/F3_sensibilidad_n_flows.md` | Diagrama | F3 | N flows vs AUC/Recall (12 puntos × 5 semillas) |
+| 23 | `F3_.../DIAGRAMAS/F3_Arquitectura_Data.drawio.md` | Diagrama | F3 | Drawio componentes data engineering |
+| 24 | `F3_.../DOCUMENTACION GENERAL/F3_modelado_offline.md` | Doc | F3 | Documento principal F3 |
+| 25 | `F3_.../DOCUMENTACION GENERAL/F3_justificacion_modelo.md` | Doc | F3 | Por qué 684 flows · sesgo SSH |
+| 26 | `F3_.../DOCUMENTACION GENERAL/F3_05_Recalibracion_Modelo.md` | Doc ⭐ | F3 | **NUEVO** — Recalibración v1(2-jun)→v2(4-jun) · evidencia timestamps |
+| 27 | `F3_.../DOCUMENTACION GENERAL/F3_01_Arquitectura_Data_Engineering.md` | Doc | F3 | Data engineering |
+| 28 | `F3_.../DOCUMENTACION GENERAL/F3_02_Tipos_Datos_Recolectados.md` | Doc | F3 | Tipos de datos |
+| 29 | `F3_.../DOCUMENTACION GENERAL/F3_03_Limpieza_Transformacion_Features.md` | Doc | F3 | Limpieza y features |
+| 30 | `F3_.../DOCUMENTACION GENERAL/F3_04_Almacenamiento_Escalabilidad.md` | Doc | F3 | Almacenamiento |
+| 31 | `F4_.../DIAGRAMAS/F4_motor_decision.md` | Diagrama | F4 | **7 diagramas**: boot, sequence flow, grado/tipo/acción, detectores, Telegram/Dashboard, systemd, 3 capas |
+| 32 | `F4_.../DOCUMENTACION GENERAL/F4_motor_decision.md` | Doc | F4 | Documento principal F4 |
+| 33 | `F4_.../DOCUMENTACION GENERAL/F4_01_Comparacion_Modelos.md` | Doc ⭐ | F4 | **DATOS REALES** — IF vs RF vs OC-SVM vs DT vs LR · 5 modelos · CSV empírico |
+| 34 | `F4_.../DOCUMENTACION GENERAL/F4_02_Justificacion_Modelo_Final.md` | Doc | F4 | Por qué IF sobre supervisados |
+| 35 | `F4_.../DOCUMENTACION GENERAL/F4_03_Falsos_Positivos_Overfitting.md` | Doc | F4 | Análisis FP y overfitting |
+| 36 | `F4_.../DOCUMENTACION GENERAL/F4_04_Aprendizaje_Continuo.md` | Doc | F4 | Reentrenamiento · arquitectura adaptativa · drift detection |
+| 37 | `F5_.../DIAGRAMAS/F5_control_inline.md` | Diagrama | F5 | **7 diagramas**: 9 etapas, netfilter, canal SSH, ciclo bloqueo, Telegram+SSE, boot, pruebas live |
+| 38 | `F5_.../DIAGRAMAS/F5_Arquitectura_Integracion.drawio.md` | Diagrama | F5 | Drawio arquitectura integración |
+| 39 | `F5_.../DOCUMENTACION GENERAL/F5_control_inline.md` | Doc | F5 | Documento principal F5 |
+| 40 | `F5_.../DOCUMENTACION GENERAL/F5_01_Arquitectura_Integracion.md` | Doc | F5 | Pipeline 9 etapas · latencias |
+| 41 | `F5_.../DOCUMENTACION GENERAL/F5_02_Costo_Computacional_Escalabilidad.md` | Doc | F5 | Costo computacional |
+| 42 | `F5_.../DOCUMENTACION GENERAL/F5_03_Telegram_Dashboard.md` | Doc | F5 | Telegram async + Dashboard Flask+SSE 6 vistas |
+| 43 | `F5_.../DOCUMENTACION GENERAL/F5_04_Instalacion_Dependencias_Sensor.md` | Doc | F5 | Instalación venv + dependencias |
+| 44 | `F5_.../DOCUMENTACION GENERAL/F5_05_Disparadores_LIMIT_BLOCK.md` | Doc | F5 | Disparadores con umbrales |
+| 45 | `F5_.../DOCUMENTACION GENERAL/F5_06_Plan_Pruebas_Disparadores.md` | Doc | F5 | Plan T1-T8 + B2 + B5 · resultados |
+| 46 | `F5_.../DOCUMENTACION GENERAL/F5_07_Evidencia_Pruebas_Live.md` | Doc ⭐ | F5 | **NUEVO** — Evidencia live 10 escenarios · logs reales · ipset verificado |
+| 47 | `F6_.../DIAGRAMAS/F6_validacion.md` | Diagrama | F6 | **7 diagramas**: 40 corridas, métricas, AUC, gravedad, sequence live, requisitos vs obtenido, F1→F6 |
+| 48 | `F6_.../DOCUMENTACION GENERAL/F6_validacion.md` | Doc | F6 | Documento principal F6 |
+| 49 | `F6_.../DOCUMENTACION GENERAL/F6_01_Validacion_Resultados.md` | Doc | F6 | Resultados 40 corridas · validación live jun-14 |
+| 50 | `F6_.../DOCUMENTACION GENERAL/F6_02_Dashboard.md` | Doc | F6 | Dashboard web detalle |
+| 51 | `F6_.../DOCUMENTACION GENERAL/F6_03_Defensa_Jurado.md` | Doc | F6 | 20+ preguntas y respuestas para defensa |
+| 52 | `F6_.../DOCUMENTACION GENERAL/F6_04_Trabajo_Futuro.md` | Doc | F6 | Trabajo futuro · extensiones producción |
+| 53 | `F6_.../DOCUMENTACION GENERAL/F6_05_Clasificacion_Anomalias_Gravedad.md` | Doc | F6 | Escala 4 grados · 9 tipos · distribución real |
+
+> ⭐ = Documento nuevo generado en sesión 2026-06-14/15
+
+---
+
 ## Nota sobre dos directorios en el sensor
 
 | Directorio | Git | Motor activo | Descripción |
