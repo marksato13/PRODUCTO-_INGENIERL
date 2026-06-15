@@ -276,7 +276,169 @@ ANTES (generados, mayoría innecesarios para IF):        AHORA (solo lo necesari
 
 ---
 
-## 8. Nota para el asesor — Ing. Nemias Saboya Rios
+## 8. Justificación por fases: qué había y cómo queda
+
+### F1 — Entorno de laboratorio
+**Cambio: ninguno**
+
+La topología, las VMs y la configuración de Suricata no se modifican.
+F1 estaba bien desde el inicio: cuatro máquinas con roles claros
+(Desktop=admin, Kali=atacante, Sensor=IDS, Servidor=objetivo) y Suricata 7.0.3
+monitoreando en `ens35` con salida en `/var/log/suricata/eve.json`.
+
+---
+
+### F2 — Captura de tráfico ← MAYOR CAMBIO
+
+**Antes:**
+
+```
+Una única sesión → eve.json acumula TODO
+  ↓
+parser.py          → data/dataset_raw.csv      (todos los eventos mezclados)
+  ↓
+etiquetar_limpiar.py → data/dataset_clean.csv  (etiquetado por IP, sesión contaminada)
+  ↓
+particionar_estadisticos.py → train.csv / val.csv / test.csv (70/15/15 cronológico)
+```
+
+Problema central: Desktop y Kali generaban tráfico en la **misma sesión**.
+Suricata registraba ambos en el mismo `eve.json`. Aunque luego se filtraba por `src_ip`,
+los flows normales del Desktop ocurrían bajo condiciones de red alteradas por los ataques
+simultáneos de Kali (latencias, colas, RST packets). El IF aprendía una "normalidad"
+que en realidad nunca existe cuando la red está tranquila.
+
+Además, los tres CSV generados nunca fueron usados por IF — eran un paso heredado
+de pipelines supervisados que no correspondía aquí.
+
+**Después:**
+
+```
+Grupo A (Kali APAGADA):   A1-A4 → *_normal_*.gz   ← entrenamiento + holdout
+Grupo B (Desktop QUIETO): B1-B6 → *_anom_*.gz     ← evaluación ROC + AUC
+Grupo C (ambos, motor OFF): C1-C3 → *_mixto_*.gz  ← validación por escenario
+```
+
+Cada grupo tiene un propósito único y sus scripts verifican las condiciones antes
+de iniciar (`run_grupo_A.sh` comprueba que Kali no responda; `run_grupo_B.sh` detiene
+el motor). Los CSV intermedios desaparecen — los `.gz` son la fuente directa.
+
+**Scripts nuevos:** `run_grupo_A.sh`, `A1-A4`, `run_grupo_B.sh`, `B1-B6`, `run_grupo_C.sh`, `C1-C3`
+**Scripts eliminados:** `parser.py`, `etiquetar_limpiar.py`, `particionar_estadisticos.py`
+**Archivos eliminados:** `dataset_raw.csv`, `dataset_clean.csv`, `train/val/test.csv`
+
+---
+
+### F3 — Modelado offline ← MAYOR CAMBIO
+
+**Antes:**
+
+```
+fase3_isolation_forest.py
+  lee dataset_raw.csv → filtra src_ip en NORMAL_IPS → entrena IF
+  (datos de sesión contaminada; no hay holdout separado)
+  ↓
+auc_roc_umbrales.py
+  lee test.csv (contaminado, cronológico)
+  τ1 y τ2 derivados de datos sucios → hardcodeados en motor_decision.py
+  ↓
+reporte_metricas_v1.txt / umbrales_finales.txt  ← dos archivos, naming invertido
+```
+
+Tres problemas encadenados: datos malos → umbrales malos → métricas malas.
+El modelo funcionaba porque IF es robusto, pero las métricas no eran reproducibles
+ni defendibles: cambiaban según qué script se ejecutara y con qué datos.
+
+**Después:**
+
+```
+fase3_entrenar.py
+  lee *_normal_*.gz (Grupo A, sesión limpia) → filtra src_ip
+  split 80/20 aleatorio (seed=42)
+  StandardScaler.fit_transform solo sobre 80%
+  IsolationForest(n=300, contamination=0.05, seed=42).fit(X_train)
+  guarda: isolation_forest.pkl · scaler.pkl · features.csv · normal_holdout.csv
+  ↓
+fase3_evaluar.py
+  carga holdout (20% normal nunca visto) + *_anom_*.gz (Grupo B)
+  construye curva ROC → AUC
+  deriva τ1 (Youden) y τ2 (FPR≤2%)
+  escribe: metricas_offline.txt (fuente única) · auc_roc.png
+  ↓
+auc_por_escenario.py
+  lee metricas_offline.txt para τ1
+  evalúa B1-B6 y C1-C3 individualmente
+  globs date-agnostic (*_anom_*.gz, *_mixto_*.gz)
+  escribe: results/reports/auc_por_escenario.txt
+```
+
+**Scripts nuevos:** `fase3_entrenar.py`, `fase3_evaluar.py`, `auc_por_escenario.py` (actualizado)
+**Scripts reemplazados:** `fase3_isolation_forest.py`, `auc_roc_umbrales.py`
+**Archivo clave nuevo:** `metricas_offline.txt` — todo el sistema lo referencia
+
+---
+
+### F4 — Motor de decisión ← cambio menor
+
+**Antes:**
+
+```python
+TAU1 = -0.4973   # hardcodeado
+TAU2 = -0.6873   # hardcodeado
+# (naming invertido respecto a reporte_metricas_v1.txt)
+```
+
+Cada vez que se re-entrenaba el modelo, había que editar `motor_decision.py` manualmente
+con los nuevos umbrales. Si se olvidaba, el motor seguía usando τ valores del modelo anterior.
+Además el naming estaba invertido (τ1 era LIMIT y τ2 era PERMIT en el reporte, al revés en el código).
+
+**Después:**
+
+```python
+# Al arrancar, lee de metricas_offline.txt:
+TAU1 = leer_umbral("tau1")   # PERMIT/LIMIT — Youden
+TAU2 = leer_umbral("tau2")   # LIMIT/BLOCK  — FPR≤2%
+```
+
+La lógica de decisión (PERMIT / LIMIT / BLOCK), los detectores heurísticos
+(SSH brute force, HTTP abuse) y el control inline (ipset / iptables) **no cambian**.
+Solo cambia cómo se cargan los umbrales: desde archivo en lugar de constantes en código.
+
+**Scripts modificados:** `motor_decision.py` (solo la carga de TAU1/TAU2)
+**Lógica sin cambios:** `decidir()`, `bloquear_ip()`, `limitar_ip()`, detectores heurísticos
+
+---
+
+### F5 — Control inline
+**Cambio: ninguno**
+
+`enforce.sh`, los conjuntos `ppi_blocked` / `ppi_limited` de ipset y las reglas
+de iptables (`-I INPUT -m set --match-set ...`) permanecen exactamente igual.
+Esta fase estaba correctamente implementada desde el inicio — el control inline
+en el kernel funciona bien independientemente de cómo se deriven los umbrales.
+
+---
+
+### F6 — Validación
+**Cambio: medio**
+
+**Antes:** `f6_corridas.py` evaluaba métricas batch sobre `test.csv` (contaminado).
+La validación era offline: se calculaban scores sobre un CSV estático y se comparaban
+con etiquetas. El motor no participaba.
+
+**Después:** La validación operacional se ejecuta con el **motor activo**:
+se lanza tráfico mixto (Desktop + Kali simultáneos) y se observa en tiempo real
+si el motor bloquea lo que debe bloquear sin afectar el tráfico legítimo.
+Las métricas relevantes en F6 son: tasa de bloqueo correcta, ITL (interrupciones
+de tráfico legítimo) y latencia P95 del pipeline. `f6_corridas.py` sigue existiendo
+pero ahora valida el sistema completo en condiciones reales, no un CSV.
+
+**Scripts sin cambios:** `f6_corridas.py`, `dashboard.py`
+**Cambio de enfoque:** offline sobre CSV → operacional con motor activo en red real
+
+---
+
+## 9. Nota para el asesor — Ing. Nemias Saboya Rios
 
 Estimado ingeniero Nemias:
 
