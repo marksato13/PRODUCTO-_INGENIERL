@@ -24,6 +24,84 @@ eliminar las particiones supervisadas y establecer `metricas_offline.txt` como
 
 ---
 
+## 1.1 Justificación de cada decisión del flujo mejorado
+
+### ¿Por qué 80/20 en lugar de 70/15/15?
+
+El split 70/15/15 es una convención de modelos **supervisados** que necesitan tres conjuntos:
+entrenamiento, ajuste de hiperparámetros (validación) y prueba final.
+Isolation Forest no tiene hiperparámetros que ajustar por validación — `n_estimators=300`
+y `contamination=0.05` son decisiones de diseño, no resultados de búsqueda en grid.
+Por eso solo se necesitan **dos subconjuntos**:
+
+| Subconjunto | Proporción | Uso |
+|---|---|---|
+| Entrenamiento | 80 % | `IsolationForest.fit()` + `StandardScaler.fit_transform()` |
+| Holdout | 20 % | Referencia de "normal" en la curva ROC — nunca visto por el modelo |
+
+El 80/20 maximiza los datos de entrenamiento (más árboles con mayor variedad de flows normales)
+sin sacrificar representatividad del holdout. El `shuffle=True, random_state=42` garantiza
+que la división sea aleatoria y reproducible, sin sesgo cronológico.
+
+### ¿Por qué archivos `.gz` en lugar de `.csv`?
+
+| Formato | Flujo anterior | Flujo corregido |
+|---|---|---|
+| Fuente de datos | `dataset_raw.csv` (único, todo mezclado) | `*_normal_*.gz`, `*_anom_*.gz`, `*_mixto_*.gz` |
+| Trazabilidad | Imposible saber qué sesión originó cada fila | Cada `.gz` = una sesión, una fecha, un escenario |
+| Separación | Filtrado por `src_ip` en tiempo de entrenamiento | Separación garantizada en tiempo de **captura** |
+| Tamaño | CSV descomprimido ocupa 5-10× más espacio | gzip reduce a ~10-20 % del tamaño original |
+| Re-ejecutable | Regenerar implica repetir toda la cadena parser→limpieza | Leer directamente el `.gz` con `gzip.open` en cada script |
+
+Los `.gz` son los archivos originales de Suricata comprimidos — no hay transformación intermedia
+que pueda introducir errores. Si se descubre un bug en el preprocesamiento, se re-ejecuta
+el script sobre el mismo `.gz` sin repetir la captura.
+
+### ¿Por qué estos tres scripts de F3 y no uno solo?
+
+| Script | Responsabilidad única | Por qué separado |
+|---|---|---|
+| `fase3_entrenar.py` | Leer Grupo A → scaler → IF → guardar `.pkl` + `holdout.csv` | Se ejecuta una vez; si se cambia `n_estimators` o `contamination`, solo se re-corre este |
+| `fase3_evaluar.py` | Holdout + Grupo B → ROC → τ1/τ2 → `metricas_offline.txt` | Fuente única de verdad; puede re-ejecutarse sin re-entrenar si ya existe el `.pkl` |
+| `auc_por_escenario.py` | AUC individual por B1-B6 y C1-C3 | Reporte exploratorio; no altera `metricas_offline.txt` |
+
+Separar los scripts aplica el principio de **responsabilidad única**: si la evaluación
+falla (p. ej. faltan `.gz` del Grupo B), el modelo entrenado no se pierde.
+Si se agrega un nuevo escenario de captura, solo se re-corre `auc_por_escenario.py`.
+
+### ¿Por qué tres grupos de escenarios (A, B, C)?
+
+| Grupo | Condición de captura | Dato que produce | Para qué sirve |
+|---|---|---|---|
+| **A — Normal puro** | Kali **apagada**, Desktop genera tráfico legítimo | `*_normal_*.gz` | Entrenar IF + holdout de referencia |
+| **B — Ataque puro** | Desktop **quieto**, Kali lanza ataques | `*_anom_*.gz` | Calcular ROC, derivar τ1/τ2, AUC por escenario |
+| **C — Mixto** | Ambos activos, motor **detenido** | `*_mixto_*.gz` | Validar AUC en condiciones reales de red |
+
+El Grupo C existe porque en producción el tráfico nunca es exclusivamente normal o
+exclusivamente ataque — siempre hay mezcla. El motor se detiene durante la captura
+para que Suricata registre **todos** los flows sin que ipset descarte paquetes antes
+de que lleguen al sensor. La validación con motor **activo** se hace en F6.
+
+### ¿Por qué `metricas_offline.txt` como fuente única de verdad?
+
+Antes había tres archivos con métricas: `reporte_metricas_v1.txt`, `umbrales_finales.txt`
+y valores hardcodeados en `motor_decision.py` — cada uno con cifras distintas y naming
+de τ1/τ2 invertido entre ellos. `metricas_offline.txt` resuelve esto con una sola
+ejecución determinista:
+
+```
+metricas_offline.txt
+  ├── AUC-ROC          → mismo valor en informe, diapositivas y auc_por_escenario.py
+  ├── tau1 / tau2      → motor_decision.py los lee al arrancar (sin edición manual)
+  ├── Precision/Recall → misma cifra citada en toda la documentación
+  └── n_train / n_eval → trazabilidad del dataset usado
+```
+
+Si se re-entrena el modelo, se ejecuta `fase3_evaluar.py` y el motor toma los nuevos
+umbrales automáticamente en el próximo inicio — sin tocar código.
+
+---
+
 ## 2. Flujo ANTERIOR — incorrecto
 
 ```mermaid
