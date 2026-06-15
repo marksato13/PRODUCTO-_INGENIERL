@@ -3,8 +3,9 @@
 **Proyecto:** Sistema de Detección Temprana de Anomalías en Redes — PPI UPeU 2026  
 **Estudiante:** Rubén Mark Salazar Tocas  
 **Fase:** F1 — Preparación del Entorno de Laboratorio  
-**Documento:** F1-03 — Plan de Migración de Zona Horaria a America/Lima  
-**Fecha:** 2026-06-15
+**Documento:** F1-03 — Migración de Zona Horaria a America/Lima  
+**Fecha:** 2026-06-15  
+**Estado:** ✅ APLICADO — 2026-06-15 21:44 PET
 
 ---
 
@@ -14,13 +15,14 @@
 
 Al verificar las tres VMs del laboratorio el 2026-06-15, todas operan en zona horaria **UTC (+0000)**:
 
-| VM | IP | Timezone actual | Hora local (momento del diagnóstico) |
-|---|---|---|---|
-| Desktop Ubuntu (Admin) | 192.168.0.20 | UTC +0000 | 02:25 UTC |
-| Sensor Ubuntu | 192.168.0.110 | UTC +0000 | 02:25 UTC |
-| Servidor Ubuntu | 192.168.0.120 | UTC +0000 | 02:25 UTC |
+| VM | IP | Timezone anterior | Timezone actual | Estado |
+|---|---|---|---|---|
+| Desktop Ubuntu (Admin) | 192.168.0.20 | UTC +0000 | America/Lima -05 | ✅ Aplicado 21:44 PET |
+| Sensor Ubuntu | 192.168.0.110 | UTC +0000 | America/Lima -05 | ✅ Aplicado 21:34 PET |
+| Servidor Ubuntu | 192.168.0.120 | UTC +0000 | America/Lima -05 | ✅ Aplicado 21:34 PET |
+| Kali Linux | 192.168.0.100 | UTC +0000 | America/Lima -05 | ✅ Aplicado 21:44 PET |
 
-> Hora equivalente en Lima al momento del diagnóstico: **21:25 PET (UTC-5)**, día anterior.
+> Diagnóstico inicial: 02:25 UTC = 21:25 PET. Migración completada el 2026-06-15.
 
 El NTP ya está activo y los relojes están sincronizados entre sí (diferencia < 7 segundos). **No existe desincronización entre VMs** — el problema es únicamente de zona horaria de presentación.
 
@@ -314,6 +316,30 @@ ssh m4rk@192.168.0.110 "pkill -f motor_decision.py; sleep 2; \
 
 ---
 
-*Documento generado: 2026-06-15*  
-*Estado: pendiente de ejecución*  
-*Kali Linux (192.168.0.100) no requiere cambio — es solo origen de tráfico de prueba*
+## 8. Resultado Final — Migración Completada
+
+**Fecha de ejecución:** 2026-06-15  
+**Hora de finalización:** 21:44 PET (hora Lima)
+
+```
+=== VERIFICACIÓN POST-MIGRACIÓN ===
+
+Desktop  192.168.0.20  → America/Lima (-05)  ✅
+Sensor   192.168.0.110 → America/Lima (-05)  ✅
+Servidor 192.168.0.120 → America/Lima (-05)  ✅
+Kali     192.168.0.100 → America/Lima (-05)  ✅
+
+Motor de decisión reiniciado con nuevo timezone.
+Alerta Telegram de confirmación enviada — hora Lima correcta.
+```
+
+**Impacto confirmado:**
+- Modelo IF: sin cambios en detección
+- Datos históricos (eve.json, 40 corridas): intactos con offset +0000 original
+- Alertas Telegram nuevas: muestran hora Lima (PET -05)
+- Log motor nuevas entradas: muestran hora Lima
+
+---
+
+*Documento generado: 2026-06-15 | Actualizado: 2026-06-15 21:44 PET*  
+*Estado: ✅ COMPLETADO — todas las VMs en America/Lima*
