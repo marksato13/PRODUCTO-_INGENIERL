@@ -1,0 +1,14 @@
+[Unit]
+Description=PPI Surikata Dashboard Web
+After=network.target ppi-motor.service
+
+[Service]
+Type=simple
+User=m4rk
+WorkingDirectory=/home/m4rk/ppi-surikata-producto
+ExecStart=/home/m4rk/ppi-sensor/venv/bin/python3 scripts/dashboard_web.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
