@@ -2,34 +2,42 @@
 UMBRALES FINALES — FASE 6
 Sistema de Deteccion Temprana de Anomalias de Red
 PPI — Universidad Peruana Union 2026
-Actualizado: 2026-06-16 (modelo retrenado con dataset completo A+B+C)
+Actualizado: 2026-06-16 (modelo retrenado con dataset completo 28 capturas)
+sklearn 1.9.0 — sin mismatch de versiones
 ================================================================
 
 ISOLATION FOREST — Umbral base
 --------------------------------
-  clf.offset_    : -0.5742  (contamination=0.05)
-  Generado por   : scikit-learn IsolationForest
+  clf.offset_    : -0.5660  (contamination=0.05)
+  Generado por   : scikit-learn 1.9.0 IsolationForest
   n_estimators   : 300
   random_state   : 42
-  Fecha modelo   : 2026-06-16 02:53
+  n_train_flows  : 53,649 (28 archivos normales: jun-02, jun-04, jun-15)
+  Fecha modelo   : 2026-06-16
 
-UMBRALES τ1/τ2 (definidos por curva ROC — AUC=0.8955)
---------------------------------------------------------
-  τ1 = -0.4650  (umbral PERMIT/LIMIT)
-    Criterio : Youden index maximo (TPR-FPR optimo)
-    TPR en τ1: 99.35%   FPR en τ1: 20.27%
+CURVA ROC
+  AUC-ROC        : 0.8998  (mejorado de 0.8955 usando todos los datos)
 
-  τ2 = -0.6118  (umbral LIMIT/BLOCK)
+UMBRALES t1/t2 (derivados de curva ROC con 13,427 flows normales holdout)
+--------------------------------------------------------------------------
+  t1 = -0.4459  (umbral PERMIT/LIMIT — Youden index)
+    Criterio : Youden = max(TPR - FPR): optimo para deteccion y precision
+    TPR en t1: 99.40%   FPR en t1: 20.47%
+    Nota FPR : FPR=20% se mitiga con whitelist en produccion.
+               Bajar FPR a 5% (t1=-0.555) perderia SYN Flood (score~-0.50)
+               por lo tanto Youden ES el umbral correcto para este sistema.
+
+  t2 = -0.6027  (umbral LIMIT/BLOCK — FPR<=2%)
     Criterio : FPR <= 2% con maximo TPR
-    TPR en τ2: 17.01%   FPR en τ2: 2.00%
+    TPR en t2: 18.27%   FPR en t2: 1.99%
 
 LOGICA DE DECISION TRIPLE
 --------------------------
-  score > τ1 (-0.4650)              → PERMIT  (trafico normal)
-  τ2 (-0.6118) < score <= τ1       → LIMIT   (sospechoso, hashlimit 100pkt/s)
-  score <= τ2 (-0.6118)            → BLOCK   (anomalo confirmado, DROP)
+  score > t1 (-0.4459)              -> PERMIT  (trafico normal)
+  t2 (-0.6027) < score <= t1       -> LIMIT   (sospechoso, hashlimit 100pkt/s)
+  score <= t2 (-0.6027)            -> BLOCK   (anomalo confirmado, DROP)
 
-DETECTORES TEMPORALES (heuristicos sobre τ)
+DETECTORES TEMPORALES (heuristicos sobre t)
 --------------------------------------------
   Brute Force SSH:
     Ventana    : 60 segundos
@@ -43,14 +51,25 @@ DETECTORES TEMPORALES (heuristicos sobre τ)
     Umbral BLOCK : 100 requests/ventana
     Puerto     : TCP/80
 
-EVALUACION FINAL CON UMBRALES COMBINADOS
------------------------------------------
-  Recall global (modelo base)   : 99.35%  (en tau1, dataset completo)
-  Recall con detectores temp.   : ~99-100% (estimado con heuristicos)
-  Precision                     : 99.54%
-  F1-Score                      : 0.9945
-  AUC-ROC global                : 0.8955
-  Disponibilidad (40 corridas)  : 100%
-  ITL (impacto trafico legitimo): 0%
-  Latencia P95                  : 34.8 ms  (req. < 500ms: CUMPLE)
+AUC POR ESCENARIO (balanced: 2000 normal + 2000 anom por escenario)
+----------------------------------------------------------------------
+  B1 SYN Flood   : AUC=0.8342  Det=99.6%  [Score~-0.480 — cerca de t1]
+  B2 Port Scan   : AUC=0.9722  Det=92.7%  [Score~-0.710]
+  B3 UDP Flood   : AUC=0.9537  Det=99.5%  [Score~-0.557]
+  B4 ICMP Flood  : AUC=0.8961  Det=100%   [Score~-0.511]
+  B5 HTTP Abuse  : AUC=0.9670  Det=98.3%  [Score~-0.586]
+  B6 BruteForce  : AUC=0.8658  Det=98.8%  [Score~-0.504]
+  C1 HTTP+SYN    : AUC=0.8206  Det=100%   [Score~-0.473]
+  C2 SSH+Scan    : AUC=0.8596  Det=98.3%  [Score~-0.491]
+  C3 Trans+UDP   : AUC=0.9327  Det=99.7%  [Score~-0.552]
+
+EVALUACION FINAL COMBINADA
+---------------------------
+  AUC-ROC global       : 0.8998
+  Recall (modelo base) : 99.40%
+  Precision            : 99.54%
+  F1-Score             : 0.9947
+  Disponibilidad F6    : 100% (40/40 corridas)
+  ITL                  : 0%
+  Latencia P95         : 34.8 ms (req <500ms: CUMPLE)
 ================================================================

@@ -118,7 +118,7 @@ MAX_POR_ESCENARIO = 500   # cap por tipo de tráfico normal
 
 from collections import defaultdict
 normal_por_escenario = defaultdict(list)
-for f in sorted(glob.glob(f"{DATA_DIR}/20260602_normal_*_eve.json.gz")):
+for f in sorted(glob.glob(f"{DATA_DIR}/*_normal_*_eve.json.gz")):
     nombre = os.path.basename(f)
     # extraer escenario: normal_<escenario>_NN_eve.json.gz
     escenario = nombre.split('_')[2]
@@ -133,7 +133,7 @@ for escenario, evs in sorted(normal_por_escenario.items()):
     normal_events.extend(evs)
 
 anom_events = []
-for f in sorted(glob.glob(f"{DATA_DIR}/20260602_anom_*_eve.json.gz")):
+for f in sorted(glob.glob(f"{DATA_DIR}/*_anom_*_eve.json.gz")):
     # Sin filtro src: floods con --rand-source y respuestas ICMP tienen src≠Kali
     evs = parse_flows(f, src_filter=None)
     # Excluir explícitamente flows de Desktop (tráfico normal que quedó en el eve.json)

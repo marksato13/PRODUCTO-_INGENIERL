@@ -38,7 +38,7 @@ SERVIDOR  = "192.168.0.120"
 
 # Umbrales τ1/τ2 — leídos de metricas_offline.txt (generado por fase3_evaluar.py)
 _METRICAS = '/home/m4rk/ppi-surikata-producto/results/metricas_offline.txt'
-TAU1, TAU2 = -0.4650, -0.6118  # valores por defecto (fase3_evaluar.py 2026-06-16)
+TAU1, TAU2 = -0.4459, -0.6027  # valores por defecto (fase3_evaluar.py 2026-06-16, todos los datos)
 if os.path.exists(_METRICAS):
     with open(_METRICAS) as _f:
         for _line in _f:

@@ -105,25 +105,27 @@ eve.json (Suricata)
 
 `pkts_toserver`, `pkts_toclient`, `bytes_toserver`, `bytes_toclient`, `duration`, `pkt_rate`, `byte_rate`, `pkt_ratio`, `byte_ratio`, `avg_pkt_size`, `is_tcp`, `is_udp`, `is_icmp`, `dest_port`
 
-### Umbrales de decisión (modelo activo — retrenado 2026-06-16)
+### Umbrales de decisión (modelo final — sklearn 1.9.0, todos los datos)
 
 | Umbral | Valor | Acción | Criterio |
 |---|---|---|---|
-| τ1 | -0.4650 | score > τ1 → PERMIT | Youden index (TPR=99.35%, FPR=20.27%) |
-| τ2 | -0.6118 | τ2 < score ≤ τ1 → LIMIT (hashlimit 100pkt/s) | FPR≤2% (TPR=17.01%) |
+| τ1 | -0.4459 | score > τ1 → PERMIT | Youden index (TPR=99.40%, FPR=20.47%) |
+| τ2 | -0.6027 | τ2 < score ≤ τ1 → LIMIT (hashlimit 100pkt/s) | FPR≤2% (TPR=18.27%) |
 | — | — | score ≤ τ2 → BLOCK (DROP) | — |
 
 Motor lee τ1/τ2 de `results/metricas_offline.txt` en cada arranque.
+FPR=20.47% se mitiga con whitelist — bajar a FPR=5% haría escapar SYN floods (score≈−0.49).
 
 Detectores heurísticos adicionales sobre τ:
 - **Brute Force SSH**: 15 intentos/60s → BLOCK (5 → LIMIT)
 - **HTTP Abuse**: 100 req/30s → BLOCK (50 → LIMIT)
 
-### Métricas finales validadas (F6 — 40 corridas, 2026-06-16)
+### Métricas finales validadas (F6 + modelo mejorado 2026-06-16)
 
-- AUC-ROC: 0.8955 | Precision: 99.54% | Recall: 99.35% | F1: 0.9945
+- AUC-ROC: 0.8998 (mejorado) | Precision: 99.54% | Recall: 99.40% | F1: 0.9947
 - Latencia P95: 34.8ms (req. < 500ms: CUMPLE) | ITL: 0% | Disponibilidad: 100%
-- Lead Time detección (corrida 11, SYN Flood): 61.92s
+- Lead Time detección (SYN Flood, reproducible): ~62s
+- sklearn: 1.9.0 en venv y modelo — sin mismatch de versiones
 
 ## Escenarios de tráfico
 
