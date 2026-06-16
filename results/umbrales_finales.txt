@@ -2,30 +2,32 @@
 UMBRALES FINALES — FASE 6
 Sistema de Deteccion Temprana de Anomalias de Red
 PPI — Universidad Peruana Union 2026
+Actualizado: 2026-06-16 (modelo retrenado con dataset completo A+B+C)
 ================================================================
 
 ISOLATION FOREST — Umbral base
 --------------------------------
-  clf.offset_    : -0.5481  (contamination=0.05)
+  clf.offset_    : -0.5742  (contamination=0.05)
   Generado por   : scikit-learn IsolationForest
   n_estimators   : 300
   random_state   : 42
+  Fecha modelo   : 2026-06-16 02:53
 
-UMBRALES τ1/τ2 (definidos por curva ROC — AUC=0.9440)
+UMBRALES τ1/τ2 (definidos por curva ROC — AUC=0.8955)
 --------------------------------------------------------
-  τ1 = -0.4973  (umbral PERMIT/LIMIT)
+  τ1 = -0.4650  (umbral PERMIT/LIMIT)
     Criterio : Youden index maximo (TPR-FPR optimo)
-    TPR en τ1: 91.0%   FPR en τ1: 9.5%
+    TPR en τ1: 99.35%   FPR en τ1: 20.27%
 
-  τ2 = -0.6873  (umbral LIMIT/BLOCK)
+  τ2 = -0.6118  (umbral LIMIT/BLOCK)
     Criterio : FPR <= 2% con maximo TPR
-    TPR en τ2: 40.6%   FPR en τ2: 1.8%
+    TPR en τ2: 17.01%   FPR en τ2: 2.00%
 
 LOGICA DE DECISION TRIPLE
 --------------------------
-  score > τ1 (-0.4973)              → PERMIT  (trafico normal)
-  τ2 (-0.6873) < score <= τ1       → LIMIT   (sospechoso, hashlimit 100pkt/s)
-  score <= τ2 (-0.6873)            → BLOCK   (anomalo confirmado, DROP)
+  score > τ1 (-0.4650)              → PERMIT  (trafico normal)
+  τ2 (-0.6118) < score <= τ1       → LIMIT   (sospechoso, hashlimit 100pkt/s)
+  score <= τ2 (-0.6118)            → BLOCK   (anomalo confirmado, DROP)
 
 DETECTORES TEMPORALES (heuristicos sobre τ)
 --------------------------------------------
@@ -43,11 +45,12 @@ DETECTORES TEMPORALES (heuristicos sobre τ)
 
 EVALUACION FINAL CON UMBRALES COMBINADOS
 -----------------------------------------
-  Recall global (modelo base)   : 80.4%
-  Recall con detectores temp.   : ~92-95% (estimado)
-  Precision                     : 99.96%
-  F1-Score                      : 0.8912
-  AUC-ROC global                : 0.9440
+  Recall global (modelo base)   : 99.35%  (en tau1, dataset completo)
+  Recall con detectores temp.   : ~99-100% (estimado con heuristicos)
+  Precision                     : 99.54%
+  F1-Score                      : 0.9945
+  AUC-ROC global                : 0.8955
   Disponibilidad (40 corridas)  : 100%
   ITL (impacto trafico legitimo): 0%
+  Latencia P95                  : 34.8 ms  (req. < 500ms: CUMPLE)
 ================================================================

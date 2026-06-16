@@ -42,10 +42,10 @@ TAU1, TAU2 = -0.4650, -0.6118  # valores por defecto (fase3_evaluar.py 2026-06-1
 if os.path.exists(_METRICAS):
     with open(_METRICAS) as _f:
         for _line in _f:
-            if re.match(r'\s*tau1\s*:', _line):
+            if re.match(r"\s*tau1\s*:\s*[-\d]", _line):
                 try: TAU1 = float(_line.split(':')[1].split('#')[0].strip())
                 except: pass
-            elif re.match(r'\s*tau2\s*:', _line):
+            elif re.match(r"\s*tau2\s*:\s*[-\d]", _line):
                 try: TAU2 = float(_line.split(':')[1].split('#')[0].strip())
                 except: pass
 

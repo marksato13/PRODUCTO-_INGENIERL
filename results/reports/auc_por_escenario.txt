@@ -1,20 +1,23 @@
 =================================================================
 AUC-ROC POR ESCENARIO — PPI UPeU 2026
-Generado: 2026-06-03 19:04
+Generado : 2026-06-16 03:56
+τ1 usado : -0.4650  (PERMIT/LIMIT — fuente: metricas_offline.txt)
 =================================================================
 
 Escenario                       AUC   Det% Score_med
 ----------------------------------------------------
-SYN Flood (B1)               0.9529  72.2%   -0.6064  [OK]
-Port Scan (B2)               0.9721  99.9%   -0.6508  [OK]
-UDP Flood (B3)               0.9905 100.0%   -0.7142  [OK]
-ICMP Flood (B4)              0.9861 100.0%   -0.6998  [OK]
-HTTP Abuse (B5)              0.8630  56.6%   -0.5892  [OK]
-Brute Force (B6)             0.6770   0.9%   -0.4376  [X]
-Mixto C1                     0.9737 100.0%   -0.6529  [OK]
-Mixto C2                     0.9277  57.1%   -0.6088  [OK]
-Mixto C3                     0.9801  99.3%   -0.6765  [OK]
+SYN Flood     (B1)           0.8302  99.6%   -0.4962  [~]
+Port Scan     (B2)           0.9726  93.5%   -0.7270  [OK]
+UDP Flood     (B3)           0.9465  99.5%   -0.5668  [OK]
+ICMP Flood    (B4)           0.8867 100.0%   -0.5258  [OK]
+HTTP Abuse    (B5)           0.9562  97.5%   -0.5853  [OK]
+Brute Force   (B6)           0.8623  98.4%   -0.5150  [OK]
+Mixto HTTP+SYN  (C1)         0.8201 100.0%   -0.4896  [~]
+Mixto SSH+Scan  (C2)         0.8602  98.5%   -0.5074  [OK]
+Mixto Trf+UDP   (C3)         0.9253  99.7%   -0.5623  [OK]
 
-AUC global (todos los escenarios): ver auc_roc_umbrales.png
 AUC=1.0 → discriminación perfecta | AUC=0.5 → aleatorio
+Det% = flows anómalos con score ≤ τ1 (LIMIT o BLOCK)
+[OK] AUC≥0.85  [~] 0.70≤AUC<0.85  [X] AUC<0.70
+Curva ROC global: results/auc_roc.png
 =================================================================
