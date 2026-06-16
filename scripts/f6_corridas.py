@@ -102,11 +102,12 @@ def calcular_metricas(lineas, t_ataque_inicio=None):
 
     for t, linea in lineas:
         tiempos.append(t)
-        if "ANOMALÍA" in linea or "SOSPECHOSO" in linea:
+        KEYWORDS_ANOM = ("ANOMALÍA", "SOSPECHOSO", "HTTP-ABUSE", "BRUTE-FORCE")
+        if any(k in linea for k in KEYWORDS_ANOM):
             flows_anom += 1
             if t_primera_alerta is None:
                 t_primera_alerta = t
-            if "BLOCK →" in linea or "LIMIT →" in linea:
+            if "BLOCK" in linea or "LIMIT" in linea:
                 m = re.search(r'src=([\d.]+)', linea)
                 ip = m.group(1) if m else None
                 if ip:
@@ -188,16 +189,18 @@ while time.time() < end:
 def trafico_anom_bg(tipo, duracion):
     """Lanza ataque desde Kali en background."""
     if tipo == "synflood":
-        cmd = f"sudo timeout {duracion} hping3 -S -p 80 -i u5000 --rand-source {SERVIDOR} > /dev/null 2>&1 &"
+        cmd = f"sudo timeout {duracion} hping3 -S -p 80 -i u5000 {SERVIDOR} > /dev/null 2>&1 &"
     elif tipo == "portscan":
         cmd = f"nmap -sS -p 1-1024 {SERVIDOR} > /dev/null 2>&1 &"
     elif tipo == "udpflood":
-        cmd = f"sudo timeout {duracion} hping3 --udp -p 53 -i u5000 --rand-source {SERVIDOR} > /dev/null 2>&1 &"
+        cmd = f"sudo timeout {duracion} hping3 --udp -p 53 -i u5000 {SERVIDOR} > /dev/null 2>&1 &"
     elif tipo == "httpabuse":
         cmd = f"timeout {duracion} bash -c 'while true; do curl -s http://{SERVIDOR}/ -o /dev/null; done' > /dev/null 2>&1 &"
     else:
         return
-    ssh_kali(cmd, timeout=5)
+    ret = ssh_kali(cmd, timeout=15)
+    if ret.startswith("ERROR"):
+        print(f"  [WARN] ssh_kali falló: {ret}")
 
 # ── Función principal de corrida ──────────────────────────────
 def ejecutar_corrida(num, grupo, escenario_anom=None, duracion=DURACION_NORMAL):
