@@ -35,9 +35,18 @@ MODEL_DIR = "/home/m4rk/ppi-surikata-producto/models"
 LOG_PATH  = "/home/m4rk/ppi-surikata-producto/results/motor_decision.log"
 SERVIDOR  = "192.168.0.120"
 
-# Umbrales τ1 y τ2 definidos por curva ROC (reporte_metricas_v1.txt)
-TAU1 = -0.4973   # PERMIT / LIMIT boundary  (Youden, TPR=91%, FPR=9.5%)
-TAU2 = -0.6873   # LIMIT  / BLOCK boundary  (FPR≤2%,  TPR=40.6%)
+# Umbrales τ1/τ2 — leídos de metricas_offline.txt (generado por fase3_evaluar.py)
+_METRICAS = '/home/m4rk/ppi-surikata-producto/results/metricas_offline.txt'
+TAU1, TAU2 = -0.4650, -0.6118  # valores por defecto (fase3_evaluar.py 2026-06-16)
+if os.path.exists(_METRICAS):
+    with open(_METRICAS) as _f:
+        for _line in _f:
+            if _line.strip().startswith('tau1'):
+                try: TAU1 = float(_line.split(':')[1].split('#')[0].strip())
+                except: pass
+            elif _line.strip().startswith('tau2'):
+                try: TAU2 = float(_line.split(':')[1].split('#')[0].strip())
+                except: pass
 
 WHITELIST = {"192.168.0.1", "192.168.0.20", "192.168.0.110",
              "192.168.0.120", "127.0.0.1", "192.168.0.130", "192.168.0.140"}
@@ -71,7 +80,6 @@ logging.basicConfig(
     format='%(asctime)s | %(levelname)s | %(message)s',
     handlers=[
         logging.FileHandler(LOG_PATH),
-        logging.StreamHandler(sys.stdout),
     ]
 )
 log = logging.getLogger(__name__)
