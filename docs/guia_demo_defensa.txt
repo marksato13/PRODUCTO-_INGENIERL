@@ -1,0 +1,328 @@
+================================================================
+GUÍA DE DEMO EN VIVO — DEFENSA PPI
+Sistema de Detección Temprana de Anomalías de Red
+Universidad Peruana Unión 2026
+Estudiante: Rubén Mark Salazar Tocas
+Asesores: Ing. Nemias Saboya Rios / Ing. Fernando Manuel Asin Gomez
+================================================================
+
+TOPOLOGÍA DEL LABORATORIO
+--------------------------
+  192.168.0.10   Win11       Cliente
+  192.168.0.20   Desktop     Admin / tráfico normal  ← AQUÍ CORRE RELAY
+  192.168.0.100  Kali Linux  Origen tráfico anómalo
+  192.168.0.110  Sensor      Suricata 7.0.3 + Motor IF
+  192.168.0.120  Server      nginx:80  SSH:22
+
+================================================================
+PREPARACIÓN ANTES DE LA DEMO (7 pasos)
+================================================================
+
+1. Encender VMs: Desktop, Kali, Sensor (192.168.0.110), Server (192.168.0.120)
+
+2. Iniciar relay Telegram en Desktop (necesario — sensor sin internet):
+   python3 /home/m4rk/Descargas/telegram_relay.py &
+   # El relay escucha en :8889 y reenvía a api.telegram.org
+
+3. Verificar motor activo en el sensor:
+   ssh m4rk@192.168.0.110 "sudo systemctl status ppi-motor.service"
+   # Si no está activo:
+   ssh m4rk@192.168.0.110 "sudo systemctl start ppi-motor.service"
+
+4. Abrir dashboard terminal (otra terminal):
+   ssh m4rk@192.168.0.110
+   python3 /home/m4rk/ppi-surikata-producto/scripts/dashboard.py
+
+5. (Opcional) Dashboard web en navegador:
+   # Iniciar en sensor si no está corriendo:
+   ssh m4rk@192.168.0.110 \
+     "cd ppi-surikata-producto && nohup /home/m4rk/ppi-sensor/venv/bin/python3 scripts/dashboard_web.py &"
+   # Abrir: http://192.168.0.110:8080
+
+6. Probar alerta Telegram (desde Desktop):
+   curl -s -X POST http://localhost:8889/telegram \
+     -H "Content-Type: application/json" \
+     -d '{"text":"✅ Relay activo — Sistema PPI listo para demo"}'
+   # Debe aparecer mensaje en Telegram
+
+7. Limpiar bloqueos previos:
+   ssh m4rk@192.168.0.120 \
+     "sudo ipset flush ppi_blocked; sudo ipset flush ppi_limited"
+
+================================================================
+ESCENARIO 1 — PORT SCAN (impacto visual, detección ~30-60s)
+================================================================
+[RECOMENDADO PRIMERO — más rápido y claro para el jurado]
+
+DESDE: Kali Linux (192.168.0.100)
+COMANDO:
+   nmap -sS -p 1-1024 --min-rate 1000 -T5 192.168.0.120
+
+QUÉ HACE: Escaneo SYN de 1024 puertos TCP (sin completar handshake)
+
+CÓMO LO DETECTA EL MOTOR:
+  1. Suricata captura los flows TCP del nmap → escribe en eve.json
+  2. Motor lee el flow: pkts_toserver=1, pkts_toclient=0, duration≈0
+  3. Features → scaler → isolation_forest.score_samples()
+  4. Score real observado: −0.7333  (≤ τ2=−0.6027)
+  5. Decisión: BLOCK → ipset add ppi_blocked 192.168.0.100 timeout 300
+  6. iptables DROP en Server para toda IP en ppi_blocked
+  7. Telegram: POST al relay :8889 → api.telegram.org
+
+ALERTA TELEGRAM ESPERADA:
+   🚨 PPI ALERTA — ANOMALÍA
+   Accion : BLOCK
+   IP     : 192.168.0.100
+   Proto  : TCP
+   Puerto : 80
+   Score  : -0.7333
+   Grado  : ALTA
+   Hora   : HH:MM:SS
+
+TIEMPO HASTA ALERTA: ~30-60 segundos desde primer flow
+LOG ESPERADO (sensor):
+   WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80 proto=TCP score=-0.7333 grado=ALTA | BLOCK
+
+VERIFICAR BLOQUEO:
+   ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+
+================================================================
+ESCENARIO 2 — BRUTE FORCE SSH (heurístico temporal)
+================================================================
+
+DESDE: Kali Linux (192.168.0.100)
+COMANDO:
+   ssh m4rk@192.168.0.110 \
+     "timeout 90 bash -c 'for i in \$(seq 1 30); do \
+       sshpass -p wrong ssh -o StrictHostKeyChecking=no \
+       -o ConnectTimeout=2 wronguser@192.168.0.120 2>/dev/null; \
+       sleep 0.5; done'"
+
+   # Alternativa más simple (desde Desktop directamente):
+   for i in $(seq 1 25); do
+     ssh -o ConnectTimeout=2 -o BatchMode=yes \
+       -o StrictHostKeyChecking=no \
+       wronguser@192.168.0.120 2>/dev/null &
+   done; wait
+
+QUÉ HACE: 25 intentos SSH fallidos desde Kali → trigger heurístico BF-SSH
+
+CÓMO LO DETECTA EL MOTOR:
+  1. Motor lleva contador de intentos SSH/IP en ventana de 60s
+  2. A los 5 intentos: ssh_counts[192.168.0.100] = 5 → LIMIT
+  3. A los 15 intentos: ssh_counts[192.168.0.100] = 15 → BLOCK
+  4. Heurístico actúa INDEPENDIENTE del score IF
+
+ALERTA TELEGRAM ESPERADA:
+   🚨 PPI ALERTA — BRUTE FORCE SSH
+   Accion  : BLOCK
+   IP      : 192.168.0.100
+   Puerto  : 22
+   Intentos: 15/60s
+   Hora    : HH:MM:SS
+
+TIEMPO HASTA ALERTA: ~15-30 segundos (contar 15 intentos)
+LOG ESPERADO (sensor):
+   WARNING | BF-SSH | src=192.168.0.100 dst=192.168.0.120:22 intentos=15/60s | BLOCK
+
+================================================================
+ESCENARIO 3 — HTTP ABUSE (heurístico de tasa de requests)
+================================================================
+
+DESDE: Kali Linux (192.168.0.100)
+COMANDO:
+   ssh m4rk@192.168.0.110 \
+     "timeout 60 bash -c \
+      'while true; do curl -s http://192.168.0.120/ -o /dev/null; done'" &
+
+QUÉ HACE: Curl en bucle continuo hacia nginx:80 → >100 requests en 30s
+
+CÓMO LO DETECTA EL MOTOR:
+  1. Motor lleva contador de requests HTTP/IP en ventana de 30s
+  2. A los 50 requests: http_counts[192.168.0.100] = 50 → LIMIT
+  3. A los 100 requests: http_counts[192.168.0.100] = 100 → BLOCK
+  4. Log real observado: BLOCK a los ~10s (requests muy rápidos)
+
+ALERTA TELEGRAM ESPERADA:
+   🚨 PPI ALERTA — HTTP ABUSE
+   Accion   : BLOCK
+   IP       : 192.168.0.100
+   Puerto   : 80
+   Requests : 100/30s
+   Hora     : HH:MM:SS
+
+TIEMPO HASTA ALERTA: ~10-30 segundos
+LOG ESPERADO (sensor):
+   WARNING | HTTP-ABUSE | src=192.168.0.100 dst=192.168.0.120:80 proto=TCP requests=100/30s | BLOCK
+
+================================================================
+ESCENARIO 4 — TRÁFICO NORMAL (sin alerta — ITL=0%)
+================================================================
+[MOSTRAR EN PARALELO CON ESCENARIO 3 PARA MÁXIMO IMPACTO]
+
+DESDE: Desktop (192.168.0.20) — en WHITELIST
+COMANDO:
+   for i in $(seq 1 20); do
+     curl -s http://192.168.0.120/ -o /dev/null && echo "OK $i" || echo "FAIL $i"
+     sleep 1
+   done
+
+QUÉ HACE: Requests HTTP legítimas desde Desktop hacia servidor
+
+POR QUÉ NO SE BLOQUEA:
+  → Motor línea 389: if src_ip in WHITELIST: continue
+  → WHITELIST = {192.168.0.20, 192.168.0.110, 192.168.0.120, ...}
+  → El flow se descarta sin evaluar IF ni heurísticos
+
+RESULTADO ESPERADO: Todos los "OK" — ningún "FAIL"
+DEMOSTRACIÓN: "Kali bloqueada, Desktop sin impacto → ITL=0%"
+
+================================================================
+ESCENARIO 5 — SYN FLOOD (IF + heurístico combinado)
+================================================================
+
+DESDE: Kali Linux (192.168.0.100)
+COMANDO:
+   ssh m4rk@192.168.0.110 \
+     "sudo timeout 120 hping3 -S -p 80 --flood 192.168.0.120"
+
+QUÉ HACE: Inunda con paquetes SYN TCP al puerto 80 del servidor
+
+CÓMO LO DETECTA EL MOTOR:
+  1. IF evalúa el flow TCP acumulado: pkt_rate masivo, duration pequeña
+     Score real: −0.4937 → entre τ2 y τ1 → LIMIT (grado=BAJA_ANOMALIA)
+  2. Simultáneamente el heurístico HTTP-ABUSE cuenta requests en TCP/80
+  3. A los 100 requests en 30s → HTTP-ABUSE BLOCK (anula el LIMIT)
+  4. Kali bloqueada en ~10 segundos (observado en tests C1)
+
+LOG ESPERADO (secuencia real observada):
+   WARNING | SOSPECHOSO | src=192.168.0.100 score=-0.4937 | LIMIT
+   WARNING | HTTP-ABUSE | src=192.168.0.100 requests=100/30s | BLOCK
+
+TIEMPO HASTA BLOCK: ~10-15 segundos
+
+================================================================
+ORDEN RECOMENDADO PARA LA DEFENSA (25 minutos)
+================================================================
+
+t=0:00   Mostrar topología y dashboard.py corriendo (terminal)
+t=2:00   Escenario 1 — Port Scan: "el motor detecta por comportamiento anómalo"
+         → Mostrar alerta Telegram llegando al celular  [IMPACTO VISUAL]
+t=5:00   Mostrar log del sensor en tiempo real → explicar score -0.7333
+t=8:00   Limpiar bloqueos (ipset flush)
+t=9:00   Escenario 3 — HTTP Abuse + Escenario 4 Normal en paralelo
+         → "Kali bloqueada, Desktop sin impacto"  [ITL=0%]
+t=13:00  Escenario 2 — Brute Force SSH → "heurístico temporal"
+t=17:00  Mostrar métricas: AUC, Recall, Latencia
+t=20:00  Q&A del jurado
+
+================================================================
+COMANDOS ÚTILES DURANTE LA DEMO
+================================================================
+
+Ver log en tiempo real (sensor):
+   ssh m4rk@192.168.0.110 \
+     "tail -f /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+
+Ver IPs bloqueadas en servidor:
+   ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+   ssh m4rk@192.168.0.120 "sudo ipset list ppi_limited"
+
+Limpiar bloqueos entre escenarios:
+   ssh m4rk@192.168.0.120 \
+     "sudo ipset flush ppi_blocked; sudo ipset flush ppi_limited"
+
+Probar alerta Telegram (desde Desktop, relay en :8889):
+   curl -s -X POST http://localhost:8889/telegram \
+     -H "Content-Type: application/json" \
+     -d '{"text":"🔬 Test manual — relay Desktop activo"}'
+
+Desbloquear IP manualmente:
+   bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh \
+     192.168.0.100 UNBLOCK
+
+Ver estado del motor:
+   ssh m4rk@192.168.0.110 "sudo systemctl status ppi-motor.service"
+
+Reiniciar motor (limpia contadores en memoria):
+   ssh m4rk@192.168.0.110 "sudo systemctl restart ppi-motor.service"
+
+Ver umbrales activos:
+   ssh m4rk@192.168.0.110 \
+     "cat /home/m4rk/ppi-surikata-producto/results/metricas_offline.txt"
+
+================================================================
+MÉTRICAS CLAVE PARA MENCIONAR EN LA DEFENSA
+================================================================
+  AUC-ROC               : 0.8998  → discriminación 89.98%
+  Recall (Sensibilidad) : 99.40%  → detecta ~99 de cada 100 ataques
+  Precisión             : 99.54%  → casi sin falsas alarmas
+  F1-Score              : 0.9947  → balance casi perfecto
+  Latencia pipeline P95 : 34.8ms  → muy por debajo del req. 500ms
+  Disponibilidad        : 100%    → en 40 corridas de validación (F6)
+  ITL (impacto legítimo): 0%      → cero impacto en usuarios legítimos
+  Umbrales: τ1=−0.4459 (Youden), τ2=−0.6027 (FPR≤2%)
+  Modelo: Isolation Forest n=300, sklearn 1.9.0, 14 features
+
+================================================================
+PREGUNTAS ESPERADAS DEL JURADO Y RESPUESTAS
+================================================================
+
+P: "¿Por qué usaron Isolation Forest y no supervisado?"
+R: "No contábamos con tráfico malicioso etiquetado de esta red en
+   producción. IF aprende la 'normalidad' y detecta lo que se desvía,
+   sin necesitar ejemplos de ataques previos. Es ideal para entornos
+   de red nuevos donde no existe un histórico de incidentes."
+
+P: "El AUC es 0.90 — ¿no es bajo para seguridad?"
+R: "Para un modelo no supervisado sin etiquetas de entrenamiento,
+   0.8998 es sólido. Lo compensamos con heurísticos deterministas
+   (BF-SSH, HTTP-ABUSE) que cubren los ataques más comunes.
+   La combinación da Recall=99.40% en los 13 escenarios validados."
+
+P: "¿Qué pasa con el FPR=20.47% en τ1?"
+R: "El FPR del 20% se mide sobre todos los flows, pero la whitelist
+   descarta Desktop, Sensor y Server — los únicos hosts legítimos del
+   lab. En práctica el ITL observado fue 0%. Además, bajar τ1 a FPR=5%
+   haría escapar SYN Floods (score≈−0.49, entre τ1 y τ2)."
+
+P: "¿Por qué no detectan ICMP Flood?"
+R: "Es una brecha conocida y documentada. Suricata 7.0.3 en esta
+   topología no genera eventos 'flow' para ICMP IPv4 con hping3 --flood.
+   La solución sería añadir un heurístico de conteo ICMP por ventana
+   temporal, similar al que tenemos para BF-SSH y HTTP-ABUSE.
+   En escenarios mixtos (Grupo C), la IP atacante ya está bloqueada
+   por otros ataques antes de que inicie el ICMP flood."
+
+P: "¿Cuál es el lead time de detección?"
+R: "Para SYN Flood: ~62 segundos (Suricata necesita cerrar el flow
+   TCP primero). Para Port Scan y ataques con flows cortos: <5 segundos.
+   Para heurísticos (BF-SSH, HTTP-ABUSE): 10-30 segundos según tasa.
+   El P95 de la latencia del pipeline completo es 34.8ms."
+
+P: "¿El sistema funciona en tiempo real?"
+R: "Sí. El motor usa 'tail -f' sobre eve.json de Suricata con polling
+   cada 0.1s. El pipeline completo (lectura → features → IF → enforcement)
+   tarda en mediana <35ms. La notificación Telegram llega típicamente
+   en <5s desde que el motor toma la decisión."
+
+P: "¿Qué diferencia hay entre LIMIT y BLOCK?"
+R: "LIMIT usa hashlimit de iptables para restringir a 100 pkt/s — el
+   host queda degradado pero no cortado, útil cuando el score indica
+   sospecha baja (τ2 < score ≤ τ1). BLOCK es DROP total en iptables
+   para scores ≤ τ2 o cuando los heurísticos confirman ataque activo.
+   Los timeouts son de 300s, luego se reevalúa automáticamente."
+
+================================================================
+NOTAS DE OPERACIÓN
+================================================================
+- El relay Telegram (telegram_relay.py) DEBE estar corriendo en Desktop
+  ANTES de iniciar la demo. El motor en el sensor no tiene internet.
+- Si el motor no detecta en 90s, verificar que eve.json tiene actividad:
+  ssh m4rk@192.168.0.110 "tail -5 /var/log/suricata/eve.json"
+- Para limpiar contadores en memoria del motor (BF-SSH, HTTP-ABUSE):
+  reiniciar el servicio con systemctl restart ppi-motor.service
+- Los ipsets tienen timeout=300s — las IPs se desbloquean solas.
+- UDP Flood (B3) y ICMP Flood (B4) son brechas conocidas del sistema
+  actual. No ejecutar en demo a menos que el jurado pregunte por ellas.
+================================================================
