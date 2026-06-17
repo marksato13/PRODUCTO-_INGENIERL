@@ -265,13 +265,23 @@ sudo hping3 -1 --flood 192.168.0.120
 
 **Mecanismo:** SOLO Isolation Forest (teórico) — **brecha real en esta topología**
 
-> **Hallazgo real (test 2026-06-17):** Suricata 7.0.3 NO genera eventos `flow` para ICMP
-> IPv4 en este laboratorio. Solo emite flows ICMP en IPv6 (src con `:`), filtrados
-> por el motor en línea 389 (`if ':' in src_ip: continue`). Resultado: **0 detecciones**.
-> El ICMP flood IPv4 pasa sin filtro — es una brecha de cobertura del sistema.
+> **Hallazgo (análisis offline 2026-06-16):** `auc_por_escenario.py` procesó
+> `20260615_anom_icmpflood_01_eve.json.gz` (26.8M flows) y obtuvo
+> **AUC=0.8961, Det%=100%** — el modelo sí detecta ICMP Flood desde los archivos `.gz`.
+>
+> **Hallazgo (test en tiempo real 2026-06-17):** En el test con motor activo y
+> `hping3 -1 --flood`, Suricata 7.0.3 no emitió eventos `flow` para ICMP IPv4 en
+> esa corrida específica. Solo emitió flows ICMP en IPv6 (src con `:`), filtrados
+> en línea 389 (`if ':' in src_ip: continue`). Resultado en tiempo real: **0 detecciones**.
+>
+> **Conclusión:** el modelo tiene capacidad de detección ICMP (AUC=0.8961 offline),
+> pero la cobertura en tiempo real depende de que Suricata genere eventos `flow` para
+> ICMP IPv4, lo cual no ocurrió de forma consistente en todas las corridas del laboratorio.
+> Comportamiento clasificado como **cobertura variable** según la sesión de captura.
 
-**Mitigación posible:** añadir heurístico ICMP por conteo de paquetes en ventana,
-o configurar Suricata para emitir eventos `flow` de ICMP IPv4.
+**Mitigación posible:** añadir heurístico ICMP por conteo de paquetes en ventana temporal,
+o verificar configuración de Suricata (`flow-timeouts` para ICMP) para asegurar emisión
+consistente de eventos `flow` IPv4.
 
 ---
 
@@ -431,12 +441,15 @@ AUC-ROC             : 0.8998
 
 | Escenario | AUC | Dificultad |
 |---|---|---|
-| B1 SYN Flood | 0.8302 | Mayor (score ≈ −0.49 a −0.71, zona gris) |
-| B2 Port Scan | 0.9726 | Menor (muy diferente al normal) |
-| B3 UDP Flood | ~0.92 | Medio (is_udp=1 discrimina bien) |
-| B4 ICMP Flood | ~0.90 | Medio (is_icmp=1, dest_port=0) |
-| B5 HTTP Abuse | ~0.88 | Medio (cubierto por heurístico HTTP) |
-| B6 BruteForce | ~0.85 | Medio (cubierto por heurístico BF) |
+| B1 SYN Flood | **0.8342** | Mayor dificultad (score ≈ −0.48, zona gris entre τ1 y τ2) |
+| B2 Port Scan | **0.9722** | Menor dificultad (flujos de 1 pkt muy distintos al normal) |
+| B3 UDP Flood | **0.9537** | Alto (is_udp=1 + byte_rate extremo discriminan bien) |
+| B4 ICMP Flood | **0.8961** | Medio-alto (is_icmp=1, dest_port=0 — det. offline 100%) |
+| B5 HTTP Abuse | **0.9670** | Alto (heurístico HTTP-ABUSE + score IF complementan) |
+| B6 BruteForce | **0.8658** | Medio-alto (heurístico BF-SSH + score IF complementan) |
+
+> Fuente: `results/reports/auc_por_escenario.txt` — generado 2026-06-16 con τ1=−0.4459.
+> Escenarios mixtos: C1=0.8206, C2=0.8596, C3=0.9327.
 
 ---
 
@@ -514,10 +527,13 @@ ssh m4rk@192.168.0.110 \
 
 # ── EJECUTAR SUITE DE VERIFICACIÓN ────────────────────────────────────────────
 
-bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh RAPIDO   # 15 min
-bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh TODOS    # 49 min
-bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh B5       # solo HTTP abuse
-bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh B1       # solo SYN flood
+# NOTA: scripts de verificación automatizada pendientes de creación
+# Los tests se ejecutaron manualmente (ver resultados en §9)
+# Referencia de comandos individuales — ver §7 para verificación manual
+bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh RAPIDO   # pendiente
+bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh TODOS    # pendiente
+bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh B5       # pendiente
+bash /home/m4rk/Descargas/verificacion/RUN_VERIFICACION_COMPLETA.sh B1       # pendiente
 
 # ── DEMO RÁPIDA DE DETECCIÓN (manual, 30s) ────────────────────────────────────
 
@@ -559,7 +575,7 @@ ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 | B1 SYN Flood  | PASS    | LIMIT(score=-0.4937) + HTTP-ABUSE BLOCK en 11s |
 | B2 Port Scan  | PASS    | IF score=-0.7352 → BLOCK en <1s |
 | B3 UDP Flood  | PARCIAL | IP rate-limitada (LIMIT), flows UDP → PERMIT por IF |
-| B4 ICMP Flood | BRECHA  | Suricata no emite flow IPv4 ICMP → 0 detecciones |
+| B4 ICMP Flood | VARIABLE | Offline AUC=0.8961 Det%=100%; real-time: 0 det. (ver §B4) |
 | C1 HTTP+SYNFlood | PASS    | Kali BLOCK(HTTP-ABUSE 10s) Desktop OK=60 FAIL=0 ITL=0% |
 | C2 SSH+PortScan  | PASS    | Kali BLOCK(IF score=-0.7333) Desktop OK=53 FAIL=0 ITL=0% |
 | C3 SCP+UDPFlood  | PARCIAL | Kali no bloqueada (gap UDP), Desktop OK=60 FAIL=0 |
@@ -571,6 +587,8 @@ ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 ---
 
 ## 10. Scripts de Verificación (`/home/m4rk/Descargas/verificacion/`)
+
+> **Estado:** Estos scripts están documentados como referencia de la suite de verificación planeada. **No están creados en el repositorio actual** — el directorio `/home/m4rk/Descargas/verificacion/` no existe en el sensor. Los tests de verificación se ejecutaron manualmente durante el desarrollo (resultados en §9). La creación automatizada de estos scripts queda como trabajo futuro.
 
 | Script | Descripción | Duración |
 |---|---|---|
