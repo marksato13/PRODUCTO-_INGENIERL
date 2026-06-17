@@ -48,7 +48,7 @@ Duración total F6: ~4 horas.
 | Lead Time detección | **61.92 s** (corrida 11) | < 120 s ✓ |
 | Flows procesados totales | 312,500 | — |
 | Latencia P95 | 34.8 ms | < 500 ms ✓ |
-| AUC-ROC | 0.8955 | > 0.85 ✓ |
+| AUC-ROC | 0.8998 | > 0.85 ✓ |
 
 ## Figuras generadas
 

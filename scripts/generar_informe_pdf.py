@@ -169,9 +169,9 @@ pdf.ln(6); pdf.hr()
 pdf.set_font('Helvetica','B',10); pdf.set_text_color(*BLU)
 pdf.cell(0,7,'Resumen',**NL); pdf.set_text_color(0,0,0)
 pdf.set_font('Helvetica','',10)
-pdf.multi_cell(0,5.5,'Este trabajo presenta el diseno, implementacion y validacion de un sistema de deteccion temprana de comportamientos anomalos en redes de datos para entornos universitarios. Se utiliza el algoritmo Isolation Forest (IF) entrenado sobre flujos de red capturados por Suricata 7.0.3, combinado con detectores heuristicos para ataques de fuerza bruta SSH y abuso HTTP. El motor de decision procesa flujos en tiempo real con latencia P95=34.8 ms y aplica control inline mediante ipset/iptables. La validacion con 40 corridas demostro Disponibilidad=100%, ITL=0%, Lead Time=61.92 s y AUC-ROC=0.8955.',align='J')
+pdf.multi_cell(0,5.5,'Este trabajo presenta el diseno, implementacion y validacion de un sistema de deteccion temprana de comportamientos anomalos en redes de datos para entornos universitarios. Se utiliza el algoritmo Isolation Forest (IF) entrenado sobre flujos de red capturados por Suricata 7.0.3, combinado con detectores heuristicos para ataques de fuerza bruta SSH y abuso HTTP. El motor de decision procesa flujos en tiempo real con latencia P95=34.8 ms y aplica control inline mediante ipset/iptables. La validacion con 40 corridas demostro Disponibilidad=100%, ITL=0%, Lead Time=61.92 s y AUC-ROC=0.8998.',align='J')
 pdf.ln(5)
-pdf.kpis([('Disponibilidad','100%',GRN),('ITL','0%',GRN),('AUC-ROC','0.8955',BLU),('Latencia P95','34.8ms',BLU),('Lead Time','61.9s',YEL),('Corridas','40/40',GRN)])
+pdf.kpis([('Disponibilidad','100%',GRN),('ITL','0%',GRN),('AUC-ROC','0.8998',BLU),('Latencia P95','34.8ms',BLU),('Lead Time','61.9s',YEL),('Corridas','40/40',GRN)])
 
 # ── 1. INTRODUCCION ───────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('Introduccion')
@@ -253,11 +253,11 @@ pdf.tabla(['Feature','Descripcion','Tipo'],
      ('is_icmp','1 si ICMP','Flag'),('dest_port','Puerto destino','Puerto')],
     [38,100,30])
 pdf.tabla(['Umbral','Valor','Criterio','TPR','FPR'],
-    [('tau1 (PERMIT/LIMIT)','-0.4650','Youden index max (TPR-FPR optimo)','99.35%','20.27%'),
-     ('tau2 (LIMIT/BLOCK)', '-0.6118','FPR <= 2% con maximo TPR',         '17.01%', '2.00%')],
+    [('tau1 (PERMIT/LIMIT)','-0.4459','Youden index max (TPR-FPR optimo)','99.40%','20.47%'),
+     ('tau2 (LIMIT/BLOCK)', '-0.6027','FPR <= 2% con maximo TPR',         '18.27%', '2.00%')],
     [40,20,76,16,16])
-pdf.kpis([('AUC-ROC','0.8955',BLU),('Precision','99.54%',GRN),('Recall','99.35%',GRN),('F1','0.9945',GRN)])
-pdf.fig(R+'/auc_roc.png','Figura 1 — Curva ROC del modelo Isolation Forest (AUC=0.8955)',0.72)
+pdf.kpis([('AUC-ROC','0.8998',BLU),('Precision','99.54%',GRN),('Recall','99.40%',GRN),('F1','0.9947',GRN)])
+pdf.fig(R+'/auc_roc.png','Figura 1 — Curva ROC del modelo Isolation Forest (AUC=0.8998)',0.72)
 pdf.fig(R+'/isolation_forest_resultado.png','Figura 2 — Distribucion de scores IF: normal (azul) vs anomalo (rojo)',0.72)
 pdf.fig(R+'/sensibilidad/sensibilidad_n_flows.png','Figura 3 — AUC vs n_estimators (estable a partir de n=200)',0.72)
 pdf.tabla(['Escenario','AUC','Det%','Score medio'],
@@ -269,7 +269,7 @@ pdf.tabla(['Escenario','AUC','Det%','Score medio'],
 
 # ── 6. F4 ────────────────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('F4 — Motor de Decision en Tiempo Real')
-pdf.box('Logica por flow:\n  1. IP en whitelist -> IGNORAR\n  2. score > tau1 (-0.4650) -> PERMIT (normal)\n  3. score > tau2 (-0.6118) -> LIMIT (hashlimit 100pkt/s, ipset ppi_limited)\n  4. score <= tau2 -> BLOCK (DROP, ipset ppi_blocked)\n\nDetectores heuristicos en paralelo:\n  SSH BruteForce: >=15 intentos/60s -> BLOCK (>=5 -> LIMIT)\n  HTTP Abuse:     >=100 req/30s -> BLOCK (>=50 -> LIMIT)')
+pdf.box('Logica por flow:\n  1. IP en whitelist -> IGNORAR\n  2. score > tau1 (-0.4459) -> PERMIT (normal)\n  3. score > tau2 (-0.6027) -> LIMIT (hashlimit 100pkt/s, ipset ppi_limited)\n  4. score <= tau2 -> BLOCK (DROP, ipset ppi_blocked)\n\nDetectores heuristicos en paralelo:\n  SSH BruteForce: >=15 intentos/60s -> BLOCK (>=5 -> LIMIT)\n  HTTP Abuse:     >=100 req/30s -> BLOCK (>=50 -> LIMIT)')
 pdf.kpis([('Latencia media','34.5 ms',BLU),('Latencia P95','34.8 ms',BLU),('Throughput','29 flows/s',GRN),('Requisito','<500 ms',GRN)])
 pdf.fig(G+'/f6_06_latencia_pipeline.png','Figura 4 — Distribucion de latencia del pipeline (1000 flows medidos)',0.90)
 
@@ -311,7 +311,7 @@ pdf.tabla(['Grupo','Disponibilidad','Lead Time','ITL','flows_anom'],
 
 # ── 9. RESULTADOS ─────────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('Resultados y Discusion')
-pdf.kpis([('Disponibilidad','100%',GRN),('ITL Global','0%',GRN),('Lead Time','61.9s',BLU),('Latencia P95','34.8ms',BLU),('AUC-ROC','0.8955',BLU),('Corridas OK','40/40',GRN)])
+pdf.kpis([('Disponibilidad','100%',GRN),('ITL Global','0%',GRN),('Lead Time','61.9s',BLU),('Latencia P95','34.8ms',BLU),('AUC-ROC','0.8998',BLU),('Corridas OK','40/40',GRN)])
 pdf.fig(G+'/f6_07_panel_resumen.png','Figura 5 — Panel resumen F6: metricas clave en las 40 corridas',0.95)
 pdf.add_page()
 pdf.fig(G+'/f6_01_disponibilidad.png','Figura 6 — Disponibilidad 100% en las 40 corridas',0.90)
@@ -330,7 +330,7 @@ for item in ['Disponibilidad=100%: servidor HTTP 200 durante todos los ataques a
 # ── 10. CONCLUSIONES ─────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('Conclusiones')
 for tit,txt in [
-    ('Deteccion efectiva','AUC-ROC=0.8955, recall=99.35%, precision=99.54%. Los detectores heuristicos elevan el recall efectivo a ~100% para bruteforce y http abuse.'),
+    ('Deteccion efectiva','AUC-ROC=0.8998, recall=99.40%, precision=99.54%. Los detectores heuristicos elevan el recall efectivo a ~100% para bruteforce y http abuse.'),
     ('Latencia en tiempo real','Pipeline P95=34.8ms, throughput=29 flows/s. Cumple el requisito de 500ms por un factor de 14.'),
     ('Sin impacto en trafico legitimo','ITL=0% en 40 corridas. La whitelist previene auto-bloqueo de infraestructura critica.'),
     ('Disponibilidad garantizada','nginx HTTP 200 durante todos los ataques. ipset bloquea al atacante antes de saturar el servidor.'),
@@ -377,7 +377,7 @@ pdf.tabla(['Artefacto','Descripcion'],
      ('scripts/fase3_evaluar.py','Evaluacion, ROC, umbrales tau1/tau2'),
      ('models/isolation_forest.pkl','Modelo IF serializado'),
      ('models/scaler.pkl','StandardScaler fit sobre train.csv'),
-     ('results/metricas_offline.txt','Umbrales canonicos tau1=-0.465 tau2=-0.611'),
+     ('results/metricas_offline.txt','Umbrales canonicos tau1=-0.4459 tau2=-0.6027'),
      ('results/resultados_f6_completo.csv','40 corridas x 18 metricas'),
      ('results/graficas_f6/','7 figuras PNG 300 DPI para informe'),
      ('docs/ppi_documentacion/','13 archivos: 2 por fase (diagrama+spec)')],[80,98])

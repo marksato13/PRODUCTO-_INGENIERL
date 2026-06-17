@@ -44,17 +44,17 @@ Entrenar el modelo Isolation Forest con tráfico normal y derivar los umbrales d
 
 | Umbral | Valor | Criterio | TPR | FPR |
 |---|---|---|---|---|
-| τ1 (PERMIT/LIMIT) | **−0.4650** | Youden index máximo (TPR−FPR óptimo) | 99.35% | 20.27% |
-| τ2 (LIMIT/BLOCK) | **−0.6118** | FPR ≤ 2% con máximo TPR | 17.01% | 2.00% |
+| τ1 (PERMIT/LIMIT) | **−0.4459** | Youden index máximo (TPR−FPR óptimo) | 99.40% | 20.47% |
+| τ2 (LIMIT/BLOCK) | **−0.6027** | FPR ≤ 2% con máximo TPR | 18.27% | 2.00% |
 
 ## Métricas del modelo
 
 | Métrica | Valor |
 |---|---|
-| AUC-ROC | 0.8955 |
+| AUC-ROC | 0.8998 |
 | Precision (en τ1) | 99.54% |
-| Recall (en τ1) | 99.35% |
-| F1-Score | 0.9945 |
+| Recall (en τ1) | 99.40% |
+| F1-Score | 0.9947 |
 | AUC por escenario más bajo | B1 SYN Flood: 0.8302 |
 | AUC por escenario más alto | B2 Port Scan: 0.9726 |
 

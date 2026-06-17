@@ -17,10 +17,10 @@ score = IsolationForest.score_samples(flow)   # rango [-1, 0]
 if ip in WHITELIST:
     accion = IGNORAR
 
-elif score > τ1 (-0.4650):
+elif score > τ1 (-0.4459):
     accion = PERMIT           # tráfico normal
 
-elif score > τ2 (-0.6118):
+elif score > τ2 (-0.6027):
     accion = LIMIT            # sospechoso → hashlimit 100 pkt/s
 
 else:                         # score ≤ τ2
@@ -52,7 +52,7 @@ Los detectores operan **independientemente** del score IF y pueden activar LIMIT
 
 El motor lee τ1/τ2 de `results/metricas_offline.txt` en cada inicio. Si el archivo no existe, usa los valores por defecto hardcoded:
 ```python
-TAU1, TAU2 = -0.4650, -0.6118  # valores por defecto
+TAU1, TAU2 = -0.4459, -0.6027  # valores por defecto
 ```
 
 ## Formato del log (`results/motor_decision.log`)
