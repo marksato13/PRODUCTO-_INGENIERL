@@ -81,7 +81,7 @@ data/normal_holdout.csv
 | **Granularidad** | 1 fila = 1 flujo de red (conexión completa) |
 | **Dominio** | Redes de datos — capa de transporte (TCP/UDP/ICMP) |
 | **Naturaleza** | Time-series (flujos ordenados cronológicamente) |
-| **Volumen** | ~65,500 flows totales en motor; ~13,428 flows normales en holdout |
+| **Volumen** | ~65,500 flows totales en motor; ~13,427 flows normales en holdout |
 | **Etiquetado** | Implícito por escenario (normal vs anómalo) — NO supervisado en entrenamiento |
 
 ### Tipos de variables en el dataset final
@@ -118,7 +118,7 @@ Escenarios    : 13 (A1-A4 normal, B1-B6 anómalo, C1-C3 mixto)
 Duración/corr.: 5-15 minutos por corrida de tráfico
 Archivo raw   : eve.json comprimido (.gz) por corrida y escenario
 Nomenclatura  : YYYYMMDD_grupo_escenario_NN_eve.json.gz
-Flows normales: ~67,143 (entrenamiento 80% + holdout 20%)
+Flows normales: 67,135 (entrenamiento 80% + holdout 20%)
 Flows anomal. : Dataset de evaluación F6 con etiquetas por escenario
 ```
 
@@ -330,5 +330,5 @@ EVALUACIÓN     AUC=0.8998 | Recall=99.40% | Precision=99.54% | F1=0.9947
 - Raw data: `data/raw/*.gz` (40 corridas)
 - Entrenamiento: `scripts/fase3_entrenar.py`
 - Modelo: `models/isolation_forest.pkl`, `models/scaler.pkl`, `models/features.csv`
-- Holdout: `data/normal_holdout.csv` (13,428 flows)
+- Holdout: `data/normal_holdout.csv` (13,427 flows)
 - Métricas: `results/metricas_offline.txt`, `results/resultados_f6_completo.csv`
