@@ -29,7 +29,7 @@
     </mxCell>
 
     <!-- systemd service -->
-    <mxCell id="6" value="ppi-motor.service&lt;br&gt;&lt;i&gt;systemd — auto-restart&lt;/i&gt;&lt;br&gt;WorkingDir: /ppi-surikata-producto" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" vertex="1" parent="1">
+    <mxCell id="6" value="ppi-motor.service&lt;br&gt;&lt;i&gt;systemd — auto-restart&lt;/i&gt;&lt;br&gt;WorkingDirectory=/home/m4rk/ppi-surikata-producto" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontColor=#333333;" vertex="1" parent="1">
       <mxGeometry x="515" y="98" width="225" height="75" as="geometry" />
     </mxCell>
 

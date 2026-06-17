@@ -36,8 +36,8 @@ El motor filtraría paquetes de Kali antes de que Suricata los registre.
 |---|---|---|
 | Capturas Grupo A | `data/raw/*_normal_*.eve.json.gz` | 28 archivos — tráfico normal puro |
 | Capturas Grupo B | `data/raw/*_anom_*.eve.json.gz` | 13 archivos — ataques puros |
-| Capturas Grupo C | `data/raw/*_mixto_*.eve.json.gz` | 10 archivos — tráfico mixto |
-| Bitácora | `docs/bitacora/bitacora_escenarios.txt` | 51 líneas — registro de cada corrida |
+| Capturas Grupo C | `data/raw/*_mixto_*.eve.json.gz` | 6 archivos — tráfico mixto |
+| Bitácora | `docs/bitacora/bitacora_escenarios.txt` | 64 líneas — registro de cada corrida |
 
 Los archivos `.gz` son la **única salida de F2**. No se generan CSVs intermedios.
 F3 lee estos archivos directamente con `gzip.open()`.
@@ -200,8 +200,8 @@ ssh m4rk@192.168.0.110 "
 |---|---|---|---|
 | Grupo A (normal) | 28 `.gz` | ~15 MB | Flows normales — curl, ssh, scp, wget |
 | Grupo B (anómalo) | 13 `.gz` | ~2.5 GB | Floods y scans — B1-B6 |
-| Grupo C (mixto) | 10 `.gz` | ~1.8 GB | Normal + ataque simultáneos |
-| **Total** | **51 archivos** | **~4.3 GB** | Fuente directa para F3 |
+| Grupo C (mixto) | 6 `.gz` | ~800 MB | Normal + ataque simultáneos |
+| **Total** | **47 archivos** | **~4.3 GB** | Fuente directa para F3 |
 
 ---
 
@@ -212,9 +212,9 @@ ssh m4rk@192.168.0.110 "
 | Archivos Grupo A generados | `ls data/raw/*_normal_*.gz \| wc -l` | ≥ 4 archivos |
 | Archivos Grupo B generados | `ls data/raw/*_anom_*.gz \| wc -l` | ≥ 6 archivos |
 | Archivos Grupo C generados | `ls data/raw/*_mixto_*.gz \| wc -l` | ≥ 3 archivos |
-| Bitácora registrada | `wc -l docs/bitacora/bitacora_escenarios.txt` | ≥ 51 líneas |
+| Bitácora registrada | `wc -l docs/bitacora/bitacora_escenarios.txt` | ≥ 64 líneas |
 | Motor sigue detenido | `systemctl is-active ppi-motor.service` | `inactive` |
 | NO existen CSVs intermedios | `ls data/dataset_*.csv 2>/dev/null` | Sin resultado |
 
-**F2 se considera COMPLETADA** cuando existen los 51 archivos `.gz` en `data/raw/`
-y la bitácora tiene 51 entradas. No se genera ningún CSV — F3 lee los `.gz` directamente.
+**F2 se considera COMPLETADA** cuando existen los 47 archivos `.gz` en `data/raw/`
+y la bitácora tiene 64 entradas. No se genera ningún CSV — F3 lee los `.gz` directamente.

@@ -14,7 +14,7 @@
     <!-- ══════════════════════════════════════════════════════════
          TÍTULO
     ══════════════════════════════════════════════════════════ -->
-    <mxCell id="title" value="F2 — Captura de Tráfico por Grupos  |  PPI UPeU 2026  |  Salida: 51 archivos .gz"
+    <mxCell id="title" value="F2 — Captura de Tráfico por Grupos  |  PPI UPeU 2026  |  Salida: 47 archivos .gz"
       style="text;html=1;strokeColor=none;fillColor=#002060;fontColor=#ffffff;
              align=center;verticalAlign=middle;fontSize=14;fontStyle=1;rounded=1;"
       vertex="1" parent="1">
@@ -163,7 +163,7 @@
       vertex="1" parent="1">
       <mxGeometry x="305" y="690" width="500" height="85" as="geometry" />
     </mxCell>
-    <mxCell id="gzC" value="&lt;b&gt;data/raw/*_mixto_*.eve.json.gz&lt;/b&gt;&lt;br/&gt;10 archivos — C1-C3&lt;br/&gt;&lt;i&gt;→ F3: auc_por_escenario.py&lt;/i&gt;"
+    <mxCell id="gzC" value="&lt;b&gt;data/raw/*_mixto_*.eve.json.gz&lt;/b&gt;&lt;br/&gt;6 archivos — C1-C3&lt;br/&gt;&lt;i&gt;→ F3: auc_por_escenario.py&lt;/i&gt;"
       style="shape=mxgraph.flowchart.stored_data;whiteSpace=wrap;html=1;
              fillColor=#e6d9f5;strokeColor=#9673a6;fontSize=10;fontStyle=1;"
       vertex="1" parent="1">
@@ -173,7 +173,7 @@
     <!-- ══════════════════════════════════════════════════════════
          BITÁCORA (abajo-izquierda)
     ══════════════════════════════════════════════════════════ -->
-    <mxCell id="bitacora" value="&lt;b&gt;bitacora_escenarios.txt&lt;/b&gt;&lt;br/&gt;51 líneas — registrar_bitacora.sh&lt;br/&gt;&lt;i&gt;docs/bitacora/&lt;/i&gt;"
+    <mxCell id="bitacora" value="&lt;b&gt;bitacora_escenarios.txt&lt;/b&gt;&lt;br/&gt;64 líneas — registrar_bitacora.sh&lt;br/&gt;&lt;i&gt;docs/bitacora/&lt;/i&gt;"
       style="shape=mxgraph.flowchart.document;whiteSpace=wrap;html=1;
              fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;"
       vertex="1" parent="1">
