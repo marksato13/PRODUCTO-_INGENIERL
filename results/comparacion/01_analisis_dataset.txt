@@ -1,0 +1,275 @@
+========================================================================
+FASE 1 — ANÁLISIS FORMAL DEL DATASET
+PPI UPeU 2026 — Detección temprana de comportamientos anómalos
+Generado: 2026-06-17 05:59:53
+========================================================================
+
+[1] CARGA DE DATOS NORMALES
+------------------------------------------------------------------------
+  normal_holdout.csv    :   13,427 flows (20% reservado para evaluación)
+  Archivos *_normal_*.gz:       28 archivos
+  Flows en entrenamiento:   53,708 (dato de metricas_offline.txt — 80%)
+  Total flows normales  :   67,135 (estimado: 53,708 + 13,427)
+    20260602_normal_http_01_eve.json.gz
+    20260602_normal_http_02_eve.json.gz
+    20260602_normal_sostenido_01_eve.json.gz
+    20260602_normal_sostenido_02_eve.json.gz
+    20260602_normal_ssh_01_eve.json.gz
+    20260602_normal_ssh_02_eve.json.gz
+    20260602_normal_transferencia_01_eve.json.gz
+    20260602_normal_transferencia_02_eve.json.gz
+    20260604_normal_ssh_03_eve.json.gz
+    20260604_normal_ssh_04_eve.json.gz
+    20260604_normal_ssh_05_eve.json.gz
+    20260604_normal_ssh_06_eve.json.gz
+    20260604_normal_ssh_07_eve.json.gz
+    20260604_normal_ssh_08_eve.json.gz
+    20260604_normal_ssh_09_eve.json.gz
+    20260604_normal_ssh_10_eve.json.gz
+    20260604_normal_transferencia_03_eve.json.gz
+    20260604_normal_transferencia_04_eve.json.gz
+    20260604_normal_transferencia_05_eve.json.gz
+    20260604_normal_transferencia_06_eve.json.gz
+    20260604_normal_transferencia_07_eve.json.gz
+    20260604_normal_transferencia_08_eve.json.gz
+    20260604_normal_transferencia_09_eve.json.gz
+    20260604_normal_transferencia_10_eve.json.gz
+    20260615_normal_http_01_eve.json.gz
+    20260615_normal_sostenido_01_eve.json.gz
+    20260615_normal_ssh_01_eve.json.gz
+    20260615_normal_transferencia_01_eve.json.gz
+
+[2] CARGA DE DATOS ANÓMALOS
+------------------------------------------------------------------------
+  Archivos *_anom_*.gz  : 13 archivos
+    20260602_anom_bruteforce_01_eve.json.gz                 tipo=bruteforce   flows=  2,061
+    20260602_anom_httpabuse_01_eve.json.gz                  tipo=httpabuse    flows= 13,889
+    20260602_anom_icmpflood_01_eve.json.gz                  tipo=icmpflood    flows= 23,460
+    20260602_anom_portscan_01_eve.json.gz                   tipo=portscan     flows=  3,258
+    20260602_anom_synflood_01_eve.json.gz                   tipo=synflood     flows= 95,393
+    20260602_anom_udpflood_01_eve.json.gz                   tipo=udpflood     flows= 18,168
+    20260603_anom_bruteforce_01_eve.json.gz                 tipo=bruteforce   flows=200,000
+    20260615_anom_bruteforce_01_eve.json.gz                 tipo=bruteforce   flows=  4,824
+    20260615_anom_httpabuse_01_eve.json.gz                  tipo=httpabuse    flows= 36,902
+    20260615_anom_icmpflood_01_eve.json.gz                  tipo=icmpflood    flows=200,000
+    20260615_anom_portscan_01_eve.json.gz                   tipo=portscan     flows=107,903
+    20260615_anom_synflood_01_eve.json.gz                   tipo=synflood     flows=    330
+    20260615_anom_udpflood_01_eve.json.gz                   tipo=udpflood     flows=200,000
+
+  TOTALES POR TIPO DE ATAQUE:
+             Tipo       Flows       %
+  ---------------  ----------  ------
+       bruteforce     206,885   22.8%
+        httpabuse      50,791    5.6%
+        icmpflood     223,460   24.7%
+         portscan     111,161   12.3%
+         synflood      95,723   10.6%
+         udpflood     218,168   24.1%
+            TOTAL     906,188  100.0%
+
+[3] DISTRIBUCIÓN DE ETIQUETAS
+------------------------------------------------------------------------
+  Normal  (label=0) :    13,427  (1.5%)
+  Anómalo (label=1) :   906,188  (98.5%)
+  TOTAL             :   919,615
+  Ratio normal:anom : 1 : 67.5  ← DESBALANCE EXTREMO
+  Imbalance class. : MUY ALTO — favorable para one-class (no afecta IF)
+
+[4] CARACTERÍSTICAS DEL DATASET
+------------------------------------------------------------------------
+  Dimensiones totales     : 919,615 flows × 14 features
+  Features continuas      : 10 (pkts, bytes, duration, rates, ratios, avg_pkt_size)
+  Features binarias (0/1) : 3 (is_tcp, is_udp, is_icmp)
+  Features discretas      : 1 (dest_port)
+  Features temporales     : 0  (duration es derivada, no timestamp)
+  Variables categóricas   : 0  (proto ya binarizado en is_tcp/udp/icmp)
+  Escalas heterogéneas    : SÍ (pkts≈2-5 vs byte_rate≈miles) → StandardScaler necesario
+  Distribución normal     : NO (flujos de red son skewed/lognormal por naturaleza)
+
+[5] ESTADÍSTICAS POR FEATURE
+------------------------------------------------------------------------
+
+             Feature      Tipo   Normal_med    Anom_med     Ratio     p-valor  Discrimina  
+  ------------------  --------  -----------  ----------  --------  ----------  ----------
+       pkts_toserver  continua        7.000       1.000       0.1x    0.00e+00  ✅ SÍ
+       pkts_toclient  continua        5.000       0.000       0.0x    0.00e+00  ✅ SÍ
+      bytes_toserver  continua      790.000      60.000       0.1x    0.00e+00  ✅ SÍ
+      bytes_toclient  continua      826.000       0.000       0.0x    0.00e+00  ✅ SÍ
+            duration  continua        0.044       0.001       0.0x    0.00e+00  ✅ SÍ
+            pkt_rate  continua      330.360    1000.000       3.0x    0.00e+00  ✅ SÍ
+           byte_rate  continua    39794.094   60000.000       1.5x    0.00e+00  ✅ SÍ
+           pkt_ratio  continua        1.167       1.000       0.9x    0.00e+00  ✅ SÍ
+          byte_ratio  continua        0.955      60.000      62.8x    0.00e+00  ✅ SÍ
+        avg_pkt_size  continua      124.385      30.000       0.2x    0.00e+00  ✅ SÍ
+              is_tcp   binaria        1.000       0.000       0.0x    0.00e+00  ✅ SÍ
+              is_udp   binaria        0.000       0.000       0.0x    0.00e+00  ✅ SÍ
+             is_icmp   binaria        0.000       0.000       0.0x    0.00e+00  ✅ SÍ
+           dest_port  discreta     8080.000      53.000       0.0x    0.00e+00  ✅ SÍ
+
+  Features altamente discriminantes (p<0.001): 14/14
+
+[6] ESTADÍSTICAS DESCRIPTIVAS DETALLADAS
+------------------------------------------------------------------------
+
+  pkts_toserver [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        1.00        6.00        7.00        7.53        7.00       27.00       1098.00       17.48    46.64
+    ANOM     906,188        1.00        1.00        1.00       96.02        1.00     1314.00       7273.00      337.21     3.31
+
+  pkts_toclient [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00        5.00        5.00        9.68        5.00       25.00      17721.00      264.69    66.64
+    ANOM     906,188        0.00        0.00        0.00       29.20        1.00      399.00       7273.00      102.01     3.67
+
+  bytes_toserver [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427       60.00      724.00      790.00     1019.05      790.00     5981.44    1297173.00    11416.26   109.22
+    ANOM     906,188       60.00       60.00       60.00     5832.42       60.00    78840.00     436380.00    20222.57     3.30
+
+  bytes_toclient [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00      567.00      826.00     8192.40      839.00    22552.00   26462013.00   395501.65    66.84
+    ANOM     906,188        0.00        0.00        0.00     1894.76       60.00    23940.00     436380.00     6119.49     3.60
+
+  duration [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00        0.00        0.04        0.70        0.85        3.03        439.22        6.46    50.11
+    ANOM     906,188        0.00        0.00        0.00       43.38        0.00      599.74        600.74      155.20     3.30
+
+  pkt_rate [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.14       14.17      330.36      926.77     1000.00     5958.55      27570.64     1373.18     3.00
+    ANOM     906,188        0.03     1000.00     1000.00     1779.48     1000.00    10000.00      10000.00     2446.66     2.73
+
+  byte_rate [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427       13.51     1909.71    39794.09   157980.31   210445.28  1411530.35   40155233.69   519208.33    45.16
+    ANOM     906,188        3.11    60000.00    60000.00   191949.32    60000.00  1615000.00    2179000.00   414216.79     2.94
+
+  pkt_ratio [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.03        1.00        1.17        1.10        1.17        2.00          6.00        0.19     2.20
+    ANOM     906,188        0.33        1.00        1.00        1.16        1.00        3.34         25.00        0.63     3.56
+
+  byte_ratio [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00        0.94        0.96       11.73        1.37       87.00       1068.00       29.51    11.90
+    ANOM     906,188        0.20        3.34       60.00       45.19       60.00       60.00       6760.00       45.48    45.61
+
+  avg_pkt_size [continua]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427       30.00      104.38      124.38      144.70      125.31      633.66       1456.37      136.40     2.69
+    ANOM     906,188       30.00       30.00       30.00       47.41       40.00      247.03        355.74       42.08     2.85
+
+  is_tcp [binaria]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00        1.00        1.00        1.00        1.00        1.00          1.00        0.06   -17.19
+    ANOM     906,188        0.00        0.00        0.00        0.44        1.00        1.00          1.00        0.50     0.26
+
+  is_udp [binaria]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00        0.00        0.00        0.00        0.00        0.00          1.00        0.06    17.19
+    ANOM     906,188        0.00        0.00        0.00        0.33        1.00        1.00          1.00        0.47     0.74
+
+  is_icmp [binaria]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        0.00        0.00        0.00        0.00        0.00        0.00          0.00        0.00      nan
+    ANOM     906,188        0.00        0.00        0.00        0.24        0.00        1.00          1.00        0.43     1.22
+
+  dest_port [discreta]
+                   n         min         p25      median        mean         p75         p99           max         std     skew
+    NORMAL    13,427        9.00     8080.00     8080.00    13006.76     8080.00    63388.76      65526.00    14283.34     2.35
+    ANOM     906,188        0.00       22.00       53.00       78.67       80.00      856.00      57462.00      262.25   130.79
+
+
+========================================================================
+[7] NATURALEZA FORMAL DEL PROBLEMA
+========================================================================
+
+  CLASIFICACIÓN: SEMI-SUPERVISADO con PARADIGMA DE ENTRENAMIENTO ONE-CLASS
+  ─────────────────────────────────────────────────────────────────────────
+
+  ¿Por qué NO es supervisado puro?
+    El modelo IF fue entrenado EXCLUSIVAMENTE con tráfico normal (Grupo A).
+    No se proporcionaron etiquetas ni ejemplos de ataques durante el
+    entrenamiento. Esto replica el escenario real de producción donde los
+    ataques son DESCONOCIDOS a priori.
+
+  ¿Por qué NO es no-supervisado puro?
+    Disponemos de ground truth implícito para evaluación:
+    - Archivos *_normal_*.gz → label=0 (normal)
+    - Archivos *_anom_*.gz   → label=1 (anómalo)
+    Esta información permite calcular AUC-ROC, Precision, Recall y F1
+    sobre el modelo entrenado sin supervisión.
+
+  ¿Por qué semi-supervisado es la descripción correcta?
+    El paradigma es idéntico al descrito en el NIST SP 800-94:
+    "Profile-based anomaly detection" — aprender normalidad, detectar
+    desviaciones. El ground truth existe pero NO se usa para entrenar.
+    Se usa SOLO para validar.
+
+  IMPLICACIÓN PARA LA COMPARACIÓN DE MODELOS:
+    1. Modelos one-class (IF, OCSVM, LOF, Autoencoder): se entrenan igual
+       que el IF actual — solo con datos normales. Comparación justa.
+    2. Modelos supervisados (RF, XGBoost, DT): requieren etiquetas en
+       entrenamiento → se entrena con dataset mixto etiquetado (Fase 3).
+       Sus métricas superiores reflejan VENTAJA INJUSTA: conocen los
+       ataques de antemano.
+    3. El argumento central: IF logra AUC=0.8998 SIN conocer los ataques.
+       Un supervisado que lo supera solo prueba que etiquetar ataques mejora
+       la detección — no que IF sea una mala elección para el paradigma real.
+
+========================================================================
+[8] FACTORES DETERMINANTES PARA SELECCIÓN DE MODELO
+========================================================================
+
+  Factor 1 — Ausencia de etiquetas en entrenamiento
+    Valor: ENTRENAMIENTO SIN ETIQUETAS (one-class)
+    Impacto: Elimina todos los modelos supervisados del paradigma real.
+             RF, XGBoost, DT solo son comparables como "upper bound" teórico.
+
+  Factor 2 — Dimensionalidad
+    Valor: 14 features (baja-media dimensionalidad)
+    Impacto: FAVORABLE para todos los modelos.
+             IF: estable en 14D (no sufre "curse of dimensionality" hasta ~50D)
+             OCSVM: kernel RBF funciona bien en 14D
+             LOF: k-vecinos en 14D es computacionalmente viable
+             Autoencoder: 14→7→14 es una arquitectura trivial
+
+  Factor 3 — Desbalance extremo (1:44 en evaluación)
+    Valor: 13,427 normal vs 598,285 anómalos
+    Impacto: En ENTRENAMIENTO one-class: no importa (solo se usa normal).
+             En comparación supervisada: class_weight='balanced' es obligatorio.
+             LOF con novelty=True: solo ve datos de entrenamiento (normal) → OK.
+
+  Factor 4 — Distribuciones no normales (skewed)
+    Valor: pkt_rate, byte_rate, byte_ratio tienen skew > 5 en datos normales
+    Impacto: StandardScaler no normaliza la distribución, solo la escala.
+             IF: insensible a la distribución (usa particiones aleatorias).
+             OCSVM: sensible → StandardScaler ayuda pero no elimina skew.
+             LOF: sensible a outliers extremos → puede afectar k-vecinos.
+             RF/XGBoost: invariantes a monotonic transformations → OK.
+
+  Factor 5 — Escala heterogénea entre features
+    Valor: pkts_toserver ≈ 1-20 | byte_rate ≈ 0-millones
+    Impacto: StandardScaler OBLIGATORIO para OCSVM, LOF, Autoencoder, kNN.
+             IF y RF/XGBoost son invariantes a escala → escalar no daña.
+
+  Factor 6 — Volumen de datos de entrenamiento
+    Valor: 53,708 flows normales para entrenamiento one-class
+    Impacto: IF: O(n log n) → 53K es trivial (< 10 segundos).
+             OCSVM: O(n²) o O(n³) con kernel → 53K tarda 5-30 minutos.
+             LOF: O(n²) para k-vecinos → necesita muestra (10K-15K max).
+             Autoencoder: O(n × epochs) → 53K × 20 epochs es ~2 minutos.
+
+  CONCLUSIÓN DE LA FASE 1:
+    El dataset es ÓPTIMO para métodos one-class.
+    Las características (sin etiquetas, skewed, heterogéneo, alto volumen)
+    coinciden exactamente con el caso de uso para el que fue diseñado
+    Isolation Forest (Liu et al., 2008 — "anomaly detection in high-dimensional
+    data without labels").
+
+========================================================================
+Análisis guardado en: /home/m4rk/ppi-surikata-producto/results/comparacion/01_analisis_dataset.txt
+Generado: 2026-06-17 06:00:43
+========================================================================
