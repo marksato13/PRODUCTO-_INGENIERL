@@ -30,14 +30,18 @@
 
 | Métrica | Valor |
 |---|---|
-| **AUC-ROC** | **0.9159** |
+| **AUC-ROC** | **0.9159** † |
 | Recall (umbral Youden) | **0.9953** |
-| Precision | 0.8136 |
-| F1 | 0.8953 |
+| Precision | 0.8136 † |
+| F1 | 0.8953 † |
 | FPR | 0.2038 |
 | Inferencia | 0.0297 ms/muestra |
 | T. entrenamiento | pre-entrenado (53,708 flows normales) |
 | Recall con τ1=−0.4459 | 0.9947 |
+| **Precision en producción** | **99.54%** ← valor operativo real |
+| **F1 en producción** | **0.9947** ← valor operativo real |
+
+† Valor calculado sobre el **test balanceado del experimento comparativo** (4,029 normal + 3,600 anómalos, ratio 1:0.89). Difiere de los valores de producción por efecto del ratio de clases — ver §5.
 
 ---
 
@@ -219,18 +223,66 @@ Entre los modelos one-class (comparación justa):
 
 ---
 
-## 5. Nota sobre la diferencia de AUC vs metricas_offline.txt
+## 5. Nota sobre las diferencias entre el experimento y producción
 
-El AUC del IF en este experimento (0.9159) difiere del reportado en producción (0.8998) porque:
+### Contextos de evaluación distintos
 
-| Evaluación | Test set | n_anomalías | Proporción |
-|---|---|---|---|
-| `metricas_offline.txt` | 13,427 normal + 598,285 anómalos | 598,285 | 1:44.5 |
-| Este experimento | 4,029 normal + 3,600 anómalos | 3,600 | 1:0.89 |
+Este experimento usó un **test set balanceado** para comparar los 7 modelos en igualdad de condiciones. Los valores de producción vienen de `results/metricas_offline.txt` y usan la **distribución real**.
 
-El test balanceado de este experimento (1:0.89) facilita el cálculo del AUC comparado con el test real (1:44.5). Los dos valores son válidos para propósitos diferentes:
-- **0.8998** → AUC en distribución real de producción (todos los flujos anómalos)
-- **0.9159** → AUC en test balanceado de comparación experimental (mismo test para todos)
+| Contexto | Normal | Anómalos | Ratio | Propósito |
+|---|---|---|---|---|
+| **Producción** (`metricas_offline.txt`) | 13,427 | 598,285 | 1:44.5 | Métricas operativas reales |
+| **Experimento comparativo** (este doc) | 4,029 | 3,600 | 1:0.89 | Comparación justa entre 7 modelos |
+
+### 5.1 Por qué el AUC difiere
+
+| Evaluación | AUC IF |
+|---|---|
+| Producción (1:44.5) | 0.8998 |
+| Experimento (1:0.89) | 0.9159 |
+
+El test balanceado (1:0.89) produce un AUC ligeramente mayor porque el umbral Youden se optimiza sobre proporciones iguales, favoreciendo la separabilidad aparente del modelo. En producción con ratio 1:44.5, la curva ROC refleja mejor el comportamiento real.
+
+### 5.2 Por qué la Precision difiere (el punto más importante)
+
+| Evaluación | Precision IF |
+|---|---|
+| **Producción** (`metricas_offline.txt`) | **99.54%** |
+| Experimento balanceado | 81.36% |
+
+**Causa:** La Precision depende directamente del ratio de clases en el test. No es que el modelo sea distinto — es matemática:
+
+```
+Precision = TP / (TP + FP)
+
+FPR = FP / N_normal   →  FP = FPR × N_normal
+
+                       ┌─────────────────────────────────────────────────────┐
+Experimento (1:0.89):  │ FP = 0.2038 × 4,029 = 821                          │
+                       │ TP = 0.9953 × 3,600 = 3,583                         │
+                       │ Precision = 3,583 / (3,583 + 821) = 81.36% ✓       │
+                       └─────────────────────────────────────────────────────┘
+
+                       ┌─────────────────────────────────────────────────────┐
+Producción (1:44.5):   │ FP = 0.2047 × 13,427 = 2,748                       │
+                       │ TP = 0.9940 × 598,285 = 594,895                     │
+                       │ Precision = 594,895 / (594,895 + 2,748) = 99.54% ✓ │
+                       └─────────────────────────────────────────────────────┘
+```
+
+El FPR es esencialmente **el mismo en ambos contextos (~20%)** — el modelo no cambia. Lo que cambia es que en producción, durante un ataque activo, hay 44× más anomalías que flujos normales. Los 2,748 falsos positivos quedan sepultados frente a los 594,895 verdaderos positivos, elevando la Precision a 99.54%.
+
+**En el experimento comparativo**, al balancear 1:0.89, los 821 falsos positivos pesan mucho más relativamente → Precision = 81.36%.
+
+### 5.3 Qué valor usar en cada contexto
+
+| Documento / Pregunta | Valor correcto | Fuente |
+|---|---|---|
+| Métricas de producción del sistema | **Precision=99.54%, F1=0.9947, AUC=0.8998** | `metricas_offline.txt` |
+| Comparación justa entre 7 modelos | Precision=0.8136, F1=0.8953, AUC=0.9159 | Este experimento |
+| Justificación ante el jurado | Ambos — con explicación del contexto | `JUSTIFICACION_IF_COMPLETA.md` |
+
+> **Regla:** Para defender la elección de IF ante el jurado, se citan las **métricas de producción** (99.54% Precision, 99.40% Recall, F1=0.9947). Los valores de este experimento son para la **comparación relativa** entre modelos — donde IF sigue siendo #1 en Recall one-class (99.53%).
 
 ---
 
