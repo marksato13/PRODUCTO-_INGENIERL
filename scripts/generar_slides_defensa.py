@@ -384,7 +384,7 @@ footer(sl, 7)
 
 fases = [
     ("F1", "Captura",        "Suricata\neve.json",          AZUL),
-    ("F2", "Preproceso",     "parser.py\n14 features",      AZUL),
+    ("F2", "Captura",        "3 grupos\n.gz directo",        AZUL),
     ("F3", "Modelado",       "IsoForest\nAUC=0.8998",       AZUL_OSC),
     ("F4", "Motor",          "motor_decision\n.py",          AZUL_OSC),
     ("F5", "Control",        "ipset\nBLOCK/LIMIT",          ROJO),
@@ -413,10 +413,9 @@ for fase, titulo, desc, color in fases:
 rect(sl, Inches(0.35), Inches(3.8), W - Inches(0.7), Inches(3.45), fill=BLANCO, border=AZUL_CLR)
 
 desc_items = [
-    ("F1–F2", "Suricata captura flows en eve.json. parser.py extrae 14 features. etiquetar_limpiar.py deduplica y "
-              "particiona en train/val/test (70/15/15 cronológico)."),
+    ("F1–F2", "Suricata captura flows en eve.json. Captura separada: Grupo A=normal puro (Kali apagada), B=ataques puros (Desktop quieto), C=mixto (motor detenido). Los .gz son la fuente directa para F3 — sin CSVs intermedios."),
     ("F3",    "Isolation Forest (n=300, contamination=0.05) entrenado solo con flujos normales. "
-              "auc_roc_umbrales.py deriva τ1/τ2 desde la curva ROC."),
+              "fase3_evaluar.py evalúa holdout 20% + Grupo B → ROC → τ1/τ2 → metricas_offline.txt (fuente única)."),
     ("F4–F5", "motor_decision.py hace tail de eve.json en tiempo real. Por cada flujo: extrae features → "
               "score IF → compara τ1/τ2 → envía a enforce.sh → SSH al servidor → ipset add/del."),
     ("F6",    "f6_corridas.py ejecuta 40 corridas en 4 grupos (Normal, Mixto, Reeval, Final). "
@@ -479,7 +478,7 @@ txbox(sl, "Dataset final", Inches(5.25), Inches(4.45), Inches(7.5), Inches(0.4),
 stats2 = [
     ("67,135", "Flujos normales   (28 capturas Jun-02, 04, 15)"),
     ("598,285","Flujos anómalos   (13 capturas Jun-02, 04, 15)"),
-    ("70/15/15","Split train/val/test (cronológico)"),
+    ("80/20",   "Split entrenamiento/holdout (aleatorio, seed=42)"),
     ("53,708", "Flujos usados en entrenamiento del IF"),
 ]
 cy3 = Inches(4.95)
