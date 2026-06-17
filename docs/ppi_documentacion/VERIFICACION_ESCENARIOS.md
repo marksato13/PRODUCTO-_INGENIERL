@@ -554,6 +554,8 @@ ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 | Test | Resultado | Evidencia |
 |---|---|---|
 | Setup | PASS | Motor τ1=−0.4459, relay:8889, dashboard:8080 activos |
+| A1-A4 Tráfico Normal | PASS | 0 alertas, 0 entradas ipset — Desktop.20 en WHITELIST (35 ciclos, 120s) |
+| Whitelist test | PASS | .20 y .110 NO bloqueadas; enforce.sh manual→BLOCK/UNBLOCK OK |
 | B1 SYN Flood  | PASS    | LIMIT(score=-0.4937) + HTTP-ABUSE BLOCK en 11s |
 | B2 Port Scan  | PASS    | IF score=-0.7352 → BLOCK en <1s |
 | B3 UDP Flood  | PARCIAL | IP rate-limitada (LIMIT), flows UDP → PERMIT por IF |
