@@ -29,6 +29,7 @@ import queue as _queue
 TG_TOKEN   = "8677152686:AAEUKDJm0gbkc7Vu3NwRcNaxqx3iqQwaa7g"
 TG_CHAT_ID = "8512353253"
 TG_ENABLED = True
+TG_RELAY   = "http://192.168.0.20:8889/telegram"  # Desktop relay (sensor sin internet)
 
 # ─────────────────────────────────────────────────────────────────────────────
 EVE_PATH  = "/var/log/suricata/eve.json"
@@ -94,9 +95,9 @@ def _tg_worker():
         msg = _tg_queue.get()
         if TG_ENABLED:
             try:
-                url  = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-                data = urllib.parse.urlencode({"chat_id": TG_CHAT_ID, "text": msg}).encode()
-                req  = urllib.request.Request(url, data=data)
+                data = json.dumps({"text": msg}).encode()
+                req  = urllib.request.Request(TG_RELAY, data=data,
+                           headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=10)
             except Exception as ex:
                 log.warning(f"Telegram ERROR: {ex}")
