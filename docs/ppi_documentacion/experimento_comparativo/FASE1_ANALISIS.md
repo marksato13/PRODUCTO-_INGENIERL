@@ -193,7 +193,7 @@ La elección de IF está respaldada por el análisis formal del dataset, no fue 
 |---|---|---|
 | Script de análisis | `scripts/comparacion/f_analisis_dataset.py` | Genera estadísticas completas |
 | Output del análisis | `results/comparacion/01_analisis_dataset.txt` | Texto completo con todas las métricas |
-| Este documento | `docs/ppi_documentacion/FASE1_ANALISIS.md` | Resumen para tesis |
+| Este documento | `docs/ppi_documentacion/experimento_comparativo/FASE1_ANALISIS.md` | Resumen para tesis |
 
 ---
 

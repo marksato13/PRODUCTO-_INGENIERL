@@ -210,8 +210,8 @@ Los siguientes documentos profundizan aspectos específicos de esta justificaci�
 
 | Documento | Ruta | Contenido |
 |---|---|---|
-| Comparación IF vs alternativas | `docs/ppi_documentacion/COMPARACION_IF_VS_ALTERNATIVAS.md` | Ranking one-class, análisis IF vs AE head-to-head, ensemble AND, respuesta verbatim |
-| Diferencia experimento vs producción | `docs/ppi_documentacion/JUSTIFICACION_DIFERENCIA_EXPERIMENTO_PRODUCCION.md` | Por qué Precision=81.36% (experimento) vs 99.54% (producción) — prueba matemática |
+| Comparación IF vs alternativas | `docs/ppi_documentacion/experimento_comparativo/COMPARACION_IF_VS_ALTERNATIVAS.md` | Ranking one-class, análisis IF vs AE head-to-head, ensemble AND, respuesta verbatim |
+| Diferencia experimento vs producción | `docs/ppi_documentacion/experimento_comparativo/JUSTIFICACION_DIFERENCIA_EXPERIMENTO_PRODUCCION.md` | Por qué Precision=81.36% (experimento) vs 99.54% (producción) — prueba matemática |
 | Justificación completa con puntajes | `docs/ppi_documentacion/JUSTIFICACION_IF_COMPLETA.md` | Matriz ponderada 6 criterios, respuestas verbatim para jurado |
 | EDA y diagrama del pipeline | `results/comparacion/eda_distribucion_grupos.png`, `diagrama_pipeline.png` | Visualizaciones del desbalance de datos y arquitectura del sistema |
 
