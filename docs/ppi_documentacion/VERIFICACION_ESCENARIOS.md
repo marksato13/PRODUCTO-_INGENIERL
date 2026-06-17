@@ -164,21 +164,27 @@ sudo hping3 -S -p 80 --flood 192.168.0.120
 | dest_port | 80 | |
 
 5. `scaler.transform()` → valores outliers vs distribución normal del entrenamiento
-6. `clf.score_samples()` → **score ≈ −0.71** (muy por debajo de τ2=−0.6027)
-7. `decidir(−0.71)` → **BLOCK**
-8. Heurístico HTTP-ABUSE también puede disparar si llegan 100+ flows/30s
+6. `clf.score_samples()` → **score ≈ −0.49 a −0.71** (zona gris — AUC B1=0.8302, el más bajo)
+7. `decidir(score)`:
+   - Si score ≤ τ2 (−0.6027) → **BLOCK directo por IF**
+   - Si τ2 < score ≤ τ1 (−0.4459) → **LIMIT por IF** + heurístico HTTP-ABUSE puede escalar a BLOCK
+8. **Heurístico HTTP-ABUSE** (opera en paralelo): si el flood genera ≥100 flows TCP/80 en 30s → **BLOCK**
+   - En el test 2026-06-17: score=−0.4937 → LIMIT por IF; HTTP-ABUSE con 100/30s → BLOCK a los 11s
 9. `bloquear_ip(192.168.0.100)`:
    ```
    SSH → Servidor.120 → sudo ipset add ppi_blocked 192.168.0.100 timeout 300
    ```
-10. **Log:**
+10. **Log observado (test real 2026-06-17 02:21):**
     ```
-    WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80 proto=TCP score=-0.7100 | BLOCK
+    WARNING | SOSPECHOSO   | src=192.168.0.100 dst=:80 proto=TCP score=-0.4937 | LIMIT
+    WARNING | HTTP-ABUSE   | src=192.168.0.100 dst=:80 proto=TCP requests=100/30s | BLOCK
     ```
 11. **Telegram:** `🚨 PPI ALERTA — SYN_FLOOD` (via relay Desktop:8889)
 12. **Dashboard:** SSE push → alerta en `http://192.168.0.110:8080`
 
-**Lead Time observado:** ~62s (timeout Suricata, NO del motor — latencia motor=34.8ms)
+**Lead Time observado:** ~11s en test 2026-06-17 (HTTP-ABUSE disparó antes que el timeout TCP de Suricata)
+El Lead Time canónico de ~62s del informe F6 corresponde al escenario donde IF detecta el flow
+tras el timeout TCP half-open de Suricata (~60s). La latencia del motor sigue siendo 34.8ms (P95).
 
 ```bash
 # Verificación
@@ -227,9 +233,19 @@ sudo hping3 --udp --flood -p 53 192.168.0.120
 | dest_port | 53 | DNS |
 | pkt_rate | extremo | |
 
-**Mecanismo:** SOLO Isolation Forest (heurísticos no cubren UDP/53)  
-**Score esperado:** ≤ −0.6027 → BLOCK  
-**Log:** `WARNING | ANOMALÍA | proto=UDP score=... | BLOCK`
+**Mecanismo:** SOLO Isolation Forest (heurísticos no cubren UDP/53)
+
+> **Hallazgo real (test 2026-06-17):** Suricata genera múltiples flows UDP cortos
+> en lugar de uno acumulado. El IF clasifica los flows individuales como PERMIT (score > τ1).
+> Resultado: IP recibe **LIMIT** por flows TCP residuales (100 pkt/s), no BLOCK por UDP.
+> Es una limitación del modelo con los umbrales actuales para UDP.
+
+**Log observado:**
+```
+WARNING | SOSPECHOSO | src=192.168.0.100 dst=:113 proto=TCP score=-0.4461 | LIMIT
+(flows UDP/53 → PERMIT por IF, no aparecen en WARNING)
+```
+**Estado:** IP en `ppi_limited` — rate-limitada 100 pkt/s (mitigación parcial)
 
 ---
 
@@ -247,9 +263,15 @@ sudo hping3 -1 --flood 192.168.0.120
 | pkts_toserver | masivo | --flood |
 | pkt_rate | extremo | miles/s |
 
-**Mecanismo:** SOLO Isolation Forest  
-`dest_port=0` es feature única para ICMP — IF lo aprendió en entrenamiento  
-**Score esperado:** ≤ −0.6027 → BLOCK
+**Mecanismo:** SOLO Isolation Forest (teórico) — **brecha real en esta topología**
+
+> **Hallazgo real (test 2026-06-17):** Suricata 7.0.3 NO genera eventos `flow` para ICMP
+> IPv4 en este laboratorio. Solo emite flows ICMP en IPv6 (src con `:`), filtrados
+> por el motor en línea 389 (`if ':' in src_ip: continue`). Resultado: **0 detecciones**.
+> El ICMP flood IPv4 pasa sin filtro — es una brecha de cobertura del sistema.
+
+**Mitigación posible:** añadir heurístico ICMP por conteo de paquetes en ventana,
+o configurar Suricata para emitir eventos `flow` de ICMP IPv4.
 
 ---
 
@@ -372,6 +394,9 @@ ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked | grep .100"  # → presente
 | Origen | Tráfico | Decisión motor |
 |---|---|---|
 | Kali .100 | `hping3 --udp --flood -p 53` | is_udp=1, pkt_rate masivo → IF BLOCK |
+
+> **Resultado real:** igual que B3 — UDP Flood no detectado por IF en esta topología.
+> Desktop sin interrupciones (OK=60 FAIL=0), Kali sin bloquear.
 | Desktop .20 | `scp/wget` | WHITELIST → skip → transferencia completa |
 
 ---
@@ -529,6 +554,13 @@ ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 | Test | Resultado | Evidencia |
 |---|---|---|
 | Setup | PASS | Motor τ1=−0.4459, relay:8889, dashboard:8080 activos |
+| B1 SYN Flood  | PASS    | LIMIT(score=-0.4937) + HTTP-ABUSE BLOCK en 11s |
+| B2 Port Scan  | PASS    | IF score=-0.7352 → BLOCK en <1s |
+| B3 UDP Flood  | PARCIAL | IP rate-limitada (LIMIT), flows UDP → PERMIT por IF |
+| B4 ICMP Flood | BRECHA  | Suricata no emite flow IPv4 ICMP → 0 detecciones |
+| C1 HTTP+SYNFlood | PASS    | Kali BLOCK(HTTP-ABUSE 10s) Desktop OK=60 FAIL=0 ITL=0% |
+| C2 SSH+PortScan  | PASS    | Kali BLOCK(IF score=-0.7333) Desktop OK=53 FAIL=0 ITL=0% |
+| C3 SCP+UDPFlood  | PARCIAL | Kali no bloqueada (gap UDP), Desktop OK=60 FAIL=0 |
 | B5 HTTP Abuse | PASS | BLOCK a los 63s, `.100` en `ppi_blocked` |
 | B6 BruteForce | PASS | BLOCK detectado, `.100` en `ppi_blocked` |
 | Telegram relay | PASS | relay Desktop:8889 → `api.telegram.org` OK |
