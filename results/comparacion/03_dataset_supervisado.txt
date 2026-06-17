@@ -1,0 +1,105 @@
+========================================================================
+FASE 3 — CONSTRUCCIÓN DEL DATASET SUPERVISADO
+Generado: 2026-06-17 06:14:55
+========================================================================
+
+[1] Cargando scaler.pkl...
+  Scaler cargado — media features: [  24.5    34.23 2242.39] ...
+
+[2] Cargando flows normales (data/normal_holdout.csv)...
+  Flows normales: 13,427
+
+[3] Cargando flows anómalos (muestra 2000 por tipo)...
+  20260602_anom_bruteforce_01_eve.json.gz                 tipo=bruteforce   flows_leidos=  2,061
+  20260602_anom_httpabuse_01_eve.json.gz                  tipo=httpabuse    flows_leidos= 13,889
+  20260602_anom_icmpflood_01_eve.json.gz                  tipo=icmpflood    flows_leidos= 23,460
+  20260602_anom_portscan_01_eve.json.gz                   tipo=portscan     flows_leidos=  3,258
+  20260602_anom_synflood_01_eve.json.gz                   tipo=synflood     flows_leidos= 95,393
+  20260602_anom_udpflood_01_eve.json.gz                   tipo=udpflood     flows_leidos= 18,168
+  20260603_anom_bruteforce_01_eve.json.gz                 tipo=bruteforce   flows_leidos=300,000
+  20260615_anom_bruteforce_01_eve.json.gz                 tipo=bruteforce   flows_leidos=  4,824
+  20260615_anom_httpabuse_01_eve.json.gz                  tipo=httpabuse    flows_leidos= 36,902
+  20260615_anom_icmpflood_01_eve.json.gz                  tipo=icmpflood    flows_leidos=300,000
+  20260615_anom_portscan_01_eve.json.gz                   tipo=portscan     flows_leidos=107,903
+  20260615_anom_synflood_01_eve.json.gz                   tipo=synflood     flows_leidos=    330
+  20260615_anom_udpflood_01_eve.json.gz                   tipo=udpflood     flows_leidos=300,000
+
+  Muestreo estratificado (2000 por tipo):
+         bruteforce:  306,885 disponibles → 2,000 seleccionados
+          httpabuse:   50,791 disponibles → 2,000 seleccionados
+          icmpflood:  323,460 disponibles → 2,000 seleccionados
+           portscan:  111,161 disponibles → 2,000 seleccionados
+           synflood:   95,723 disponibles → 2,000 seleccionados
+           udpflood:  318,168 disponibles → 2,000 seleccionados
+
+  Total anómalos en dataset: 12,000
+
+[4] Combinando dataset...
+
+       Clase     Flows       %
+  ----------  --------  ------
+      Normal    13,427   52.8%
+     Anómalo    12,000   47.2%
+       TOTAL    25,427  100.0%
+  Ratio: 1:0.89 (CASI BALANCEADO)
+
+[5] Guardando data/dataset_comparacion.csv...
+  Guardado: /home/m4rk/ppi-surikata-producto/data/dataset_comparacion.csv (25,427 filas × 16 columnas)
+
+[6] Split estratificado 70/30...
+  Train: 17,798 flows  (9,398 normal / 8,400 anómalos)
+  Test : 7,629  flows  (4,029 normal / 3,600 anómalos)
+
+[7] Escalando features (scaler.pkl entrenado sobre datos normales)...
+  X_train_scaled: (17798, 14)  mean=-0.017
+  X_test_scaled : (7629, 14)   mean=-0.016
+
+[8] Guardando arrays numpy...
+           X_train_sup.npy  shape=(17798, 14)
+                X_test.npy  shape=(7629, 14)
+           y_train_sup.npy  shape=(17798,)
+                y_test.npy  shape=(7629,)
+      attack_type_test.npy  shape=(7629,)
+       X_train_sup_raw.npy  shape=(17798, 14)
+            X_test_raw.npy  shape=(7629, 14)
+
+[9] Distribución en el TEST SET (compartido para todos los modelos)...
+
+             Tipo       n   label
+  ---------------  ------  ------
+       bruteforce     557       1
+        httpabuse     636       1
+        icmpflood     597       1
+           normal   4,029       0
+         portscan     602       1
+         synflood     597       1
+         udpflood     611       1
+
+========================================================================
+RESUMEN DATASET SUPERVISADO
+========================================================================
+
+  Archivo principal : data/dataset_comparacion.csv
+  Total flows       : 25,427 (13,427 normal + 12,000 anómalos)
+  Ratio             : 1:0.89
+  Tipos de ataque   : bruteforce, httpabuse, icmpflood, portscan, synflood, udpflood
+
+  Arrays para modelos (en data/):
+    X_train_sup.npy   : (17798, 14) — features train supervisados (escaladas)
+    X_test.npy        : (7629, 14)  — features TEST compartido (escaladas)
+    y_train_sup.npy   : (17798,)         — etiquetas train
+    y_test.npy        : (7629,)           — etiquetas test
+    attack_type_test  : (7629,)          — tipo ataque (análisis por escenario)
+
+  Scaler usado: models/scaler.pkl (entrenado sobre 53,708 flows normales)
+  Split: 70/30 estratificado (random_state=42)
+
+  INSTRUCCIÓN PARA FASE 4:
+    - Modelos ONE-CLASS : entrenan con 53,708 flows normales originales
+                          evalúan sobre X_test.npy + y_test.npy
+    - Modelos SUPERVISADOS: entrenan con X_train_sup.npy + y_train_sup.npy
+                             evalúan sobre X_test.npy + y_test.npy (MISMO test set)
+
+Output: /home/m4rk/ppi-surikata-producto/results/comparacion/03_dataset_supervisado.txt
+Generado: 2026-06-17 06:15:54
+========================================================================
