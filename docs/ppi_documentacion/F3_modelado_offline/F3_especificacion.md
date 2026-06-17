@@ -37,6 +37,8 @@ en cualquier fecha de captura.
 | Lista de features | `models/features.csv` | `fase3_entrenar.py` |
 | Holdout normal | `data/normal_holdout.csv` | `fase3_entrenar.py` (20% nunca visto) |
 | Métricas canónicas | `results/metricas_offline.txt` | `fase3_evaluar.py` |
+
+> **Nota sobre `models/autoencoder.pkl`:** Este archivo existe en el sensor pero **no pertenece al pipeline de producción F3**. Fue generado por `scripts/comparacion/f_ensemble_if_ae.py` durante el experimento comparativo (justificación de IF vs alternativas). No interviene en el motor de decisión ni en ningún script de F3-F6.
 | Curva ROC | `results/auc_roc.png` | `fase3_evaluar.py` |
 | AUC por escenario | `results/reports/auc_por_escenario.txt` | `auc_por_escenario.py` |
 

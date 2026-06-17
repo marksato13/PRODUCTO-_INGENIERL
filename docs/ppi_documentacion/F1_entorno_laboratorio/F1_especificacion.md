@@ -98,15 +98,19 @@ outputs:
 ```ini
 # /etc/systemd/system/ppi-motor.service
 [Unit]
-Description=PPI Motor de Decision IF
+Description=PPI Motor de Decision - Deteccion de Anomalias de Red
 After=network.target suricata.service
+Requires=suricata.service
 
 [Service]
+Type=simple
 User=m4rk
 WorkingDirectory=/home/m4rk/ppi-surikata-producto
 ExecStart=/home/m4rk/ppi-sensor/venv/bin/python3 scripts/motor_decision.py
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+StandardOutput=null
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
