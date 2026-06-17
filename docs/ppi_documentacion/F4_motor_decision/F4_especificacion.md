@@ -28,6 +28,7 @@ arrancar — sin edición manual tras re-entrenamientos.
 | Log del motor | `results/motor_decision.log` | Decisiones por flow + estadísticas cada 500 flows |
 | Bloqueos activos | ipset `ppi_blocked` en servidor .120 | IPs con DROP activo |
 | Limitaciones activas | ipset `ppi_limited` en servidor .120 | IPs con hashlimit 100 pkt/s |
+| **Alertas Telegram** | relay `http://192.168.0.20:8889` | Notificación inmediata vía bot para LIMIT y BLOCK |
 
 ---
 
@@ -132,6 +133,63 @@ El servidor tiene `NOPASSWD` para `/usr/sbin/ipset` en sudoers.
 
 ---
 
+## 8.5. Alertas Telegram
+
+El motor envía alertas en tiempo real a un bot Telegram cada vez que detecta LIMIT o BLOCK.
+La red del laboratorio (sensor .110) **no tiene acceso a internet** — las llamadas se enrutan
+a través de un relay HTTP en el Desktop (192.168.0.20) que sí tiene conectividad.
+
+### Arquitectura del relay
+
+```
+motor_decision.py (sensor .110)
+    │
+    │  telegram_alerta(msg)
+    │    └── _tg_queue.put_nowait(msg)  ← no bloqueante (Queue maxsize=100)
+    │
+    │  Thread _tg_worker (daemon):
+    │    msg = _tg_queue.get()
+    │    POST http://192.168.0.20:8889/telegram
+    │         Content-Type: application/json
+    │         {"text": msg}
+    │
+    ▼
+telegram_relay.py (Desktop 192.168.0.20 — puerto 8889)
+    │
+    │  Recibe POST JSON → reenvía a api.telegram.org
+    │
+    ▼
+Bot Telegram — notificación al operador en tiempo real
+```
+
+### Constantes en motor_decision.py
+
+```python
+TG_TOKEN   = "8677152686:AAEUKDJm0gbkc7Vu3NwRcNaxqx3iqQwaa7g"
+TG_CHAT_ID = "8512353253"
+TG_ENABLED = True
+TG_RELAY   = "http://192.168.0.20:8889/telegram"
+```
+
+### Mensajes enviados al bot
+
+| Evento | Mensaje |
+|---|---|
+| LIMIT por IF score | `⚠️ PPI ALERTA — {tipo}\nAccion: LIMIT (100pkt/s)\nIP: {src}\nScore: {score}` |
+| BLOCK por IF score | `🚨 PPI ALERTA — {tipo}\nAccion: BLOCK (DROP)\nIP: {src}\nScore: {score}` |
+| HTTP Abuse BLOCK | `⚠️ PPI ALERTA — HTTP ABUSE\nAccion: BLOCK\nRequests: {n}/30s` |
+| BF SSH BLOCK | `🚨 PPI ALERTA — BRUTE FORCE SSH\nAccion: BLOCK\nIntentos: {n}/60s` |
+
+### Iniciar el relay (Desktop 192.168.0.20)
+
+```bash
+python3 /home/m4rk/Descargas/telegram_relay.py &
+ss -tlnp | grep 8889   # verificar puerto 8889
+curl -s -X POST http://192.168.0.20:8889/telegram \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Test PPI OK"}' && echo OK
+```
+
 ## 9. Métricas de rendimiento validadas
 
 | Métrica | Valor | Requisito |
@@ -151,7 +209,10 @@ se cierra o expira — el motor no puede actuar antes de recibir el evento.
 ## 10. Secuencia de operación F4
 
 ```bash
-# Iniciar motor en sensor
+# 0. Iniciar relay Telegram en Desktop (192.168.0.20)
+python3 /home/m4rk/Descargas/telegram_relay.py &
+
+# 1. Iniciar motor en sensor
 sudo systemctl start ppi-motor.service
 
 # Verificar que leyó τ correctamente
@@ -181,3 +242,5 @@ nohup /home/m4rk/ppi-sensor/venv/bin/python3 scripts/dashboard_web.py &
 | Flow procesado | `tail -5 results/motor_decision.log` | Líneas de eventos |
 | BLOCK funciona | `bash enforce.sh 192.168.0.100 BLOCK 10` | IP en `ipset list ppi_blocked` en servidor |
 | Latencia OK | estadísticas en log | latencia_media < 500 ms |
+| Relay Telegram activo | `ss -tlnp \| grep 8889` en Desktop | Puerto 8889 escuchando |
+| Alerta Telegram OK | enviar BLOCK de prueba + revisar bot | Mensaje recibido en <3s |

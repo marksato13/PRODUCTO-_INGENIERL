@@ -223,6 +223,37 @@
       <mxGeometry x="873" y="907" width="170" height="18" as="geometry" />
     </mxCell>
 
+  
+    <!-- ===== TELEGRAM RELAY (canal de notificación) ===== -->
+    <mxCell id="49" value="ALERTAS TELEGRAM" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=12;fontStyle=1;fontColor=#1a6085;" vertex="1" parent="1">
+      <mxGeometry x="1140" y="730" width="240" height="30" as="geometry" />
+    </mxCell>
+
+    <mxCell id="50" value="&lt;b&gt;telegram_relay.py&lt;/b&gt;&lt;br&gt;Desktop 192.168.0.20 : 8889&lt;br&gt;&lt;br&gt;Recibe POST del motor (sensor)&lt;br&gt;Reenvía a api.telegram.org&lt;br&gt;&lt;br&gt;(Sensor sin internet → relay LAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+      <mxGeometry x="1140" y="770" width="240" height="110" as="geometry" />
+    </mxCell>
+
+    <mxCell id="51" value="&lt;b&gt;api.telegram.org&lt;/b&gt;&lt;br&gt;&lt;br&gt;🚨 BLOCK alert → operador&lt;br&gt;⚠️ LIMIT alert → operador&lt;br&gt;Latencia entrega: &amp;lt; 3s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;fontSize=11;fontColor=#FFFFFF;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="1140" y="900" width="240" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- Conector: motor_decision.log → relay (representando salida de alertas del motor) -->
+    <mxCell id="52" value="telegram_alerta()&lt;br&gt;LIMIT/BLOCK" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2AABEE;strokeWidth=2;fontColor=#2AABEE;fontSize=9;fontStyle=1;" edge="1" source="34" target="50" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Conector: relay → Telegram API -->
+    <mxCell id="53" value="HTTPS POST" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;fontSize=9;" edge="1" source="50" target="51" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Leyenda -->
+    <mxCell id="54" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;" vertex="1" parent="1">
+      <mxGeometry x="680" y="907" width="18" height="18" as="geometry" />
+    </mxCell>
+    <mxCell id="55" value="Telegram / Relay" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="703" y="907" width="130" height="18" as="geometry" />
+    </mxCell>
   </root>
 </mxGraphModel>
 ```

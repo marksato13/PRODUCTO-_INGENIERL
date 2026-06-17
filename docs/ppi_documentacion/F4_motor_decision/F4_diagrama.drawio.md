@@ -230,6 +230,46 @@
       <mxGeometry x="1073" y="822" width="120" height="18" as="geometry" />
     </mxCell>
 
+  
+    <!-- ===== TELEGRAM NOTIFICATION CHANNEL ===== -->
+    <mxCell id="54" value="CANAL DE ALERTAS TELEGRAM" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=12;fontStyle=1;fontColor=#1a6085;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="420" width="200" height="30" as="geometry" />
+    </mxCell>
+
+    <mxCell id="55" value="&lt;b&gt;telegram_alerta(msg)&lt;/b&gt;&lt;br&gt;&lt;br&gt;_tg_queue (no bloquea)&lt;br&gt;Thread _tg_worker&lt;br&gt;POST JSON al relay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;fontSize=11;fontColor=#FFFFFF;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="460" width="200" height="90" as="geometry" />
+    </mxCell>
+
+    <mxCell id="56" value="&lt;b&gt;telegram_relay.py&lt;/b&gt;&lt;br&gt;Desktop 192.168.0.20&lt;br&gt;Puerto :8889&lt;br&gt;&lt;br&gt;POST /telegram&lt;br&gt;→ api.telegram.org" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="570" width="200" height="105" as="geometry" />
+    </mxCell>
+
+    <mxCell id="57" value="&lt;b&gt;Bot Telegram&lt;/b&gt;&lt;br&gt;api.telegram.org&lt;br&gt;&lt;br&gt;🚨 BLOCK → operador&lt;br&gt;⚠️ LIMIT → operador" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;fontSize=11;fontColor=#FFFFFF;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="695" width="200" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- Conector: motor → telegram_alerta -->
+    <mxCell id="58" value="LIMIT/BLOCK" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2AABEE;strokeWidth=2;fontColor=#2AABEE;fontSize=9;fontStyle=1;" edge="1" source="9" target="55" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Conector: telegram_alerta → relay -->
+    <mxCell id="59" value="HTTP POST" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;fontSize=9;" edge="1" source="55" target="56" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Conector: relay → Telegram API -->
+    <mxCell id="60" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;fontSize=9;" edge="1" source="56" target="57" parent="1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- Leyenda Telegram -->
+    <mxCell id="61" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;" vertex="1" parent="1">
+      <mxGeometry x="1215" y="822" width="18" height="18" as="geometry" />
+    </mxCell>
+    <mxCell id="62" value="Telegram / Bot" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="1238" y="822" width="120" height="18" as="geometry" />
+    </mxCell>
   </root>
 </mxGraphModel>
 ```
