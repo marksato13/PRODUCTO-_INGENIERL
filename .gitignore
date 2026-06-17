@@ -12,3 +12,6 @@ results/*.log
 logs/
 *.egg-info/
 .DS_Store
+*.bak
+results/motor_decision.log
+scripts/validation/suricata_revision.txt
