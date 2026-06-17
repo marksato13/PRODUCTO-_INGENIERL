@@ -1,26 +1,32 @@
-# F2 — Especificación Técnica: Captura y Preprocesamiento de Tráfico
+# F2 — Especificación Técnica: Captura de Tráfico por Grupos
 
 ## 1. Objetivo
 
-Capturar tráfico de red real en tres grupos (normal, anómalo, mixto) usando Suricata 7.0.3,
-y procesarlo mediante una cadena de scripts para generar los datasets `train.csv`, `val.csv`
-y `test.csv` listos para entrenar el modelo Isolation Forest en F3.
+Capturar tráfico de red en **tres grupos con propósito único** (normal puro, anómalo puro,
+mixto controlado) usando Suricata 7.0.3. Cada grupo produce archivos `.gz` que son la
+fuente directa para F3. No hay procesamiento intermedio en F2 — los `.gz` se leen
+directamente en F3 por `fase3_entrenar.py` y `fase3_evaluar.py`.
+
+> **Corrección metodológica:** el flujo anterior generaba `train/val/test.csv` con una
+> partición 70/15/15 heredada de pipelines supervisados. Isolation Forest es no supervisado
+> — no necesita etiquetas ni partición de validación. Esos archivos fueron **eliminados**.
+> Ver: `docs/METODOLOGIA_PIPELINE_COMPARATIVA.md`
 
 ---
 
 ## 2. Entradas
 
-| Entrada | Origen | Descripción |
-|---|---|---|
-| Topología operativa (F1) | F1 completada | Suricata activo en ens35, ipsets creados, SSH keys listas |
-| `/var/log/suricata/eve.json` | sensor 192.168.0.110 | Log EVE JSON con eventos de red en tiempo real |
-| `scripts_f2/grupoA/run_grupo_A.sh` | Desktop 192.168.0.20 | Orquestador de escenarios normales |
-| `scripts_f2/grupoB/run_grupo_B.sh` | Desktop 192.168.0.20 | Orquestador de escenarios anómalos |
-| `scripts_f2/grupoC/run_grupo_C.sh` | Desktop 192.168.0.20 | Orquestador de escenarios mixtos |
-| Kali Linux 192.168.0.100 | VM atacante | Herramientas: hping3, nmap, hydra, sshpass |
+| Entrada | Descripción |
+|---|---|
+| Topología operativa (F1) | Suricata activo en ens35, SSH keys listas, motor detenido |
+| `/var/log/suricata/eve.json` | Log EVE JSON en tiempo real — se comprime y rota al final de cada escenario |
+| `scripts_f2/grupoA/run_grupo_A.sh` | Orquestador de escenarios normales (Desktop) |
+| `scripts_f2/grupoB/run_grupo_B.sh` | Orquestador de escenarios anómalos (Kali) |
+| `scripts_f2/grupoC/run_grupo_C.sh` | Orquestador de escenarios mixtos (Desktop + Kali) |
+| Kali Linux 192.168.0.100 | Herramientas de ataque: hping3, nmap, hydra, sshpass |
 
-**Requisito:** `ppi-motor.service` debe estar **DETENIDO** durante toda F2 para no filtrar
-flows de Kali antes de capturarlos.
+**Requisito crítico:** `ppi-motor.service` debe estar **DETENIDO** en toda la F2.
+El motor filtraría paquetes de Kali antes de que Suricata los registre.
 
 ---
 
@@ -28,40 +34,61 @@ flows de Kali antes de capturarlos.
 
 | Salida | Ruta (sensor) | Descripción |
 |---|---|---|
-| Capturas raw | `data/raw/YYYYMMDD_grupo_escenario_NN_eve.json.gz` | 51 archivos comprimidos (41 con ppi-motor, 10 mixtos) |
-| Bitácora | `docs/bitacora/bitacora_escenarios.txt` | Registro de cada corrida: fechas, origen, destino, herramienta |
-| Dataset raw | `data/dataset_raw.csv` | Todos los flows parseados, sin limpiar |
-| Dataset limpio | `data/dataset_clean.csv` | Deduplicado, filtros IP aplicados, con label 0/1 |
-| Dataset entrenamiento | `data/train.csv` | 70% cronológico — solo flows normales (label=0) |
-| Dataset validación | `data/val.csv` | 15% cronológico — mixto (label=0 y label=1) |
-| Dataset test | `data/test.csv` | 15% cronológico — solo flows anómalos (label=1) para evaluar FPR en F3 |
-| Lista de features | `models/features.csv` | 14 nombres de columnas usadas por el modelo |
+| Capturas Grupo A | `data/raw/*_normal_*.eve.json.gz` | 28 archivos — tráfico normal puro |
+| Capturas Grupo B | `data/raw/*_anom_*.eve.json.gz` | 13 archivos — ataques puros |
+| Capturas Grupo C | `data/raw/*_mixto_*.eve.json.gz` | 10 archivos — tráfico mixto |
+| Bitácora | `docs/bitacora/bitacora_escenarios.txt` | 51 líneas — registro de cada corrida |
+
+Los archivos `.gz` son la **única salida de F2**. No se generan CSVs intermedios.
+F3 lee estos archivos directamente con `gzip.open()`.
 
 ---
 
-## 4. Escenarios de captura
+## 4. Por qué tres grupos separados
 
-### Grupo A — Tráfico normal (origen: Desktop 192.168.0.20 → Server 192.168.0.120)
+| Grupo | Condición de captura | Propósito |
+|---|---|---|
+| **A — Normal puro** | Kali **apagada** o inaccesible | Entrenar IF + generar holdout de referencia (F3) |
+| **B — Ataque puro** | Desktop **sin tráfico**, motor **detenido** | Calcular curva ROC, derivar τ1/τ2 (F3) |
+| **C — Mixto controlado** | Ambos activos, motor **detenido** | Validar AUC en condiciones reales por escenario (F3) |
 
-| ID | Nombre | Herramienta | Puerto | Duración | Label |
+Si se capturara en una sola sesión (como en el flujo anterior), los flows normales del
+Desktop ocurrirían bajo condiciones de red alteradas por los ataques de Kali (RST packets,
+saturación de colas), contaminando los datos de entrenamiento del IF.
+
+---
+
+## 5. Escenarios del Grupo A — Tráfico normal
+
+Origen: Desktop 192.168.0.20 → Server 192.168.0.120. Kali **apagada**.
+
+| ID | Nombre | Herramienta | Puerto | Duración |
+|---|---|---|---|---|
+| A1 | http_normal | `curl` en bucle → nginx | TCP/80 | 10 min |
+| A2 | ssh_legitimo | `ssh` sesión interactiva | TCP/22 | 8 min |
+| A3 | transferencia_legitima | `scp` / `wget` archivos | TCP/22, TCP/80 | 10 min |
+| A4 | trafico_sostenido | curl + ssh mixto continuo | TCP/80, TCP/22 | 15 min |
+
+---
+
+## 6. Escenarios del Grupo B — Tráfico anómalo
+
+Origen: Kali 192.168.0.100 → Server 192.168.0.120. Desktop **quieto**.
+
+| ID | Nombre | Herramienta | Flags | Puerto | Duración |
 |---|---|---|---|---|---|
-| A1 | http_normal | `curl` en bucle → nginx | TCP/80 | 10 min | 0 |
-| A2 | ssh_legitimo | `ssh` sesión interactiva | TCP/22 | 8 min | 0 |
-| A3 | transferencia_legitima | `scp` / `wget` archivos grandes | TCP/80, TCP/22 | 10 min | 0 |
-| A4 | trafico_sostenido | curl + ssh mixto continuo | TCP/80, TCP/22 | 15 min | 0 |
+| B1 | syn_flood | `hping3 -S --flood` | SYN sin completar handshake | TCP/80 | 10 min |
+| B2 | port_scan | `nmap -sS -p 1-1024` en bucle | SYN scan sigiloso | 1–1024 | 10 min |
+| B3 | udp_flood | `hping3 --udp --flood -p 53` | UDP masivo | UDP/53 | 10 min |
+| B4 | icmp_flood | `hping3 -1 --flood` | ICMP echo masivo | ICMP | 10 min |
+| B5 | http_abuse | `curl` bucle agresivo | HTTP GET repetitivo | TCP/80 | 10 min |
+| B6 | bruteforce | `hydra -l root -P wordlist ssh://` | Intentos masivos | TCP/22 | 10 min |
 
-### Grupo B — Tráfico anómalo (origen: Kali 192.168.0.100 → Server 192.168.0.120)
+---
 
-| ID | Nombre | Herramienta | Flags | Puerto | Duración | Label |
-|---|---|---|---|---|---|---|
-| B1 | syn_flood | `hping3 -S --flood` | SYN sin completar handshake | TCP/80 | 10 min | 1 |
-| B2 | port_scan | `nmap -sS -p 1-1024` en bucle | SYN scan sigiloso | 1–1024 | 10 min | 1 |
-| B3 | udp_flood | `hping3 --udp --flood -p 53` | UDP masivo | UDP/53 | 10 min | 1 |
-| B4 | icmp_flood | `hping3 -1 --flood` | ICMP echo masivo | ICMP | 10 min | 1 |
-| B5 | http_abuse | `curl` bucle agresivo → nginx | HTTP GET repetitivo | TCP/80 | 10 min | 1 |
-| B6 | bruteforce | `hydra -l root -P wordlist ssh://` | Intentos de login masivos | TCP/22 | 10 min | 1 |
+## 7. Escenarios del Grupo C — Tráfico mixto
 
-### Grupo C — Tráfico mixto (Desktop + Kali simultáneos)
+Desktop + Kali simultáneos. Motor **detenido** para capturar todos los flows.
 
 | ID | Nombre | Desktop (normal) | Kali (anómalo) | Duración |
 |---|---|---|---|---|
@@ -69,48 +96,59 @@ flows de Kali antes de capturarlos.
 | C2 | ssh_portscan | ssh → :22 | nmap -sS -p 1-1024 | 10 min |
 | C3 | transfer_udpflood | scp/wget | hping3 --udp --flood → :53 | 10 min |
 
-**Nota:** En Grupo C, el motor debe estar **detenido**. Los flows se etiquetan por IP de origen
-en `etiquetar_limpiar.py`: `192.168.0.100` → label=1, `192.168.0.20` → label=0.
-
 ---
 
-## 5. Nomenclatura de archivos capturados
+## 8. Nomenclatura de archivos
 
 ```
 YYYYMMDD_grupo_escenario_NN_eve.json.gz
 
-Ejemplos:
-  20260602_normal_http_01_eve.json.gz        ← Grupo A, fecha 02-jun, corrida 01
-  20260615_anom_synflood_01_eve.json.gz      ← Grupo B, fecha 15-jun
-  20260616_mixto_http_synflood_01_eve.json.gz ← Grupo C, fecha 16-jun
-```
+Ejemplos reales:
+  20260602_normal_http_01_eve.json.gz          ← Grupo A, 02-jun, corrida 01
+  20260615_anom_synflood_01_eve.json.gz        ← Grupo B, 15-jun
+  20260616_mixto_http_synflood_01_eve.json.gz  ← Grupo C, 16-jun
 
-**Total archivos en `data/raw/`:** 51 archivos (28 normales + 13 anómalos + 10 mixtos)
+Globs usados en F3 (date-agnostic — funcionan en cualquier fecha):
+  *_normal_*.gz    ← todos los del Grupo A
+  *_anom_*.gz      ← todos los del Grupo B
+  *_mixto_*.gz     ← todos los del Grupo C
+```
 
 ---
 
-## 6. Pipeline de procesamiento — scripts y secuencia
+## 9. Scripts de automatización
 
-### 6.1 `scripts/capture/exportar_eve_por_escenario.sh`
+### 9.1 `run_grupo_A.sh` / `run_grupo_B.sh` / `run_grupo_C.sh`
 
-Ejecutado automáticamente al final de cada escenario (desde el script run_grupo_X.sh vía SSH).
+Orquestadores que ejecutan los escenarios de cada grupo en orden. Hacen:
+
+1. Verifican conectividad (sensor, servidor, Kali si aplica)
+2. Verifican que `ppi-motor.service` esté detenido
+3. Ejecutan los sub-scripts de cada escenario (A1–A4, B1–B6, C1–C3)
+4. Esperan `≥ 120 s` entre escenarios (pausa para que Suricata cierre los flows TCP abiertos)
 
 ```bash
-# Llamada desde run_grupo_X.sh
+# Ejemplo de uso — desde Desktop (192.168.0.20)
+bash scripts_f2/grupoA/run_grupo_A.sh 01   # corrida 01
+bash scripts_f2/grupoB/run_grupo_B.sh 01   # corrida 01
+bash scripts_f2/grupoC/run_grupo_C.sh 01   # corrida 01
+```
+
+### 9.2 `scripts/capture/exportar_eve_por_escenario.sh`
+
+Ejecutado vía SSH al final de **cada escenario individual**:
+
+```bash
+# Llamado automáticamente desde A1.sh, B1.sh, etc.
 ssh m4rk@192.168.0.110 "bash exportar_eve_por_escenario.sh FECHA GRUPO ESCENARIO CORRIDA"
 ```
 
-**Proceso interno:**
-1. `gzip -c /var/log/suricata/eve.json > data/raw/YYYYMMDD_*.eve.json.gz`
-2. `truncate -s 0 /var/log/suricata/eve.json` — vacía el archivo para la siguiente captura
+Proceso interno:
+1. `gzip -c /var/log/suricata/eve.json > data/raw/YYYYMMDD_*.gz`
+2. `truncate -s 0 /var/log/suricata/eve.json` — vacía para la siguiente captura
 3. `suricatasc -c reopen-log-files` — Suricata reabre el handle del archivo
 
-**Requisito crítico:** esperar ≥2 minutos entre escenarios para que Suricata cierre los flows
-TCP abiertos (timeout ~60 s) antes de la siguiente captura.
-
----
-
-### 6.2 `scripts/evaluation/registrar_bitacora.sh`
+### 9.3 `scripts/evaluation/registrar_bitacora.sh`
 
 Agrega una línea al final de `docs/bitacora/bitacora_escenarios.txt`:
 
@@ -120,168 +158,63 @@ Agrega una línea al final de `docs/bitacora/bitacora_escenarios.txt`:
 
 ---
 
-### 6.3 `scripts/parser.py`
-
-**Entrada:** todos los archivos `data/raw/*.eve.json.gz`  
-**Salida:** `data/dataset_raw.csv`
-
-Lee cada archivo comprimido, filtra únicamente eventos `event_type == "flow"`, y extrae
-las 14 features del flujo (ver sección 7). Los campos que no existen en el evento se rellenan
-con 0.
-
-```python
-# Campos EVE JSON mapeados a features
-flow = event.get("flow", {})
-pkts_toserver   = flow.get("pkts_toserver", 0)
-bytes_toserver  = flow.get("bytes_toserver", 0)
-pkts_toclient   = flow.get("pkts_toclient", 0)
-bytes_toclient  = flow.get("bytes_toclient", 0)
-# duration = diferencia entre flow.start y flow.end en segundos
-proto           = event.get("proto", "").lower()
-dest_port       = event.get("dest_port", 0)
-```
-
----
-
-### 6.4 `scripts/etiquetar_limpiar.py`
-
-**Entrada:** `data/dataset_raw.csv`  
-**Salida:** `data/dataset_clean.csv`
-
-Proceso en orden:
-
-1. **Etiquetado por IP de origen:**
-   - `src_ip == 192.168.0.100` → `label = 1` (anómalo / Kali)
-   - `src_ip == 192.168.0.20` → `label = 0` (normal / Desktop)
-   - Otros → descartar
-
-2. **Filtro de IPs de whitelist:** elimina flows entre nodos de infraestructura
-   (sensor→servidor, gateway, etc.) que distorsionarían el modelo.
-
-3. **Deduplicación:** elimina filas con `flow_id` duplicado (flujos contados dos veces
-   por Suricata al cambiar de archivo).
-
-4. **Eliminación de NaN:** filas con features vacías → descartar.
-
----
-
-### 6.5 `scripts/particionar_estadisticos.py`
-
-**Entrada:** `data/dataset_clean.csv`  
-**Salida:** `data/train.csv`, `data/val.csv`, `data/test.csv`
-
-Partición **cronológica** (no aleatoria) para respetar el orden temporal:
-
-| Partición | Porcentaje | Contenido | Uso en F3 |
-|---|---|---|---|
-| `train.csv` | 70% | Solo label=0 (normal) | Entrenamiento del IF (one-class) |
-| `val.csv` | 15% | label=0 y label=1 | Ajuste de hiperparámetros |
-| `test.csv` | 15% | Solo label=1 (anómalo) | Evaluación FPR / AUC |
-
-**Nota metodológica:** `test.csv` contiene únicamente flows anómalos porque el IF es
-un clasificador one-class. El FPR se mide por separado sobre `normal_holdout.csv`
-(20% de los flows normales retenidos).
-
----
-
-## 7. Las 14 features del modelo
-
-Extraídas por `parser.py` de cada evento `flow` del eve.json:
-
-| # | Feature | Descripción | Tipo |
-|---|---|---|---|
-| 1 | `pkts_toserver` | Paquetes enviados al servidor | int |
-| 2 | `pkts_toclient` | Paquetes recibidos del servidor | int |
-| 3 | `bytes_toserver` | Bytes enviados al servidor | int |
-| 4 | `bytes_toclient` | Bytes recibidos del servidor | int |
-| 5 | `duration` | Duración del flujo en segundos | float |
-| 6 | `pkt_rate` | Tasa de paquetes = (pkts_to + pkts_from) / duration | float |
-| 7 | `byte_rate` | Tasa de bytes = (bytes_to + bytes_from) / duration | float |
-| 8 | `pkt_ratio` | pkts_toserver / (pkts_toserver + pkts_toclient) | float |
-| 9 | `byte_ratio` | bytes_toserver / (bytes_toserver + bytes_toclient) | float |
-| 10 | `avg_pkt_size` | (bytes_to + bytes_from) / (pkts_to + pkts_from) | float |
-| 11 | `is_tcp` | 1 si proto == TCP, 0 si no | int |
-| 12 | `is_udp` | 1 si proto == UDP, 0 si no | int |
-| 13 | `is_icmp` | 1 si proto == ICMP, 0 si no | int |
-| 14 | `dest_port` | Puerto de destino del flujo | int |
-
-**Por qué estas features:** capturan comportamiento volumétrico (bytes, paquetes),
-temporal (duración, tasas), de simetría (ratios toserver/toclient) y de protocolo.
-Los ataques de flooding tienen `pkt_rate` y `byte_rate` extremadamente altos con
-`duration` muy corta; los port scans tienen muchos flows con `dest_port` variado y
-`pkts_toserver == 1`.
-
----
-
-## 8. Secuencia técnica completa F2
+## 10. Secuencia técnica completa F2
 
 ```bash
-# ─── FASE DE CAPTURA (ejecutar desde Desktop 192.168.0.20) ───────────────────
-
-# PRE-REQUISITO: detener el motor en el sensor
+# ── PRE-REQUISITO ──────────────────────────────────────────────────────────
+# Detener motor en sensor
 ssh m4rk@192.168.0.110 "sudo systemctl stop ppi-motor.service"
 
-# Grupo A — tráfico normal (43 min total + pausas)
+# ── GRUPO A — tráfico normal (~43 min + pausas) ────────────────────────────
+# Kali debe estar apagada o inaccesible
 bash /home/m4rk/Descargas/scripts_f2/grupoA/run_grupo_A.sh 01
 
-# Pausa mínima 2 min entre grupos
+# Pausa mínima entre grupos (flows TCP deben cerrarse)
 sleep 120
 
-# Grupo B — tráfico anómalo (63 min total + pausas); motor DETENIDO
+# ── GRUPO B — tráfico anómalo (~63 min + pausas) ───────────────────────────
+# Desktop: NO generar tráfico hacia el servidor
 bash /home/m4rk/Descargas/scripts_f2/grupoB/run_grupo_B.sh 01
 
 sleep 120
 
-# Grupo C — tráfico mixto (34 min total + pausas); motor DETENIDO
+# ── GRUPO C — tráfico mixto (~34 min + pausas) ─────────────────────────────
+# Motor DETENIDO (ya está detenido desde el inicio de F2)
 bash /home/m4rk/Descargas/scripts_f2/grupoC/run_grupo_C.sh 01
 
-# ─── FASE DE PROCESAMIENTO (ejecutar en sensor 192.168.0.110) ────────────────
-
+# ── VERIFICACIÓN ────────────────────────────────────────────────────────────
+# Contar archivos por grupo
 ssh m4rk@192.168.0.110 "
-  source /home/m4rk/ppi-sensor/venv/bin/activate
-  cd /home/m4rk/ppi-surikata-producto
-
-  # Paso 1: parsear todos los .gz → dataset_raw.csv
-  python3 scripts/parser.py
-
-  # Paso 2: etiquetar, limpiar, deduplicar → dataset_clean.csv
-  python3 scripts/etiquetar_limpiar.py
-
-  # Paso 3: particionar cronológico 70/15/15 → train/val/test
-  python3 scripts/particionar_estadisticos.py
+  echo 'Grupo A:' \$(ls data/raw/*_normal_*.gz 2>/dev/null | wc -l) archivos
+  echo 'Grupo B:' \$(ls data/raw/*_anom_*.gz   2>/dev/null | wc -l) archivos
+  echo 'Grupo C:' \$(ls data/raw/*_mixto_*.gz  2>/dev/null | wc -l) archivos
+  echo 'Bitacora:' \$(wc -l < docs/bitacora/bitacora_escenarios.txt) lineas
 "
 ```
 
 ---
 
-## 9. Volumen de datos capturados (resultado real)
+## 11. Volumen de datos capturados
 
-| Archivo / Dataset | Tamaño | Flows |
-|---|---|---|
-| 28 capturas normales (Grupo A) | ~15 MB comprimido | 67,135 flows |
-| 13 capturas anómalas (Grupo B) | ~2.5 GB comprimido | 598,285 flows |
-| 10 capturas mixtas (Grupo C) | ~1.8 GB comprimido | ~180,000 flows |
-| `dataset_raw.csv` | ~480 MB | >800,000 filas |
-| `dataset_clean.csv` | ~210 MB | ~665,420 filas |
-| `train.csv` | ~50 MB | 53,708 flows (label=0) |
-| `val.csv` | ~90 MB | ~99,800 flows |
-| `test.csv` | ~70 MB | ~99,700 flows (label=1) |
-| `normal_holdout.csv` | ~10 MB | 13,427 flows (label=0) |
+| Grupo | Archivos | Tamaño comprimido | Contenido |
+|---|---|---|---|
+| Grupo A (normal) | 28 `.gz` | ~15 MB | Flows normales — curl, ssh, scp, wget |
+| Grupo B (anómalo) | 13 `.gz` | ~2.5 GB | Floods y scans — B1-B6 |
+| Grupo C (mixto) | 10 `.gz` | ~1.8 GB | Normal + ataque simultáneos |
+| **Total** | **51 archivos** | **~4.3 GB** | Fuente directa para F3 |
 
 ---
 
-## 10. Criterios de éxito (salida de F2)
+## 12. Criterios de éxito (salida de F2)
 
 | Criterio | Verificación | Resultado esperado |
 |---|---|---|
-| Archivos raw generados | `ls data/raw/*.gz \| wc -l` | ≥ 41 archivos |
-| Bitácora registrada | `wc -l docs/bitacora/bitacora_escenarios.txt` | ≥ 41 líneas |
-| dataset_raw.csv generado | `wc -l data/dataset_raw.csv` | > 500,000 filas |
-| dataset_clean.csv sin NaN | `python3 -c "import pandas as pd; print(pd.read_csv('data/dataset_clean.csv').isna().sum().sum())"` | 0 |
-| train.csv solo label=0 | `python3 -c "import pandas as pd; print(pd.read_csv('data/train.csv').label.unique())"` | `[0]` |
-| test.csv solo label=1 | `python3 -c "import pandas as pd; print(pd.read_csv('data/test.csv').label.unique())"` | `[1]` |
-| 14 features presentes | `head -1 data/train.csv` | columnas pkts_toserver…dest_port presentes |
-| Split 70/15/15 | Contar filas de cada CSV | Proporciones aproximadas |
+| Archivos Grupo A generados | `ls data/raw/*_normal_*.gz \| wc -l` | ≥ 4 archivos |
+| Archivos Grupo B generados | `ls data/raw/*_anom_*.gz \| wc -l` | ≥ 6 archivos |
+| Archivos Grupo C generados | `ls data/raw/*_mixto_*.gz \| wc -l` | ≥ 3 archivos |
+| Bitácora registrada | `wc -l docs/bitacora/bitacora_escenarios.txt` | ≥ 51 líneas |
+| Motor sigue detenido | `systemctl is-active ppi-motor.service` | `inactive` |
+| NO existen CSVs intermedios | `ls data/dataset_*.csv 2>/dev/null` | Sin resultado |
 
-**F2 se considera COMPLETADA** cuando `train.csv`, `val.csv` y `test.csv` existen
-sin errores y con las 14 features correctas. Estos archivos son la entrada directa de F3.
+**F2 se considera COMPLETADA** cuando existen los 51 archivos `.gz` en `data/raw/`
+y la bitácora tiene 51 entradas. No se genera ningún CSV — F3 lee los `.gz` directamente.
