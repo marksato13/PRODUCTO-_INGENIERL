@@ -274,7 +274,36 @@ El FPR es esencialmente **el mismo en ambos contextos (~20%)** — el modelo no 
 
 **En el experimento comparativo**, al balancear 1:0.89, los 821 falsos positivos pesan mucho más relativamente → Precision = 81.36%.
 
-### 5.3 Qué valor usar en cada contexto
+### 5.3 Por qué el F1 difiere (consecuencia directa de la Precision)
+
+| Evaluación | Precision | Recall | F1 |
+|---|---|---|---|
+| **Producción** (`metricas_offline.txt`) | **99.54%** | **99.40%** | **0.9947** |
+| Experimento balanceado | 81.36% | 99.53% | 0.8953 |
+
+**El F1 es la media armónica de Precision y Recall:**
+
+```
+F1 = 2 × Precision × Recall / (Precision + Recall)
+```
+
+**Clave:** el Recall es prácticamente **idéntico en ambos contextos** (0.9953 ≈ 0.9940 — diferencia de 0.13pp). La diferencia de F1 es *enteramente* consecuencia de la diferencia de Precision explicada en §5.2:
+
+```
+                       ┌──────────────────────────────────────────────────────────────┐
+Experimento (1:0.89):  │ F1 = 2 × 0.8136 × 0.9953 / (0.8136 + 0.9953)              │
+                       │    = 1.6196 / 1.8089 = 0.8953 ✓                             │
+                       └──────────────────────────────────────────────────────────────┘
+
+                       ┌──────────────────────────────────────────────────────────────┐
+Producción (1:44.5):   │ F1 = 2 × 0.9954 × 0.9940 / (0.9954 + 0.9940)              │
+                       │    = 1.9812 / 1.9894 = 0.9947 ✓                             │
+                       └──────────────────────────────────────────────────────────────┘
+```
+
+**Conclusión:** El Recall del modelo es estable (~99.5%) en cualquier distribución — el número de ataques detectados no depende de cuántos flujos normales haya en el test. El F1 varía porque la Precision varía con el ratio de clases. En producción, donde los ataques superan 44:1 a los flujos normales, tanto Precision como F1 son óptimas.
+
+### 5.4 Qué valor usar en cada contexto
 
 | Documento / Pregunta | Valor correcto | Fuente |
 |---|---|---|
@@ -282,7 +311,7 @@ El FPR es esencialmente **el mismo en ambos contextos (~20%)** — el modelo no 
 | Comparación justa entre 7 modelos | Precision=0.8136, F1=0.8953, AUC=0.9159 | Este experimento |
 | Justificación ante el jurado | Ambos — con explicación del contexto | `JUSTIFICACION_IF_COMPLETA.md` |
 
-> **Regla:** Para defender la elección de IF ante el jurado, se citan las **métricas de producción** (99.54% Precision, 99.40% Recall, F1=0.9947). Los valores de este experimento son para la **comparación relativa** entre modelos — donde IF sigue siendo #1 en Recall one-class (99.53%).
+> **Regla:** Para defender el sistema ante el jurado, se citan las **métricas de producción** (Precision=99.54%, Recall=99.40%, F1=0.9947, AUC=0.8998 — fuente: `metricas_offline.txt`). Los valores de este experimento comparativo (Precision=81.36%, F1=0.8953, AUC=0.9159) son exclusivamente para la **comparación relativa entre 7 modelos** sobre el mismo test set balanceado. Ambos conjuntos de valores son correctos en su contexto y no son contradictorios — ver §5.2 y §5.3 para la demostración matemática.
 
 ---
 
