@@ -198,3 +198,35 @@ La elección de IF está respaldada por el análisis formal del dataset, no fue 
 ---
 
 **Siguiente fase:** `FASE2_COMPATIBILIDAD.md` — tabla formal de compatibilidad de modelos con justificación técnica por cada modelo.
+
+---
+
+## 8. Contexto: flows raw vs flows usables
+
+La tabla de §1 muestra los **flows usables** (después de filtrado por IP y validación de features). Los flows raw capturados en los 47 archivos `.gz` son significativamente mayores:
+
+| Grupo | Archivos | Flows raw (event_type=flow) | Flows usables (filtrados) |
+|---|---|---|---|
+| Grupo A — Normal | 28 | **397,984** (0.4%) | 67,135 |
+| Grupo B — Anómalo | 13 | **56,080,443** (53.0%) | 906,188 |
+| Grupo C — Mixto | 6 | **49,262,091** (46.6%) | ~incluido en F6 |
+| **TOTAL RAW** | **47** | **105,740,518** | — |
+
+**¿Por qué la diferencia?** Los ataques de flood (ICMP, UDP, SYN) generan millones de flows en Suricata porque cada paquete puede iniciar un registro de flow. Por ejemplo, `20260615_anom_icmpflood_01_eve.json.gz` tiene 26.8M eventos — pero la mayoría son flows ICMP sin payload válido, sin `dest_port` usable o con features NaN. Después del filtro IP (solo 192.168.0.100→192.168.0.120) y validación de las 14 features, quedan 906,188 flows anómalos representativos.
+
+**El desbalance real** entre todos los flows raw es **265:1** (anómalo+mixto vs normal). El desbalance en datos usables es **1:67.5** (normal vs anómalo). Ambos son extremos — lo que confirma que los modelos one-class son la única opción práctica.
+
+### Visualización EDA
+
+Las figuras generadas en `results/comparacion/` ilustran este análisis:
+
+| Figura | Archivo | Contenido |
+|---|---|---|
+| EDA distribución | `eda_distribucion_grupos.png` | 3 paneles: flows raw por grupo (log scale), desglose por tipo de ataque, flows usados por fase |
+| Diagrama pipeline | `diagrama_pipeline.png` | Flujo completo desde capturas hasta producción — qué grupos entran en cada script |
+
+Estas figuras responden directamente la pregunta del asesor sobre el desbalance de datos y la unificación de los tres grupos.
+
+---
+
+**Siguiente fase:** `FASE2_COMPATIBILIDAD.md` — tabla formal de compatibilidad de modelos con justificación técnica por cada modelo.

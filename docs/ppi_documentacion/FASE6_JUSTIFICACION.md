@@ -204,4 +204,18 @@ SUPERVISADOS (paradigma diferente — upper bound teórico):
 
 ---
 
+## 7. Documentos complementarios
+
+Los siguientes documentos profundizan aspectos específicos de esta justificación:
+
+| Documento | Ruta | Contenido |
+|---|---|---|
+| Comparación IF vs alternativas | `docs/ppi_documentacion/COMPARACION_IF_VS_ALTERNATIVAS.md` | Ranking one-class, análisis IF vs AE head-to-head, ensemble AND, respuesta verbatim |
+| Diferencia experimento vs producción | `docs/ppi_documentacion/JUSTIFICACION_DIFERENCIA_EXPERIMENTO_PRODUCCION.md` | Por qué Precision=81.36% (experimento) vs 99.54% (producción) — prueba matemática |
+| Justificación completa con puntajes | `docs/ppi_documentacion/JUSTIFICACION_IF_COMPLETA.md` | Matriz ponderada 6 criterios, respuestas verbatim para jurado |
+| EDA y diagrama del pipeline | `results/comparacion/eda_distribucion_grupos.png`, `diagrama_pipeline.png` | Visualizaciones del desbalance de datos y arquitectura del sistema |
+
+
+---
+
 **Siguiente fase:** `FASE7_MEJORAS.md` — propuesta de ensemble IF + Autoencoder para reducir FPR.

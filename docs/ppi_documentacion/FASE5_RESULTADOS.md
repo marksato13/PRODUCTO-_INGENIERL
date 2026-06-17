@@ -81,4 +81,18 @@ La evidencia experimental confirma que **Isolation Forest es la elección óptim
 
 ---
 
+## Figuras adicionales — EDA y Diagrama de Pipeline
+
+Generadas en respuesta a la preocupación del asesor sobre la unificación de los tres grupos de datos:
+
+| Figura | Archivo | Qué muestra |
+|---|---|---|
+| **EDA Distribución** | `results/comparacion/eda_distribucion_grupos.png` | 3 paneles: flows raw por grupo (105.7M total), desglose Grupo B por ataque, flows usados por fase |
+| **Diagrama Pipeline** | `results/comparacion/diagrama_pipeline.png` | Flujo completo F1→F6: qué grupos (A, B, C) entran en cada script y por qué |
+
+**Punto clave del EDA:** el desbalance raw es 265:1 (anómalo+mixto vs normal). IF se entrena solo con el Grupo A (397,984 flows normales). Los Grupos B y C solo se usan en evaluación y validación F6. Esta separación es la arquitectura correcta para un sistema one-class.
+
+
+---
+
 **Siguiente fase:** `FASE6_JUSTIFICACION.md` — justificación final con evidencia experimental + texto verbatim para la sustentación.
