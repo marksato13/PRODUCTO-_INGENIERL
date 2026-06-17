@@ -22,8 +22,13 @@ Ver `docs/METODOLOGIA_PIPELINE_COMPARATIVA.md` para la comparación con el flujo
 | Grupo | F2 Captura | F3 Entrenamiento | F3 Evaluación | F4 Motor | F6 Validación |
 |---|---|---|---|---|---|
 | **A — Normal** | ✅ captura | ✅ solo este | ✅ holdout 20% | monitor | ✅ 10 corridas |
-| **B — Anómalo** | ✅ captura | ❌ NO | ✅ ROC/τ | trigger | ✅ 20 corridas |
-| **C — Mixto** | ✅ captura | ❌ NO | ❌ NO | operativo | ✅ 10 corridas |
+| **B — Anómalo** | ✅ captura | ❌ NO | ✅ ROC/τ | trigger | ✅ corridas 11-40 |
+| **C — Mixto** | ✅ captura | ❌ NO | ❌ NO | operativo | ✅ 10 corridas mixto (11-20) |
+
+> **Estructura interna F6 (`f6_corridas.py`):** 4 fases de 10 corridas:
+> Normal(1-10) solo Desktop | Mixto(11-20) Desktop+Kali |
+> Reeval(21-30) Kali bloqueada en memoria | Final(31-40) confirmación.
+> Los grupos A/B/C de la tabla indican el tipo de tráfico, no las fases internas de F6.
 
 **Principio central:** IF aprende SOLO de tráfico normal (Grupo A). Nunca ve ataques en entrenamiento.
 
@@ -65,7 +70,7 @@ flowchart TD
     end
 
     subgraph F6["F6 — Validación (3 grupos juntos)"]
-        F6S["f6_corridas.py\n40 corridas: A(10)+B(20)+C(10)\nMotor activo durante validación"]
+        F6S["f6_corridas.py\n40 corridas: Normal(10)+Mixto(10)+Reeval(10)+Final(10)\nMotor activo durante validación"]
         RES["Disponibilidad 100%\nLatencia P95=34.8ms\nITL=0%"]
     end
 
