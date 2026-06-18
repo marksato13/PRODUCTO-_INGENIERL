@@ -55,8 +55,10 @@ ESCENARIO 1 — PORT SCAN (impacto visual, detección ~30-60s)
 [RECOMENDADO PRIMERO — más rápido y claro para el jurado]
 
 DESDE: Kali Linux (192.168.0.100)
-COMANDO:
-   nmap -sS -p 1-1024 --min-rate 1000 -T5 192.168.0.120
+COMANDO (ejecutar desde Desktop — lanza nmap en Kali vía SSH):
+   sshpass -p Cisco123 ssh -o StrictHostKeyChecking=no m4rk@192.168.0.100 \
+     "nmap -sS -p 1-1024 --min-rate 1000 -T5 192.168.0.120"
+   # ↑ src_ip en los flows = 192.168.0.100 (Kali) → NO está en whitelist → detectado
 
 QUÉ HACE: Escaneo SYN de 1024 puertos TCP (sin completar handshake)
 
@@ -91,19 +93,21 @@ ESCENARIO 2 — BRUTE FORCE SSH (heurístico temporal)
 ================================================================
 
 DESDE: Kali Linux (192.168.0.100)
-COMANDO:
-   ssh m4rk@192.168.0.110 \
+COMANDO (ejecutar desde Desktop — lanza los intentos SSH desde Kali):
+   sshpass -p Cisco123 ssh -o StrictHostKeyChecking=no m4rk@192.168.0.100 \
      "timeout 90 bash -c 'for i in \$(seq 1 30); do \
        sshpass -p wrong ssh -o StrictHostKeyChecking=no \
        -o ConnectTimeout=2 wronguser@192.168.0.120 2>/dev/null; \
        sleep 0.5; done'"
+   # ↑ src_ip de los intentos SSH = 192.168.0.100 (Kali) → heurístico BF-SSH dispara
 
-   # Alternativa más simple (desde Desktop directamente):
-   for i in $(seq 1 25); do
-     ssh -o ConnectTimeout=2 -o BatchMode=yes \
-       -o StrictHostKeyChecking=no \
-       wronguser@192.168.0.120 2>/dev/null &
-   done; wait
+   # Alternativa rápida (también desde Kali vía SSH):
+   sshpass -p Cisco123 ssh -o StrictHostKeyChecking=no m4rk@192.168.0.100 \
+     "for i in \$(seq 1 25); do \
+       sshpass -p wrong ssh -o ConnectTimeout=2 -o StrictHostKeyChecking=no \
+       wronguser@192.168.0.120 2>/dev/null & \
+     done; wait"
+   # ⚠️ NO usar 'ssh wronguser@192.168.0.120' desde Desktop — Desktop está en WHITELIST
 
 QUÉ HACE: 25 intentos SSH fallidos desde Kali → trigger heurístico BF-SSH
 
@@ -130,10 +134,11 @@ ESCENARIO 3 — HTTP ABUSE (heurístico de tasa de requests)
 ================================================================
 
 DESDE: Kali Linux (192.168.0.100)
-COMANDO:
-   ssh m4rk@192.168.0.110 \
-     "timeout 60 bash -c \
-      'while true; do curl -s http://192.168.0.120/ -o /dev/null; done'" &
+COMANDO (ejecutar desde Desktop — lanza curl en bucle desde Kali):
+   sshpass -p Cisco123 ssh -o StrictHostKeyChecking=no m4rk@192.168.0.100 \
+     "timeout 60 bash -c 'while true; do curl -s http://192.168.0.120/ -o /dev/null; done'" &
+   # ↑ src_ip de los requests = 192.168.0.100 (Kali) → heurístico HTTP-ABUSE dispara
+   # ⚠️ NO lanzar desde sensor (192.168.0.110) ni Desktop (192.168.0.20) — están en WHITELIST
 
 QUÉ HACE: Curl en bucle continuo hacia nginx:80 → >100 requests en 30s
 
@@ -170,9 +175,11 @@ COMANDO:
 QUÉ HACE: Requests HTTP legítimas desde Desktop hacia servidor
 
 POR QUÉ NO SE BLOQUEA:
-  → Motor línea 389: if src_ip in WHITELIST: continue
-  → WHITELIST = {192.168.0.20, 192.168.0.110, 192.168.0.120, ...}
+  → Motor: if src_ip in WHITELIST: continue
+  → WHITELIST = {192.168.0.20, 192.168.0.110, 192.168.0.120, 192.168.0.1, 127.0.0.1}
   → El flow se descarta sin evaluar IF ni heurísticos
+  ⚠️ CONSECUENCIA: lanzar ataques desde Desktop (192.168.0.20) o Sensor (192.168.0.110)
+     no genera alertas — siempre usar Kali (192.168.0.100) como origen del ataque
 
 RESULTADO ESPERADO: Todos los "OK" — ningún "FAIL"
 DEMOSTRACIÓN: "Kali bloqueada, Desktop sin impacto → ITL=0%"
@@ -182,9 +189,11 @@ ESCENARIO 5 — SYN FLOOD (IF + heurístico combinado)
 ================================================================
 
 DESDE: Kali Linux (192.168.0.100)
-COMANDO:
-   ssh m4rk@192.168.0.110 \
+COMANDO (ejecutar desde Desktop — lanza hping3 desde Kali):
+   sshpass -p Cisco123 ssh -o StrictHostKeyChecking=no m4rk@192.168.0.100 \
      "sudo timeout 120 hping3 -S -p 80 --flood 192.168.0.120"
+   # ↑ src_ip del flood = 192.168.0.100 (Kali) → motor evalúa → LIMIT luego BLOCK
+   # ⚠️ NO lanzar hping3 desde sensor (192.168.0.110) — está en WHITELIST
 
 QUÉ HACE: Inunda con paquetes SYN TCP al puerto 80 del servidor
 
