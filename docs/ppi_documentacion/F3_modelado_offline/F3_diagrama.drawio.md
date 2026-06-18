@@ -8,6 +8,10 @@
 
 ```mermaid
 flowchart TD
+    subgraph PARADIGMA["PARADIGMA ONE-CLASS — Pregunta del asesor: ¿por qué 3 grupos separados?"]
+        OC["IF aprende SOLO de Grupo A (67,135 flows de trafico normal).\nGrupos B y C: NUNCA vistos por IF.fit() — solo para evaluacion.\nIF detecta anomalias porque conoce bien lo NORMAL,\nno porque haya visto ejemplos de ataques.\nLos 3 grupos separados son BY DESIGN — no es un error metodologico."]
+    end
+
     subgraph F2out["F2 — Salidas (data/raw/)"]
         GA["*_normal_*.gz\n28 archivos · 67,135 flows\nGrupo A — Kali apagada"]
         GB["*_anom_*.gz\n13 archivos · 598,285 flows\nGrupo B — Desktop quieto"]
@@ -77,6 +81,9 @@ flowchart TD
 
     MET --> MOTOR
     IFPKL & SCALERPKL & FEATCSV --> MOTOR
+    OC -. "solo Grupo A entra a IF.fit()" .-> GA
+    style PARADIGMA fill:#fff3cd,stroke:#ff9900
+    style OC fill:#fff3cd,stroke:#ff9900
 ```
 
 ---
@@ -339,6 +346,28 @@ flowchart TD
     <mxCell id="leg6" value="Fuente única de verdad"
       style="rounded=1;html=1;fillColor=#FF6600;strokeColor=#CC4400;fontColor=#fff;fontSize=10;"
       vertex="1" parent="1"><mxGeometry x="1110" y="898" width="165" height="28" as="geometry"/></mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════
+         CALLOUT: PARADIGMA ONE-CLASS — respuesta al asesor
+    ══════════════════════════════════════════════════════════ -->
+    <mxCell id="oc_bg" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3cd;strokeColor=#ff9900;"
+      vertex="1" parent="1">
+      <mxGeometry x="1350" y="65" width="265" height="430" as="geometry" />
+    </mxCell>
+    <mxCell id="oc_hdr" value="PARADIGMA ONE-CLASS"
+      style="text;html=1;strokeColor=none;fillColor=#ff9900;fontColor=#000000;
+             align=center;fontSize=13;fontStyle=1;rounded=1;"
+      vertex="1" parent="1">
+      <mxGeometry x="1350" y="65" width="265" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="oc_body"
+      value="&lt;b&gt;Pregunta del asesor:&lt;/b&gt;&lt;br/&gt;¿Por qué 3 grupos separados?&lt;br/&gt;&lt;br/&gt;IF es &lt;b&gt;ONE-CLASS&lt;/b&gt;: aprende&lt;br/&gt;SOLO de tráfico normal.&lt;br/&gt;&lt;br/&gt;Grupo A → &lt;b&gt;IF.fit()&lt;/b&gt;&lt;br/&gt;67,135 flows normales&lt;br/&gt;&lt;br/&gt;Grupo B → &lt;b&gt;ROC/tau1/tau2&lt;/b&gt;&lt;br/&gt;NUNCA en IF.fit()&lt;br/&gt;&lt;br/&gt;Grupo C → &lt;b&gt;AUC mixto&lt;/b&gt;&lt;br/&gt;NUNCA en IF.fit()&lt;br/&gt;&lt;br/&gt;IF detecta anomalías porque&lt;br/&gt;conoce bien lo &lt;b&gt;NORMAL&lt;/b&gt;,&lt;br/&gt;no porque vio ataques.&lt;br/&gt;&lt;br/&gt;Separación &lt;b&gt;BY DESIGN&lt;/b&gt;.&lt;br/&gt;&lt;br/&gt;&lt;i&gt;Ver: COMPARACION_IF_VS_&lt;br/&gt;ALTERNATIVAS.md&lt;/i&gt;"
+      style="text;html=1;strokeColor=none;fillColor=#fff3cd;fontColor=#000000;
+             align=left;verticalAlign=top;fontSize=11;spacingLeft=8;spacingTop=8;"
+      vertex="1" parent="1">
+      <mxGeometry x="1350" y="100" width="265" height="395" as="geometry" />
+    </mxCell>
 
   </root>
 </mxGraphModel>

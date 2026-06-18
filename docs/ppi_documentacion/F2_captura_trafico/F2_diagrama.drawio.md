@@ -2,6 +2,49 @@
 
 **Instrucciones:** Abrir Draw.io → Extras → Edit Diagram → pegar el XML → OK
 
+---
+
+## Diagrama Mermaid (paradigma one-class · roles de los 3 grupos)
+
+> **Respuesta al asesor:** Los 3 grupos son separados BY DESIGN, no por error. Isolation Forest es one-class: solo puede aprender de datos **normales**. Mezclar B y C en el entrenamiento rompería el paradigma.
+
+```mermaid
+flowchart TD
+    subgraph PARADIGMA["PREGUNTA DEL ASESOR: ¿Por qué 3 grupos separados y no datos unificados?"]
+        WHY["IF es ONE-CLASS: solo aprende el perfil del tráfico NORMAL (Grupo A).\nSi Grupos B y C entraran al entrenamiento, IF vería anomalías durante .fit()\n→ el modelo no sabría distinguir normal de anómalo.\nGrupo A → ENTRENAMIENTO (IF.fit)   |   Grupos B y C → EVALUACIÓN únicamente"]
+    end
+
+    subgraph GRUPOS["Grupos de captura — F2 produce · F3 consume"]
+        direction LR
+        GA["Grupo A — Normal\n*_normal_*.gz · 28 archivos\n67,135 flows · Kali apagada"]
+        GB["Grupo B — Anómalo\n*_anom_*.gz · 13 archivos\n598,285 flows · Desktop quieto"]
+        GC["Grupo C — Mixto\n*_mixto_*.gz · 6 archivos\nDesktop + Kali simultáneos"]
+    end
+
+    GA -->|"fase3_entrenar.py\nIF.fit() + holdout 20%"| MODELO["isolation_forest.pkl\nscaler.pkl · features.csv"]
+    GB -->|"fase3_evaluar.py\nROC · tau1=-0.4459 · tau2=-0.6027"| EVAL["metricas_offline.txt\nFuente unica de verdad"]
+    GC -->|"auc_por_escenario.py\nAUC por escenario"| AUC["reports/auc_por_escenario.txt"]
+
+    GB -. "NUNCA en IF.fit()" .-> MODELO
+    GC -. "NUNCA en IF.fit()" .-> MODELO
+
+    MODELO -->|"al arrancar"| F4["F4: motor_decision.py\nclasificacion en tiempo real"]
+    EVAL -->|"lee tau1/tau2 al arrancar"| F4
+
+    style GA fill:#d5e8d4,stroke:#82b366
+    style GB fill:#f8cecc,stroke:#b85450
+    style GC fill:#e6d9f5,stroke:#9673a6
+    style MODELO fill:#dae8fc,stroke:#6c8ebf
+    style EVAL fill:#FF6600,color:#ffffff,stroke:#CC4400
+    style F4 fill:#002060,color:#ffffff,stroke:#001030
+    style PARADIGMA fill:#fff3cd,stroke:#ff9900
+    style WHY fill:#fff3cd,stroke:#ff9900
+```
+
+---
+
+## Diagrama Draw.io (XML completo)
+
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1"
@@ -316,6 +359,28 @@
       style="rounded=1;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;"
       vertex="1" parent="1">
       <mxGeometry x="1015" y="913" width="230" height="30" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════════
+         CALLOUT: PARADIGMA ONE-CLASS — respuesta al asesor
+    ══════════════════════════════════════════════════════════ -->
+    <mxCell id="oc_bg" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3cd;strokeColor=#ff9900;"
+      vertex="1" parent="1">
+      <mxGeometry x="1380" y="65" width="265" height="490" as="geometry" />
+    </mxCell>
+    <mxCell id="oc_hdr" value="PARADIGMA ONE-CLASS"
+      style="text;html=1;strokeColor=none;fillColor=#ff9900;fontColor=#000000;
+             align=center;fontSize=13;fontStyle=1;rounded=1;"
+      vertex="1" parent="1">
+      <mxGeometry x="1380" y="65" width="265" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="oc_body"
+      value="&lt;b&gt;Pregunta del asesor:&lt;/b&gt;&lt;br/&gt;¿Por qué 3 grupos separados&lt;br/&gt;y no datos unificados?&lt;br/&gt;&lt;br/&gt;IF es &lt;b&gt;ONE-CLASS&lt;/b&gt;: solo aprende&lt;br/&gt;el perfil del tráfico &lt;b&gt;NORMAL&lt;/b&gt;.&lt;br/&gt;&lt;br/&gt;Si B y C entraran al entrenamiento,&lt;br/&gt;IF vería anomalías durante .fit()&lt;br/&gt;→ el modelo no sabría distinguir&lt;br/&gt;normal de anómalo.&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Grupo A&lt;/b&gt; → IF.fit()&lt;br/&gt;&lt;i&gt;(entrenamiento)&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;&lt;b&gt;Grupos B y C&lt;/b&gt; → EVALUACIÓN&lt;br/&gt;&lt;i&gt;(ROC / AUC / tau1 / tau2)&lt;/i&gt;&lt;br/&gt;&lt;br/&gt;Los 3 grupos son separados&lt;br/&gt;&lt;b&gt;BY DESIGN&lt;/b&gt; — no es un error.&lt;br/&gt;&lt;br/&gt;&lt;i&gt;Ref: docs/ppi_documentacion/&lt;br/&gt;experimento_comparativo/&lt;br/&gt;COMPARACION_IF_VS_ALTERNATIVAS.md&lt;/i&gt;"
+      style="text;html=1;strokeColor=none;fillColor=#fff3cd;fontColor=#000000;
+             align=left;verticalAlign=top;fontSize=11;spacingLeft=8;spacingTop=8;"
+      vertex="1" parent="1">
+      <mxGeometry x="1380" y="100" width="265" height="455" as="geometry" />
     </mxCell>
 
   </root>
