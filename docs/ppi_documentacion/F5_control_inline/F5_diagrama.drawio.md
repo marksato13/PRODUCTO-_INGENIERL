@@ -1,259 +1,322 @@
-# F5 — Diagrama: Control Inline
+# F5 — Diagrama: Control Inline y Monitoreo
 
-**Instrucciones:** Abrir Draw.io → Extras → Edit Diagram → pegar el XML → OK
+**Instrucciones Draw.io:** Extras → Edit Diagram → pegar XML → OK
+
+---
+
+## Diagrama Mermaid (flujo completo)
+
+```mermaid
+flowchart TD
+    subgraph F4out["F4 — Salidas del motor"]
+        MOTOR["motor_decision.py\nBLOCK/LIMIT automático"]
+        LOG["results/motor_decision.log\nDEBUG · WARNING · INFO"]
+    end
+
+    subgraph ENF["Enforcement — scripts/enforce.sh"]
+        ENFS["enforce.sh\n38 líneas · SSH BatchMode\nipset add/del → servidor .120\n-exist (idempotente)"]
+        CLI["Control manual CLI\nbash enforce.sh IP BLOCK 300\nbash enforce.sh IP LIMIT 60\nbash enforce.sh IP UNBLOCK"]
+    end
+
+    subgraph SRV["Servidor 192.168.0.120"]
+        direction TB
+        IPBL["ipset ppi_blocked\nhash:ip timeout=300s\nbucketsize=12"]
+        IPLT["ipset ppi_limited\nhash:ip timeout=300s\nbucketsize=12"]
+        IPT["iptables INPUT chain\nRegla 1: ppi_blocked → DROP\nRegla 2: ppi_limited → DROP\n  si tasa > 100pkt/s burst 150"]
+        NGINX["nginx:80 · SSH:22\nServicio objetivo"]
+        IPBL & IPLT --> IPT
+    end
+
+    subgraph PAQUETE["Flujo de paquete entrante al servidor"]
+        P1{{"¿src ∈ ppi_blocked?"}}
+        P2{{"¿src ∈ ppi_limited?"}}
+        P3{{"¿tasa > 100pkt/s?"}}
+        DROP1["DROP total"]
+        DROP2["DROP exceso"]
+        ACCEPT["ACCEPT → nginx/SSH"]
+        P1 -- SÍ --> DROP1
+        P1 -- NO --> P2
+        P2 -- NO --> ACCEPT
+        P2 -- SÍ --> P3
+        P3 -- SÍ --> DROP2
+        P3 -- NO --> ACCEPT
+    end
+
+    subgraph DASH_T["dashboard.py — Terminal ANSI"]
+        DT_LOAD["leer_log_completo()\nHistorial al arrancar"]
+        DT_TAIL["Thread seguir_log()\ntail con detección truncado\npoll 150ms"]
+        DT_EST["Estado class\ndeque(maxlen=300) eventos\nflows/anom/bf/http totales\nlatencia media"]
+        DT_RENDER["render() cada 3s\nCaja ANSI 72 chars\nBLOCK·LIMIT·scores\nipset en vivo"]
+    end
+
+    subgraph DASH_W["dashboard_web.py — Flask:8080 (1477 líneas)"]
+        DW_READER["Thread log-reader\ntail log → state{} + push_sse()"]
+        DW_SSE["GET /api/stream\nSSE — push instantáneo\nQueue por cliente conectado"]
+        DW_STATS["GET /api/stats\nmétricas JSON en tiempo real\nipset_blocked/limited"]
+        DW_CTRL["POST /api/block\nPOST /api/unblock\nPOST /api/clear"]
+        DW_DATA["GET /api/alerts · /api/timeline\nGET /api/tipos · /api/events"]
+        DW_HTML["GET / → HTML completo\nsidebar · tabla alertas\ngráfica timeline"]
+    end
+
+    subgraph TG["Canal Telegram (relay)"]
+        TG_RELAY["telegram_relay.py\nDesktop .20:8889\nFlask HTTP"]
+        TG_BOT["api.telegram.org\n🚨 BLOCK · ⚠️ LIMIT\n< 5s desde detección"]
+    end
+
+    subgraph NAV["Navegador (Desktop .20)"]
+        NAV_UI["http://192.168.0.110:8080\nEventSource('/api/stream')\nactualización instantánea"]
+    end
+
+    MOTOR -- "BLOCK/LIMIT\nSSH → .120" --> ENFS
+    CLI --> ENFS
+    ENFS -- "ipset add ppi_blocked" --> IPBL
+    ENFS -- "ipset add ppi_limited" --> IPLT
+    IPBL & IPLT -- "timeout 300s auto-expira" --> SRV
+    IPT --> NGINX
+
+    MOTOR --> LOG
+    LOG --> DT_LOAD & DT_TAIL
+    DT_TAIL --> DT_EST --> DT_RENDER
+
+    LOG --> DW_READER
+    DW_READER --> DW_SSE & DW_STATS & DW_DATA
+    DW_SSE -- "evento nuevo" --> NAV_UI
+    DW_CTRL -- "ssh_run ipset" --> IPBL & IPLT
+
+    MOTOR -- "POST JSON\nhttp://.20:8889/telegram" --> TG_RELAY
+    TG_RELAY -- "HTTPS API" --> TG_BOT
+
+    DW_CTRL --> NAV_UI
+    DW_STATS --> NAV_UI
+```
+
+---
+
+## Tabla de componentes
+
+| Componente | Líneas | Ruta | Función principal |
+|---|---|---|---|
+| `enforce.sh` | 38 | `scripts/enforce.sh` | BLOCK/LIMIT/UNBLOCK manual via SSH → servidor |
+| `dashboard.py` | 343 | `scripts/dashboard.py` | Terminal ANSI: log→Estado→render cada 3s |
+| `dashboard_web.py` | 1,477 | `scripts/dashboard_web.py` | Flask:8080 + SSE + API REST + HTML |
+| `telegram_relay.py` | ~50 | Desktop `/home/m4rk/Descargas/` | Flask:8889 → api.telegram.org |
+| `ppi_blocked` (ipset) | — | Servidor .120 kernel | hash:ip timeout=300s → iptables DROP |
+| `ppi_limited` (ipset) | — | Servidor .120 kernel | hash:ip timeout=300s → hashlimit 100pkt/s |
+
+---
+
+## Estado real de iptables/ipset en servidor (verificado)
+
+```bash
+# sudo iptables -L INPUT -n --line-numbers  (en 192.168.0.120)
+Chain INPUT (policy ACCEPT)
+num  target  prot  opt  source      destination
+1    DROP    all   --   0.0.0.0/0   0.0.0.0/0   match-set ppi_blocked src
+2    DROP    all   --   0.0.0.0/0   0.0.0.0/0   match-set ppi_limited src
+                                                  limit: above 100/sec burst 150 mode srcip
+
+# sudo ipset list ppi_blocked  (cuando vacío)
+Name: ppi_blocked
+Header: family inet hashsize 1024 maxelem 65536 timeout 300
+        bucketsize 12 initval 0xa4c9efb6
+Members:
+
+# sudo ipset list ppi_blocked  (durante un ataque)
+Name: ppi_blocked
+Members:
+192.168.0.100 timeout 287    ← 287s restantes antes de auto-expirar
+```
+
+---
+
+## Diagrama Draw.io (XML)
 
 ```xml
-<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1"
+  tooltips="1" connect="1" arrows="1" fold="1" page="0"
+  pageScale="1" pageWidth="1900" pageHeight="1200" math="0" shadow="0">
   <root>
-    <mxCell id="0" />
-    <mxCell id="1" parent="0" />
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
 
     <!-- TÍTULO -->
-    <mxCell id="2" value="F5 — Control Inline: enforce.sh + ipset/iptables en Servidor" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=20;fontStyle=1;fontColor=#003366;" vertex="1" parent="1">
-      <mxGeometry x="60" y="20" width="1520" height="45" as="geometry" />
+    <mxCell id="title" value="F5 — Control Inline y Monitoreo  |  PPI UPeU 2026"
+      style="text;html=1;strokeColor=none;fillColor=#002060;fontColor=#ffffff;
+             align=center;verticalAlign=middle;fontSize=13;fontStyle=1;rounded=1;"
+      vertex="1" parent="1">
+      <mxGeometry x="40" y="12" width="1820" height="38" as="geometry"/>
     </mxCell>
 
-    <!-- ===== LLAMADAS AUTOMÁTICAS ===== -->
-    <mxCell id="3" value="&lt;b&gt;motor_decision.py&lt;/b&gt;&lt;br&gt;&lt;i&gt;Enforcement automático&lt;/i&gt;&lt;br&gt;&lt;br&gt;Cuando score ≤ τ1 (LIMIT)&lt;br&gt;o score ≤ τ2 (BLOCK)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="60" y="80" width="215" height="95" as="geometry" />
-    </mxCell>
+    <!-- ══ MOTOR (fuente) ══ -->
+    <mxCell id="motor" value="&lt;b&gt;motor_decision.py (F4)&lt;/b&gt;&lt;br/&gt;BLOCK → bloquear_ip()&lt;br/&gt;LIMIT → limitar_ip()&lt;br/&gt;→ enforce.sh interno"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="40" y="80" width="200" height="80" as="geometry"/></mxCell>
 
-    <!-- ===== CONTROL MANUAL ===== -->
-    <mxCell id="4" value="&lt;b&gt;Control manual (CLI)&lt;/b&gt;&lt;br&gt;&lt;i&gt;desde Sensor o Desktop&lt;/i&gt;&lt;br&gt;&lt;br&gt;bash enforce.sh &lt;ip&gt; BLOCK 300&lt;br&gt;bash enforce.sh &lt;ip&gt; LIMIT 300&lt;br&gt;bash enforce.sh &lt;ip&gt; UNBLOCK" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
-      <mxGeometry x="60" y="210" width="215" height="105" as="geometry" />
-    </mxCell>
+    <mxCell id="cli" value="&lt;b&gt;Control manual CLI&lt;/b&gt;&lt;br/&gt;bash enforce.sh IP BLOCK 300&lt;br/&gt;bash enforce.sh IP LIMIT 60&lt;br/&gt;bash enforce.sh IP UNBLOCK"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="40" y="185" width="200" height="80" as="geometry"/></mxCell>
 
-    <!-- ===== ENFORCE.SH ===== -->
-    <mxCell id="5" value="&lt;b&gt;enforce.sh&lt;/b&gt;&lt;br&gt;&lt;br&gt;BLOCK  → ipset add ppi_blocked &lt;ip&gt; timeout &lt;t&gt;&lt;br&gt;LIMIT  → ipset add ppi_limited &lt;ip&gt; timeout &lt;t&gt;&lt;br&gt;UNBLOCK → ipset del de ambos sets&lt;br&gt;&lt;br&gt;SSH: m4rk@192.168.0.120&lt;br&gt;sudo NOPASSWD: /usr/sbin/ipset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;verticalAlign=middle;" vertex="1" parent="1">
-      <mxGeometry x="340" y="135" width="255" height="155" as="geometry" />
-    </mxCell>
+    <!-- ══ ENFORCE.SH ══ -->
+    <mxCell id="enf" value="&lt;b&gt;enforce.sh (38 líneas)&lt;/b&gt;&lt;br/&gt;SSH BatchMode → m4rk@.120&lt;br/&gt;sudo ipset add ppi_blocked IP timeout T -exist&lt;br/&gt;sudo ipset add ppi_limited IP timeout T -exist&lt;br/&gt;sudo ipset del (UNBLOCK)"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=left;spacingLeft=6;"
+      vertex="1" parent="1"><mxGeometry x="300" y="115" width="300" height="100" as="geometry"/></mxCell>
 
-    <!-- Conector: motor → enforce.sh -->
-    <mxCell id="6" value="BLOCK / LIMIT" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;" edge="1" source="3" target="5" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
+    <!-- ══ SERVIDOR .120 ══ -->
+    <mxCell id="srv_bg" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#444;"
+      vertex="1" parent="1"><mxGeometry x="660" y="60" width="580" height="360" as="geometry"/></mxCell>
+    <mxCell id="srv_hdr" value="&lt;b&gt;Servidor 192.168.0.120 — nginx:80 · SSH:22&lt;/b&gt;"
+      style="text;html=1;strokeColor=none;fillColor=#444;fontColor=#fff;align=center;fontSize=11;fontStyle=1;rounded=1;"
+      vertex="1" parent="1"><mxGeometry x="660" y="60" width="580" height="26" as="geometry"/></mxCell>
 
-    <!-- Conector: CLI → enforce.sh -->
-    <mxCell id="7" value="BLOCK/LIMIT/UNBLOCK" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=2;fontSize=10;" edge="1" source="4" target="5" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
+    <mxCell id="ipbl" value="&lt;b&gt;ipset ppi_blocked&lt;/b&gt;&lt;br/&gt;hash:ip timeout=300s bucketsize=12&lt;br/&gt;hashsize=1024 maxelem=65536&lt;br/&gt;Members: (192.168.0.100 timeout 287)"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="675" y="100" width="260" height="80" as="geometry"/></mxCell>
 
-    <!-- ===== SERVIDOR 192.168.0.120 (contenedor) ===== -->
-    <mxCell id="8" value="&lt;b&gt;Servidor 192.168.0.120&lt;/b&gt;  —  nginx:80 | SSH:22" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#444444;fontSize=13;fontStyle=1;verticalAlign=top;" vertex="1" parent="1">
-      <mxGeometry x="665" y="75" width="760" height="440" as="geometry" />
-    </mxCell>
+    <mxCell id="iplt" value="&lt;b&gt;ipset ppi_limited&lt;/b&gt;&lt;br/&gt;hash:ip timeout=300s bucketsize=12&lt;br/&gt;hashlimit: above 100/sec burst 150&lt;br/&gt;mode srcip"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="675" y="200" width="260" height="80" as="geometry"/></mxCell>
 
-    <!-- iptables INPUT chain header -->
-    <mxCell id="9" value="&lt;b&gt;iptables INPUT chain (en orden):&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="685" y="110" width="400" height="25" as="geometry" />
-    </mxCell>
+    <mxCell id="ipt" value="&lt;b&gt;iptables INPUT chain&lt;/b&gt;&lt;br/&gt;Regla 1: match-set ppi_blocked src → DROP&lt;br/&gt;Regla 2: match-set ppi_limited src → DROP&lt;br/&gt;         (si tasa &gt; 100/sec burst 150)&lt;br/&gt;Policy: ACCEPT"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6e6e6;strokeColor=#444;fontSize=10;align=left;spacingLeft=6;"
+      vertex="1" parent="1"><mxGeometry x="675" y="300" width="310" height="100" as="geometry"/></mxCell>
 
-    <!-- Regla 1: ppi_blocked → DROP -->
-    <mxCell id="10" value="Regla 1: &lt;b&gt;-m set --match-set ppi_blocked src -j DROP&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="685" y="143" width="410" height="40" as="geometry" />
-    </mxCell>
+    <mxCell id="nginx" value="&lt;b&gt;nginx:80 · SSH:22&lt;/b&gt;&lt;br/&gt;Tráfico que pasa iptables"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1000" y="185" width="200" height="70" as="geometry"/></mxCell>
 
-    <!-- Regla 2: ppi_limited → hashlimit -->
-    <mxCell id="11" value="Regla 2: &lt;b&gt;-m set --match-set ppi_limited src --hashlimit-above 100/sec -j DROP&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="685" y="195" width="410" height="40" as="geometry" />
-    </mxCell>
+    <!-- ══ FLUJO DE PAQUETE ══ -->
+    <mxCell id="pkt_bg" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#f0a500;"
+      vertex="1" parent="1"><mxGeometry x="660" y="450" width="580" height="280" as="geometry"/></mxCell>
+    <mxCell id="pkt_hdr" value="&lt;b&gt;Flujo de paquete entrante al servidor&lt;/b&gt;"
+      style="text;html=1;strokeColor=none;fillColor=#f0a500;fontColor=#fff;align=center;fontSize=11;fontStyle=1;rounded=1;"
+      vertex="1" parent="1"><mxGeometry x="660" y="450" width="580" height="26" as="geometry"/></mxCell>
 
-    <!-- ipset ppi_blocked -->
-    <mxCell id="12" value="&lt;b&gt;ipset ppi_blocked&lt;/b&gt;&lt;br&gt;hash:ip timeout 300&lt;br&gt;&lt;br&gt;→ iptables DROP&lt;br&gt;(descarta todo paquete)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1120" y="130" width="210" height="105" as="geometry" />
-    </mxCell>
+    <mxCell id="pkt1" value="¿src_ip ∈ ppi_blocked?"
+      style="rhombus;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="700" y="490" width="190" height="60" as="geometry"/></mxCell>
+    <mxCell id="drop1" value="DROP total&lt;br/&gt;(Regla 1)"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b85450;strokeColor=#800000;fontColor=#fff;fontSize=10;fontStyle=1;"
+      vertex="1" parent="1"><mxGeometry x="930" y="490" width="120" height="60" as="geometry"/></mxCell>
+    <mxCell id="pkt2" value="¿src_ip ∈ ppi_limited?"
+      style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="700" y="570" width="190" height="60" as="geometry"/></mxCell>
+    <mxCell id="pkt3" value="¿tasa &gt; 100pkt/s?"
+      style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="700" y="650" width="190" height="60" as="geometry"/></mxCell>
+    <mxCell id="drop2" value="DROP exceso&lt;br/&gt;(Regla 2)"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d6790a;strokeColor=#994400;fontColor=#fff;fontSize=10;fontStyle=1;"
+      vertex="1" parent="1"><mxGeometry x="930" y="650" width="120" height="60" as="geometry"/></mxCell>
+    <mxCell id="accept" value="ACCEPT&lt;br/&gt;→ nginx/SSH"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;"
+      vertex="1" parent="1"><mxGeometry x="930" y="570" width="120" height="60" as="geometry"/></mxCell>
 
-    <!-- ipset ppi_limited -->
-    <mxCell id="13" value="&lt;b&gt;ipset ppi_limited&lt;/b&gt;&lt;br&gt;hash:ip timeout 300&lt;br&gt;&lt;br&gt;→ hashlimit 100 pkt/s&lt;br&gt;(paquetes excedentes: DROP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="1120" y="255" width="210" height="105" as="geometry" />
-    </mxCell>
+    <!-- ══ LOG ══ -->
+    <mxCell id="log" value="&lt;b&gt;motor_decision.log&lt;/b&gt;&lt;br/&gt;WARNING: BLOCK/LIMIT/BF/HTTP&lt;br/&gt;INFO: stats cada 500 flows&lt;br/&gt;DEBUG: PERMIT (silencioso)"
+      style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;
+             fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="40" y="340" width="200" height="100" as="geometry"/></mxCell>
 
-    <!-- Conector: regla 1 → ipset ppi_blocked -->
-    <mxCell id="14" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;strokeColor=#b85450;strokeWidth=2;" edge="1" source="10" target="12" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
+    <!-- ══ DASHBOARD TERMINAL ══ -->
+    <mxCell id="dt_bg" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fff0;strokeColor=#82b366;"
+      vertex="1" parent="1"><mxGeometry x="40" y="480" width="580" height="195" as="geometry"/></mxCell>
+    <mxCell id="dt_hdr" value="&lt;b&gt;dashboard.py (343 líneas) — Terminal ANSI&lt;/b&gt;"
+      style="text;html=1;strokeColor=none;fillColor=#82b366;fontColor=#fff;align=center;fontSize=11;fontStyle=1;rounded=1;"
+      vertex="1" parent="1"><mxGeometry x="40" y="480" width="580" height="26" as="geometry"/></mxCell>
 
-    <!-- Conector: regla 2 → ipset ppi_limited -->
-    <mxCell id="15" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;strokeColor=#d6790a;strokeWidth=2;" edge="1" source="11" target="13" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
+    <mxCell id="dt_load" value="leer_log_completo()&lt;br/&gt;historial al arrancar"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="55" y="516" width="170" height="50" as="geometry"/></mxCell>
+    <mxCell id="dt_tail" value="Thread seguir_log()&lt;br/&gt;tail log · poll 150ms&lt;br/&gt;detecta truncado"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="235" y="516" width="175" height="50" as="geometry"/></mxCell>
+    <mxCell id="dt_est" value="Estado class&lt;br/&gt;deque(maxlen=300)&lt;br/&gt;counters · latencia"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="55" y="580" width="170" height="50" as="geometry"/></mxCell>
+    <mxCell id="dt_rend" value="render() cada 3s&lt;br/&gt;Caja ANSI 72 chars&lt;br/&gt;BLOCK·LIMIT·ipset en vivo"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="235" y="580" width="175" height="50" as="geometry"/></mxCell>
+    <mxCell id="dt_out" value="╔══PPI-SURIKATA══╗&lt;br/&gt;║ BLOCK: 12 LIMIT: 3 ║&lt;br/&gt;║ Lat: 34.5ms ITL:0% ║&lt;br/&gt;║ SYN_FLOOD ████75% ║&lt;br/&gt;╚════════════════╝"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999;fontSize=9;fontFamily=Courier;"
+      vertex="1" parent="1"><mxGeometry x="420" y="516" width="185" height="120" as="geometry"/></mxCell>
 
-    <!-- Timeout auto-expiry -->
-    <mxCell id="16" value="&lt;b&gt;Auto-expiry:&lt;/b&gt; timeout=300s → la IP sale del ipset automáticamente&lt;br&gt;(sin reiniciar el motor ni ejecutar UNBLOCK manualmente)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#f0a500;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="685" y="260" width="410" height="55" as="geometry" />
-    </mxCell>
+    <!-- ══ DASHBOARD WEB ══ -->
+    <mxCell id="dw_bg" value=""
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f8ff;strokeColor=#6c8ebf;"
+      vertex="1" parent="1"><mxGeometry x="40" y="700" width="580" height="230" as="geometry"/></mxCell>
+    <mxCell id="dw_hdr" value="&lt;b&gt;dashboard_web.py (1477 líneas) — Flask:8080&lt;/b&gt;"
+      style="text;html=1;strokeColor=none;fillColor=#6c8ebf;fontColor=#fff;align=center;fontSize=11;fontStyle=1;rounded=1;"
+      vertex="1" parent="1"><mxGeometry x="40" y="700" width="580" height="26" as="geometry"/></mxCell>
 
-    <!-- NOPASSWD sudoers -->
-    <mxCell id="17" value="&lt;b&gt;sudoers:&lt;/b&gt; m4rk ALL=(ALL) NOPASSWD: /usr/sbin/ipset, /usr/sbin/iptables" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="685" y="330" width="620" height="40" as="geometry" />
-    </mxCell>
+    <mxCell id="dw_rdr" value="Thread log-reader&lt;br/&gt;tail log → state{}&lt;br/&gt;push_sse(ev)"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="55" y="736" width="155" height="60" as="geometry"/></mxCell>
+    <mxCell id="dw_sse" value="GET /api/stream&lt;br/&gt;SSE push instantáneo&lt;br/&gt;Queue por cliente"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="220" y="736" width="155" height="60" as="geometry"/></mxCell>
+    <mxCell id="dw_api" value="GET /api/stats&lt;br/&gt;GET /api/alerts&lt;br/&gt;GET /api/timeline · tipos"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="55" y="810" width="155" height="60" as="geometry"/></mxCell>
+    <mxCell id="dw_ctrl" value="POST /api/block&lt;br/&gt;POST /api/unblock&lt;br/&gt;ssh_run ipset"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="220" y="810" width="155" height="60" as="geometry"/></mxCell>
+    <mxCell id="nav" value="Navegador&lt;br/&gt;http://192.168.0.110:8080&lt;br/&gt;EventSource('/api/stream')&lt;br/&gt;actualización instantánea"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f0ff;strokeColor=#4488aa;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="390" y="765" width="215" height="80" as="geometry"/></mxCell>
 
-    <!-- Servicios del servidor -->
-    <mxCell id="18" value="&lt;b&gt;Servicios en el servidor:&lt;/b&gt; nginx (puerto 80) | OpenSSH (puerto 22)&lt;br&gt;Tráfico NO bloqueado llega con normalidad a estos servicios" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="685" y="385" width="720" height="55" as="geometry" />
-    </mxCell>
+    <!-- ══ TELEGRAM ══ -->
+    <mxCell id="tg1" value="telegram_relay.py&lt;br/&gt;Desktop .20:8889&lt;br/&gt;Flask HTTP&lt;br/&gt;recibe POST del motor"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1300" y="130" width="185" height="80" as="geometry"/></mxCell>
+    <mxCell id="tg2" value="🚨 Bot Telegram&lt;br/&gt;api.telegram.org&lt;br/&gt;Operador &lt; 5s"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;
+             fontColor=#fff;fontSize=10;fontStyle=1;"
+      vertex="1" parent="1"><mxGeometry x="1300" y="240" width="185" height="70" as="geometry"/></mxCell>
+    <mxCell id="tg_res" value="Si relay no disponible:&lt;br/&gt;motor registra ERROR en log&lt;br/&gt;enforcement continúa OK"
+      style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;"
+      vertex="1" parent="1"><mxGeometry x="1300" y="330" width="185" height="65" as="geometry"/></mxCell>
 
-    <!-- ===== FLECHA SSH enforce.sh → servidor ===== -->
-    <mxCell id="19" value="SSH BatchMode&lt;br&gt;sudo ipset add/del" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#003366;strokeWidth=3;fontSize=11;fontStyle=1;fontColor=#003366;" edge="1" source="5" target="8" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
+    <!-- ══ CONECTORES ══ -->
+    <mxCell id="e1" value="BLOCK/LIMIT" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;fontSize=9;" edge="1" source="motor" target="enf" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666;" edge="1" source="cli" target="enf" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e3" value="ipset add ppi_blocked" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=2;fontSize=9;" edge="1" source="enf" target="ipbl" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e4" value="ipset add ppi_limited" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6790a;strokeWidth=2;fontSize=9;" edge="1" source="enf" target="iplt" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e5" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" edge="1" source="ipbl" target="ipt" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e6" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6790a;" edge="1" source="iplt" target="ipt" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e7" value="ACCEPT" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;fontSize=9;" edge="1" source="ipt" target="nginx" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e8" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;" edge="1" source="pkt1" target="drop1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e9" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;fontSize=9;" edge="1" source="pkt1" target="pkt2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e10" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;fontSize=9;" edge="1" source="pkt2" target="accept" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e11" value="SÍ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6790a;fontSize=9;" edge="1" source="pkt2" target="pkt3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e12" value="SÍ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;fontSize=9;" edge="1" source="pkt3" target="drop2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e13" value="NO" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;fontSize=9;" edge="1" source="pkt3" target="accept" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e14" value="escribe" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;fontSize=9;" edge="1" source="motor" target="log" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e15" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="log" target="dt_load" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e16" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="log" target="dt_tail" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e17" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dt_tail" target="dt_est" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e18" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="dt_est" target="dt_rend" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e19" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="log" target="dw_rdr" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e20" value="push_sse" style="edgeStyle=orthogonalEdgeStyle;fontSize=9;" edge="1" source="dw_rdr" target="dw_sse" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e21" value="SSE push" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#4488aa;strokeWidth=2;fontSize=9;" edge="1" source="dw_sse" target="nav" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e22" value="ipset" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;dashed=1;fontSize=9;" edge="1" source="dw_ctrl" target="ipbl" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e23" value="POST JSON" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2AABEE;strokeWidth=2;fontSize=9;" edge="1" source="motor" target="tg1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e24" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;dashed=1;fontSize=9;" edge="1" source="tg1" target="tg2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
 
-    <!-- ===== FLUJO DE TRÁFICO (sección inferior) ===== -->
-    <mxCell id="20" value="&lt;b&gt;Flujo de tráfico de red entrante al servidor:&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontStyle=1;fontColor=#003366;" vertex="1" parent="1">
-      <mxGeometry x="60" y="545" width="500" height="25" as="geometry" />
-    </mxCell>
+    <!-- LEYENDA -->
+    <mxCell id="leg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#ccc;"
+      vertex="1" parent="1"><mxGeometry x="40" y="960" width="1580" height="48" as="geometry"/></mxCell>
+    <mxCell id="l1" value="BLOCK (DROP total)" style="rounded=1;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="1"><mxGeometry x="55" y="974" width="140" height="26" as="geometry"/></mxCell>
+    <mxCell id="l2" value="LIMIT (hashlimit 100/s)" style="rounded=1;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=9;" vertex="1" parent="1"><mxGeometry x="205" y="974" width="155" height="26" as="geometry"/></mxCell>
+    <mxCell id="l3" value="ACCEPT / Dashboard" style="rounded=1;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=9;" vertex="1" parent="1"><mxGeometry x="370" y="974" width="135" height="26" as="geometry"/></mxCell>
+    <mxCell id="l4" value="Scripts Python/Bash" style="rounded=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=9;" vertex="1" parent="1"><mxGeometry x="515" y="974" width="135" height="26" as="geometry"/></mxCell>
+    <mxCell id="l5" value="ipset/iptables kernel" style="rounded=1;html=1;fillColor=#e6e6e6;strokeColor=#444;fontSize=9;" vertex="1" parent="1"><mxGeometry x="660" y="974" width="135" height="26" as="geometry"/></mxCell>
+    <mxCell id="l6" value="Telegram relay" style="rounded=1;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;fontColor=#fff;fontSize=9;" vertex="1" parent="1"><mxGeometry x="805" y="974" width="130" height="26" as="geometry"/></mxCell>
+    <mxCell id="l7" value="Auto-expiry 300s" style="rounded=1;html=1;fillColor=#fffde7;strokeColor=#f0a500;fontSize=9;" vertex="1" parent="1"><mxGeometry x="945" y="974" width="130" height="26" as="geometry"/></mxCell>
+    <mxCell id="l8" value="Log / Artefactos" style="rounded=1;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;" vertex="1" parent="1"><mxGeometry x="1085" y="974" width="120" height="26" as="geometry"/></mxCell>
+    <mxCell id="l9" value="Navegador (SSE)" style="rounded=1;html=1;fillColor=#e6f0ff;strokeColor=#4488aa;fontSize=9;" vertex="1" parent="1"><mxGeometry x="1215" y="974" width="120" height="26" as="geometry"/></mxCell>
 
-    <!-- Desktop .20 (WHITELIST) -->
-    <mxCell id="21" value="&lt;b&gt;Desktop 192.168.0.20&lt;/b&gt;&lt;br&gt;WHITELIST — nunca bloqueado&lt;br&gt;&lt;i&gt;no está en ppi_blocked ni ppi_limited&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="60" y="578" width="230" height="75" as="geometry" />
-    </mxCell>
-
-    <!-- Kali .100 -->
-    <mxCell id="22" value="&lt;b&gt;Kali 192.168.0.100&lt;/b&gt;&lt;br&gt;IP atacante&lt;br&gt;&lt;i&gt;añadida por motor o manualmente&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="60" y="680" width="230" height="75" as="geometry" />
-    </mxCell>
-
-    <!-- iptables check box -->
-    <mxCell id="23" value="&lt;b&gt;iptables INPUT&lt;/b&gt;&lt;br&gt;(kernel del servidor)&lt;br&gt;&lt;br&gt;¿src ∈ ppi_blocked? → DROP&lt;br&gt;¿src ∈ ppi_limited? → hashlimit&lt;br&gt;Else → ACCEPT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6e6e6;strokeColor=#444444;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
-      <mxGeometry x="355" y="598" width="225" height="130" as="geometry" />
-    </mxCell>
-
-    <!-- ACCEPT -->
-    <mxCell id="24" value="&lt;b&gt;ACCEPT&lt;/b&gt;&lt;br&gt;Llega a nginx / SSH" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="655" y="578" width="150" height="60" as="geometry" />
-    </mxCell>
-
-    <!-- LIMIT / hashlimit -->
-    <mxCell id="25" value="&lt;b&gt;hashlimit&lt;/b&gt;&lt;br&gt;≤100 pkt/s pasan&lt;br&gt;resto: DROP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="655" y="658" width="150" height="70" as="geometry" />
-    </mxCell>
-
-    <!-- DROP -->
-    <mxCell id="26" value="&lt;b&gt;DROP&lt;/b&gt;&lt;br&gt;Paquetes descartados&lt;br&gt;por el kernel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="655" y="748" width="150" height="70" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: Desktop → iptables -->
-    <mxCell id="27" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;strokeColor=#82b366;strokeWidth=2;" edge="1" source="21" target="23" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: Kali → iptables -->
-    <mxCell id="28" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.8;entryDx=0;entryDy=0;strokeColor=#b85450;strokeWidth=2;" edge="1" source="22" target="23" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: iptables → ACCEPT -->
-    <mxCell id="29" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#82b366;strokeWidth=2;" edge="1" source="23" target="24" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: iptables → hashlimit -->
-    <mxCell id="30" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.55;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#d6790a;strokeWidth=2;" edge="1" source="23" target="25" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: iptables → DROP -->
-    <mxCell id="31" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#b85450;strokeWidth=2;" edge="1" source="23" target="26" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- ===== DASHBOARD TERMINAL ===== -->
-    <mxCell id="32" value="&lt;b&gt;dashboard.py&lt;/b&gt;&lt;br&gt;Terminal ANSI — cada 3s&lt;br&gt;Flows, anomalías, bloqueados,&lt;br&gt;limitados, latencia media" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="880" y="560" width="200" height="95" as="geometry" />
-    </mxCell>
-
-    <!-- ===== DASHBOARD WEB ===== -->
-    <mxCell id="33" value="&lt;b&gt;dashboard_web.py :8080&lt;/b&gt;&lt;br&gt;Flask + Server-Sent Events&lt;br&gt;&lt;br&gt;GET /api/stats   → métricas JSON&lt;br&gt;GET /api/stream  → SSE push&lt;br&gt;GET /api/alerts  → historial&lt;br&gt;POST /api/block  → bloquear IP&lt;br&gt;POST /api/unblock → liberar IP&lt;br&gt;&lt;br&gt;http://192.168.0.110:8080" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
-      <mxGeometry x="1100" y="530" width="240" height="185" as="geometry" />
-    </mxCell>
-
-    <!-- motor_decision.log -->
-    <mxCell id="34" value="motor_decision.log&lt;br&gt;(leído por dashboards)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="665" y="555" width="175" height="70" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: log → dashboard terminal -->
-    <mxCell id="35" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="34" target="32" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: log → dashboard web -->
-    <mxCell id="36" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=1;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" source="34" target="33" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Dashboard web → POST block → enforce.sh -->
-    <mxCell id="37" value="POST /api/block → enforce.sh" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;dashed=1;strokeColor=#82b366;fontSize=10;" edge="1" source="33" target="5" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- ===== LEYENDA ===== -->
-    <mxCell id="38" value="Leyenda" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="60" y="875" width="80" height="25" as="geometry" />
-    </mxCell>
-    <mxCell id="39" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
-      <mxGeometry x="60" y="907" width="18" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="40" value="BLOCK / DROP (iptables)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
-      <mxGeometry x="83" y="907" width="155" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="41" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6790a;" vertex="1" parent="1">
-      <mxGeometry x="250" y="907" width="18" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="42" value="LIMIT / hashlimit 100 pkt/s" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
-      <mxGeometry x="273" y="907" width="165" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="43" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
-      <mxGeometry x="450" y="907" width="18" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="44" value="ACCEPT / WHITELIST / Dashboard" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
-      <mxGeometry x="473" y="907" width="195" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="45" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
-      <mxGeometry x="680" y="907" width="18" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="46" value="Scripts Python / Bash" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
-      <mxGeometry x="703" y="907" width="135" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="47" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fffde7;strokeColor=#f0a500;" vertex="1" parent="1">
-      <mxGeometry x="850" y="907" width="18" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="48" value="Auto-expiry (timeout 300s)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
-      <mxGeometry x="873" y="907" width="170" height="18" as="geometry" />
-    </mxCell>
-
-  
-    <!-- ===== TELEGRAM RELAY (canal de notificación) ===== -->
-    <mxCell id="49" value="ALERTAS TELEGRAM" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=12;fontStyle=1;fontColor=#1a6085;" vertex="1" parent="1">
-      <mxGeometry x="1140" y="730" width="240" height="30" as="geometry" />
-    </mxCell>
-
-    <mxCell id="50" value="&lt;b&gt;telegram_relay.py&lt;/b&gt;&lt;br&gt;Desktop 192.168.0.20 : 8889&lt;br&gt;&lt;br&gt;Recibe POST del motor (sensor)&lt;br&gt;Reenvía a api.telegram.org&lt;br&gt;&lt;br&gt;(Sensor sin internet → relay LAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1">
-      <mxGeometry x="1140" y="770" width="240" height="110" as="geometry" />
-    </mxCell>
-
-    <mxCell id="51" value="&lt;b&gt;api.telegram.org&lt;/b&gt;&lt;br&gt;&lt;br&gt;🚨 BLOCK alert → operador&lt;br&gt;⚠️ LIMIT alert → operador&lt;br&gt;Latencia entrega: &amp;lt; 3s" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;fontSize=11;fontColor=#FFFFFF;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="1140" y="900" width="240" height="90" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: motor_decision.log → relay (representando salida de alertas del motor) -->
-    <mxCell id="52" value="telegram_alerta()&lt;br&gt;LIMIT/BLOCK" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#2AABEE;strokeWidth=2;fontColor=#2AABEE;fontSize=9;fontStyle=1;" edge="1" source="34" target="50" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Conector: relay → Telegram API -->
-    <mxCell id="53" value="HTTPS POST" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;fontSize=9;" edge="1" source="50" target="51" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- Leyenda -->
-    <mxCell id="54" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2AABEE;strokeColor=#1a8abc;" vertex="1" parent="1">
-      <mxGeometry x="680" y="907" width="18" height="18" as="geometry" />
-    </mxCell>
-    <mxCell id="55" value="Telegram / Relay" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;" vertex="1" parent="1">
-      <mxGeometry x="703" y="907" width="130" height="18" as="geometry" />
-    </mxCell>
   </root>
 </mxGraphModel>
 ```
