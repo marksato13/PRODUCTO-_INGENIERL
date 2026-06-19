@@ -105,6 +105,9 @@ def _tg_worker():
 
 threading.Thread(target=_tg_worker, daemon=True, name="tg-sender").start()
 
+TG_DEDUP_SEG = 300          # misma IP no genera 2 alertas en menos de 5 min
+_last_tg_alert: dict = {}   # ip → timestamp última alerta enviada
+
 def telegram_alerta(mensaje: str):
     if not TG_ENABLED:
         return
@@ -112,6 +115,15 @@ def telegram_alerta(mensaje: str):
         _tg_queue.put_nowait(mensaje)
     except _queue.Full:
         log.warning("Telegram queue llena — alerta descartada")
+
+def telegram_alerta_ip(ip: str, mensaje: str):
+    """Como telegram_alerta pero suprime si la misma IP fue notificada < TG_DEDUP_SEG."""
+    ahora = time.time()
+    if ahora - _last_tg_alert.get(ip, 0) < TG_DEDUP_SEG:
+        log.debug(f"Telegram dedup: {ip} — alerta suprimida (ventana {TG_DEDUP_SEG}s)")
+        return
+    _last_tg_alert[ip] = ahora
+    telegram_alerta(mensaje)
 
 
 def es_ip_bloqueable(ip: str) -> bool:
@@ -439,7 +451,7 @@ def main():
                     f"HTTP-ABUSE | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} requests={hab_n}/{HTTP_VENTANA_SEG}s | BLOCK → {resp}"
                 )
-                telegram_alerta(
+                telegram_alerta_ip(src_ip,
                     f"🚨 PPI ALERTA — HTTP ABUSE\n"
                     f"Accion  : BLOCK (DROP)\n"
                     f"IP      : {src_ip}\n"
@@ -455,7 +467,7 @@ def main():
                     f"HTTP-ABUSE | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} requests={hab_n}/{HTTP_VENTANA_SEG}s | LIMIT → {resp}"
                 )
-                telegram_alerta(
+                telegram_alerta_ip(src_ip,
                     f"⚠️ PPI ALERTA — HTTP ABUSE\n"
                     f"Accion : LIMIT (100pkt/s)\nIP     : {src_ip}\nPuerto : {dest_port}\n"
                     f"Requests: {hab_n}/{HTTP_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -475,7 +487,7 @@ def main():
                     f"BRUTE-FORCE | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} intentos={bf_n}/{BF_VENTANA_SEG}s | BLOCK → {resp}"
                 )
-                telegram_alerta(
+                telegram_alerta_ip(src_ip,
                     f"🚨 PPI ALERTA — BRUTE FORCE SSH\n"
                     f"Accion : BLOCK\nIP     : {src_ip}\nPuerto : {dest_port}\n"
                     f"Intentos: {bf_n}/{BF_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -487,7 +499,7 @@ def main():
                     f"BRUTE-FORCE | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} intentos={bf_n}/{BF_VENTANA_SEG}s | LIMIT → {resp}"
                 )
-                telegram_alerta(
+                telegram_alerta_ip(src_ip,
                     f"⚠️ PPI ALERTA — BRUTE FORCE SSH\n"
                     f"Accion : LIMIT\nIP     : {src_ip}\nPuerto : {dest_port}\n"
                     f"Intentos: {bf_n}/{BF_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
@@ -510,7 +522,7 @@ def main():
                     f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | BLOCK"
                 )
-                telegram_alerta(
+                telegram_alerta_ip(src_ip,
                     f"🚨 PPI ALERTA — {tipo}\n"
                     f"Accion  : BLOCK (DROP)\n"
                     f"IP      : {src_ip}\n"
@@ -535,7 +547,7 @@ def main():
                     f"SOSPECHOSO | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | LIMIT"
                 )
-                telegram_alerta(
+                telegram_alerta_ip(src_ip,
                     f"⚠️ PPI ALERTA — {tipo}\n"
                     f"Accion  : LIMIT (100 pkt/s)\n"
                     f"IP      : {src_ip}\n"
