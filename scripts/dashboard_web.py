@@ -23,6 +23,8 @@ RE_EVENTO = re.compile(
     r"(?:.*?score=([-\d.]+))?"
     r"(?:.*?grado=(\w+))?"
     r"(?:.*?tipo=(\w+))?"
+    r"(?:.*?byte_ratio=([\d.]+))?"
+    r"(?:.*?pkt_rate=([\d.]+))?"
     r".*?\| (BLOCK|LIMIT)"
 )
 RE_STATS  = re.compile(
@@ -59,7 +61,7 @@ def push_sse(ev: dict):
 def procesar_linea(linea: str, push=True):
     m = RE_EVENTO.search(linea)
     if m:
-        ts_str,tl,src,dst,port,proto,score,grado,tipo,accion = m.groups()
+        ts_str,tl,src,dst,port,proto,score,grado,tipo,byte_ratio,pkt_rate,accion = m.groups()
         score = score or "N/A"
         try:    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
         except: ts = datetime.now()
@@ -68,6 +70,7 @@ def procesar_linea(linea: str, push=True):
             "src": src, "dst": dst, "port": port, "proto": proto,
             "score": score, "grado": grado or "—",
             "tipo": tipo or "ANOMALIA_GENERICA", "accion": accion,
+            "byte_ratio": byte_ratio or "—", "pkt_rate": pkt_rate or "—",
         }
         with lock:
             state["eventos"].append((ts, ev))
@@ -1021,6 +1024,7 @@ function alertCard(ev, isNew=false){
         <i class="bi ${ic}" style="color:${color}"></i>
         <span class="alert-tipo-big" style="color:${color}">${(ev.tipo||'—').replace(/_/g,' ')}</span>
         <span class="alert-score">Score: <b>${ev.score}</b></span>
+        ${ev.byte_ratio!=='—'?`<span class="alert-score" style="color:var(--muted)">br: <b>${parseFloat(ev.byte_ratio).toFixed(1)}</b></span>`:''}
       </div>
       <div class="alert-gravedad"><i class="bi bi-info-circle"></i> ${grav}</div>
     </div>
@@ -1233,6 +1237,8 @@ function openModal(ev){
     ['IP Destino',`<span class="mono">${ev.dst}</span>`],
     ['Puerto / Proto',`:${ev.port} / ${ev.proto}`],
     ['Score IF',`<span class="mono">${ev.score}</span>`],
+    ...(ev.byte_ratio&&ev.byte_ratio!=='—'?[['byte_ratio',`<span class="mono">${parseFloat(ev.byte_ratio).toFixed(2)}</span> <span style="color:var(--muted);font-size:.8em">(normal ≈ 0.95)</span>`]]:[]),
+    ...(ev.pkt_rate&&ev.pkt_rate!=='—'?[['pkt_rate',`<span class="mono">${parseFloat(ev.pkt_rate).toFixed(1)}</span> pkt/s`]]:[]),
     ['Gravedad',GRAVEDAD[ev.tipo]||'—'],
   ];
   document.getElementById('modal-t').textContent=`${ev.accion} — ${(ev.tipo||'').replace(/_/g,' ')}`;

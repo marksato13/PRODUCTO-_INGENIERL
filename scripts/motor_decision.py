@@ -15,7 +15,7 @@ import sys
 import time
 import subprocess
 import logging
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime
 
 import numpy as np
@@ -107,6 +107,10 @@ threading.Thread(target=_tg_worker, daemon=True, name="tg-sender").start()
 
 TG_DEDUP_SEG = 300          # misma IP no genera 2 alertas en menos de 5 min
 _last_tg_alert: dict = {}   # ip → timestamp última alerta enviada
+
+TAU_AVISO    = -0.35   # score medio < TAU_AVISO → pre-alerta de tendencia
+AVISO_MIN_FL = 10      # flows mínimos por IP para activar la pre-alerta
+_score_hist: dict = {} # ip → deque(maxlen=AVISO_MIN_FL) de scores
 
 def telegram_alerta(mensaje: str):
     if not TG_ENABLED:
@@ -506,6 +510,27 @@ def main():
                 )
             # Continuar al análisis de score igual (no skip)
 
+        # ── Pre-alerta de tendencia (score medio < TAU_AVISO, aún PERMIT) ───
+        if src_ip not in _score_hist:
+            _score_hist[src_ip] = deque(maxlen=AVISO_MIN_FL)
+        _score_hist[src_ip].append(score)
+        if (len(_score_hist[src_ip]) == AVISO_MIN_FL
+                and score > TAU1):   # solo si aún es PERMIT
+            media_score = sum(_score_hist[src_ip]) / AVISO_MIN_FL
+            if media_score < TAU_AVISO:
+                telegram_alerta_ip(src_ip,
+                    f"👀 PPI AVISO — TENDENCIA ANÓMALA\n"
+                    f"IP           : {src_ip}\n"
+                    f"Score medio  : {media_score:.4f} (últimos {AVISO_MIN_FL} flows)\n"
+                    f"Umbral aviso : {TAU_AVISO}\n"
+                    f"byte_ratio   : {byte_ratio:.2f}  (normal ≈ 0.95)\n"
+                    f"Hora         : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                log.info(
+                    f"TENDENCIA | src={src_ip} score_medio={media_score:.4f} "
+                    f"byte_ratio={byte_ratio:.2f} | AVISO"
+                )
+
         accion = decidir(score)
         grado  = clasificar_grado(score)
         tipo   = clasificar_tipo(e, score, accion, ssh_intentos, http_requests)
@@ -520,7 +545,8 @@ def main():
                 resp = bloquear_ip(src_ip)
                 log.warning(
                     f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
-                    f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | BLOCK"
+                    f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} "
+                    f"byte_ratio={byte_ratio:.2f} pkt_rate={pkt_rate:.1f} | BLOCK"
                 )
                 telegram_alerta_ip(src_ip,
                     f"🚨 PPI ALERTA — {tipo}\n"
@@ -545,7 +571,8 @@ def main():
                 resp = limitar_ip(src_ip)
                 log.warning(
                     f"SOSPECHOSO | src={src_ip} dst={dest_ip}:{dest_port} "
-                    f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | LIMIT"
+                    f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} "
+                    f"byte_ratio={byte_ratio:.2f} pkt_rate={pkt_rate:.1f} | LIMIT"
                 )
                 telegram_alerta_ip(src_ip,
                     f"⚠️ PPI ALERTA — {tipo}\n"
