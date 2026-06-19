@@ -26,3 +26,60 @@ Se diseñó, implementó y validó un sistema de detección temprana de comporta
 
 El sistema **cumple todos los requisitos definidos** para el PPI. La latencia de decisión es 14× inferior al límite establecido y no se registró ninguna interrupción de tráfico legítimo durante las 40 corridas de validación.
 
+
+---
+
+## 2. Descripción del Sistema
+
+### 2.1 Topología del laboratorio
+
+El sistema se desplegó en un entorno de laboratorio virtualizado compuesto por cinco máquinas con roles diferenciados:
+
+| IP | Máquina Virtual | Rol |
+|---|---|---|
+| 192.168.0.10 | Windows 11 | Cliente de red |
+| 192.168.0.20 | Ubuntu Desktop | Administrador / origen de tráfico normal |
+| 192.168.0.100 | Kali Linux | Origen de tráfico anómalo (ataques controlados) |
+| 192.168.0.110 | Ubuntu Sensor | Sensor de red — Suricata 7.0.3 + motor de decisión |
+| 192.168.0.120 | Ubuntu Server | Servicio objetivo — nginx :80, SSH :22 |
+
+El sensor (192.168.0.110) actúa como punto de inspección inline: captura todos los flows que atraviesan la red, los clasifica con el modelo y aplica las reglas de control directamente sobre el tráfico mediante `iptables/ipset`.
+
+### 2.2 Pipeline de procesamiento (6 fases)
+
+El sistema se construyó en seis fases encadenadas, cada una con entradas y salidas bien definidas:
+
+```
+eve.json (Suricata 7.0.3)
+    │
+    ├─ F1  Captura de tráfico     → eve.json.gz por escenario (nomenclatura YYYYMMDD_grupo_escenario_NN)
+    ├─ F2  Parseo y etiquetado    → dataset_raw.csv → dataset_clean.csv → train/val/test (70/15/15)
+    ├─ F3  Modelado offline       → isolation_forest.pkl + scaler.pkl + metricas_offline.txt (τ1, τ2)
+    ├─ F4  Motor de decisión      → tail eve.json → features → score IF → PERMIT / LIMIT / BLOCK
+    ├─ F5  Control inline         → ipset ppi_blocked / ppi_limited → iptables DROP / HASHLIMIT
+    └─ F6  Validación             → 40 corridas (13 escenarios × ~3 repeticiones) → resultados_f6_completo.csv
+```
+
+Todas las fases fueron completadas y validadas. Los artefactos de cada fase son prerrequisito de la siguiente: si `metricas_offline.txt` (F3) no existe, el motor (F4) no puede arrancar.
+
+### 2.3 Las 14 features del modelo
+
+Las features se extraen directamente de los campos de cada flow en `eve.json`. Las primeras cuatro son nativas de Suricata; las diez restantes son derivadas calculadas en el parser:
+
+| # | Feature | Tipo | Descripción |
+|---|---|---|---|
+| 1 | `pkts_toserver` | nativa | Paquetes enviados al servidor |
+| 2 | `pkts_toclient` | nativa | Paquetes enviados al cliente |
+| 3 | `bytes_toserver` | nativa | Bytes enviados al servidor |
+| 4 | `bytes_toclient` | nativa | Bytes enviados al cliente |
+| 5 | `duration` | derivada | Duración del flow en segundos |
+| 6 | `pkt_rate` | derivada | Paquetes por segundo (`pkts_total / duration`) |
+| 7 | `byte_rate` | derivada | Bytes por segundo (`bytes_total / duration`) |
+| 8 | `pkt_ratio` | derivada | `pkts_toserver / (pkts_toclient + 1)` |
+| 9 | `byte_ratio` | derivada | `bytes_toserver / (bytes_toclient + 1)` |
+| 10 | `avg_pkt_size` | derivada | Tamaño promedio de paquete |
+| 11 | `is_tcp` | derivada | 1 si el protocolo es TCP, 0 si no |
+| 12 | `is_udp` | derivada | 1 si el protocolo es UDP, 0 si no |
+| 13 | `is_icmp` | derivada | 1 si el protocolo es ICMP, 0 si no |
+| 14 | `dest_port` | derivada | Puerto de destino del flow |
+
