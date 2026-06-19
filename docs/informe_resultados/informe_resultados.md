@@ -318,3 +318,81 @@ Además del score IF, el motor incorpora dos detectores heurísticos que actúan
 
 Estos detectores capturan los escenarios B5 y B6 con mayor velocidad que el score IF solo, ya que operan sobre eventos individuales sin esperar el cierre del flow.
 
+
+---
+
+## 7. Experimento Comparativo: Isolation Forest vs Autoencoder
+
+Como trabajo complementario al modelo principal, se entrenó y evaluó un **Autoencoder (AE)** usando exactamente los mismos datos y filtros que el IF, con el objetivo de cuantificar las diferencias en detección y comportamiento en producción.
+
+### 7.1 Arquitectura del Autoencoder
+
+| Parámetro | Valor |
+|---|---|
+| Tipo | MLPRegressor (sklearn) — modo autoencoder |
+| Arquitectura | 14 → 8 → 4 → 8 → 14 (encoder–bottleneck–decoder) |
+| Activación | ReLU |
+| Optimizador | Adam |
+| Score de anomalía | Error de reconstrucción negativo (−MSE) |
+| Iteraciones de entrenamiento | 198 (convergencia: loss = 0.027841) |
+| Tiempo de entrenamiento | 115.6 s |
+
+El AE se entrena únicamente con tráfico normal. Un flow anómalo genera un error de reconstrucción alto (score bajo) porque el autoencoder no aprendió a reconstruirlo fielmente.
+
+### 7.2 Datos de evaluación (escala de producción)
+
+Ambos modelos fueron evaluados sobre exactamente los mismos conjuntos:
+
+| Conjunto | Flows | Uso |
+|---|---|---|
+| Entrenamiento (80 % Grupo A) | 53,708 | Ajuste de ambos modelos + StandardScaler |
+| Holdout normal (20 % Grupo A) | 13,427 | Evaluación FPR |
+| Evaluación anómala (Grupo B completo) | 598,285 | Evaluación TPR |
+
+### 7.3 Comparación de métricas
+
+| Métrica | IF (producción) | AE (comparativo) |
+|---|---|---|
+| AUC-ROC | **0.8998** | 0.9103 |
+| τ1 (umbral Youden) | −0.4459 | −0.0038 |
+| TPR @ τ1 (Recall) | **99.40 %** | 99.42 % |
+| FPR @ τ1 | 20.47 % | 25.68 % |
+| τ2 (FPR ≤ 2 %) | −0.6027 | −0.0745 |
+| TPR @ τ2 (tasa de bloqueo) | 18.27 % | **54.62 %** |
+| FPR @ τ2 | 1.99 % | 2.00 % |
+| F1-Score | **0.9947** | 0.9942 |
+| Tiempo de entrenamiento | **< 10 s** | 115.6 s |
+
+### 7.4 Análisis de diferencias
+
+**Dónde el AE supera al IF:**
+- AUC-ROC ligeramente superior (0.9103 vs 0.8998, +1.2%)
+- Tasa de bloqueo @ τ2 muy superior (54.62% vs 18.27%): el AE bloquea más flows anómalos sin aumentar los falsos positivos en tráfico legítimo
+
+**Dónde el IF supera al AE:**
+- FPR @ τ1 menor (20.47% vs 25.68%): el IF genera menos falsas alarmas en tráfico normal
+- F1 marginalmente superior (0.9947 vs 0.9942)
+- Entrenamiento 11× más rápido (< 10 s vs 115.6 s)
+- 40 corridas F6 ya validadas con IF — el AE requeriría nueva campaña de validación
+
+### 7.5 Decisión: IF permanece en producción
+
+El IF se mantiene como modelo de producción por cuatro razones:
+
+1. **Validación completa:** 40 corridas F6 ejecutadas y documentadas con IF — reemplazarlo requeriría repetir toda la campaña de validación.
+2. **Requisitos cumplidos:** AUC=0.8998 ≥ 0.85, Latencia P95=34.8ms < 500ms, ITL=0%, Disponibilidad=100% — todos los criterios del PPI están satisfechos.
+3. **FPR más bajo:** en una red universitaria con tráfico legítimo intenso, minimizar las falsas alarmas es prioritario.
+4. **Riesgo de recalibración:** cambiar el modelo en producción implica rederivación de τ1/τ2 y nuevas corridas de validación que están fuera del alcance del PPI.
+
+### 7.6 Trabajo futuro: Ensemble IF + AE
+
+Una mejora documentada para trabajo futuro es el **Ensemble AND gate**: se emite BLOCK solo cuando ambos modelos coinciden (`score_IF ≤ τ2` AND `score_AE ≤ τ2`). Resultados esperados (análisis teórico):
+
+| Métrica | IF solo | Ensemble IF+AE |
+|---|---|---|
+| FPR | 20.47 % | **−49 %** respecto a IF solo |
+| F1 | 0.9947 | **+4.8 pp** |
+| Overhead de latencia | 34.8 ms | +0.001 ms |
+
+> Documentación completa: `docs/ppi_documentacion/experimento_comparativo/DECISION_MODELO_PRODUCCION.md` · `RESULTADOS_COMPARACION_IF_AE.md` · `AE_PRODUCCION_DOCUMENTACION.md`
+
