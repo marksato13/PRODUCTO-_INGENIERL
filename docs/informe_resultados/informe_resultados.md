@@ -120,3 +120,63 @@ Se definieron 13 escenarios organizados en tres grupos según el tipo de tráfic
 
 El Grupo C es el escenario más exigente: el motor debe mantener ITL=0% (no bloquear tráfico legítimo) mientras detecta y bloquea el tráfico anómalo que llega simultáneamente desde la misma red.
 
+
+---
+
+## 4. Análisis Exploratorio de Features (EDA)
+
+Antes de realizar el split 80/20 y entrenar el modelo, se realizó un análisis exploratorio descriptivo sobre el universo completo de flows capturados. El objetivo es verificar que las 14 features discriminan entre tráfico normal y anómalo, y entender la distribución de cada grupo.
+
+### 4.1 Datos analizados
+
+| Grupo | Tipo | Flows totales | Archivos |
+|---|---|---|---|
+| A | Normal | 67,135 | 28 |
+| B | Anómalo | 302,892 | 13 |
+| C | Mixto | 31,397 | 6 |
+| **Total** | — | **401,424** | **47** |
+
+### 4.2 Feature más discriminante: `byte_ratio`
+
+`byte_ratio = bytes_toserver / (bytes_toclient + 1)`
+
+En tráfico normal el servidor responde con volumen similar al recibido. En ataques de inundación (SYN flood, UDP flood) los paquetes enviados superan masivamente los recibidos, disparando esta métrica:
+
+| Estadístico | Grupo A (Normal) | Grupo B (Anómalo) | Ratio |
+|---|---|---|---|
+| Mediana | 0.955 | 60.000 | **62.8×** |
+
+![Distribuciones log₁₀ de features clave — A (azul), B (rojo), C (verde)](../../results/eda/eda_01_distribuciones.png)
+
+![Boxplots Grupo A vs Grupo B — escala logarítmica](../../results/eda/eda_03_boxplots.png)
+
+### 4.3 Distribución de protocolos por grupo
+
+| Protocolo | Grupo A (Normal) | Grupo B (Anómalo) |
+|---|---|---|
+| TCP | 99.6 % | 59.4 % |
+| UDP | 0.4 % | 21.9 % |
+| ICMP | 0.0 % | 18.7 % |
+
+El tráfico normal usa casi exclusivamente TCP (HTTP y SSH). El tráfico anómalo muestra diversidad de protocolos por los escenarios de flood UDP e ICMP, lo que hace que las features `is_udp` e `is_icmp` sean útiles para el modelo.
+
+![Distribución de protocolos por grupo](../../results/eda/eda_02_protocolo.png)
+
+### 4.4 Correlación entre features
+
+![Heatmap de correlación Pearson 14×14 — Grupo A (izquierda) y Grupo B (derecha)](../../results/eda/eda_04_correlacion.png)
+
+En el Grupo A las features de bytes y paquetes presentan alta correlación entre sí (r > 0.9), lo esperado en tráfico HTTP/SSH simétrico. En el Grupo B esta correlación se rompe: `byte_ratio` y `pkt_ratio` se desacoplan de las features de volumen absoluto, señal característica de los ataques de inundación unidireccionales.
+
+### 4.5 Puertos de destino
+
+![Top-10 puertos de destino por grupo](../../results/eda/eda_05_dest_ports.png)
+
+El Grupo A concentra el 100% del tráfico en los puertos :80 (HTTP) y :22 (SSH). El Grupo B distribuye el tráfico en :80, :22 y :53 (UDP flood al DNS), con menor concentración por puerto al incluir escaneos de múltiples puertos (B2 port scan).
+
+### 4.6 Discriminabilidad estadística
+
+Las 14 features fueron evaluadas con el test no paramétrico Mann-Whitney U (Grupo A vs Grupo B). Resultado: **14/14 features con p < 0.001**, confirmando que todas contribuyen información discriminante al modelo.
+
+![Tabla de estadísticas descriptivas por grupo](../../results/eda/eda_06_stats_tabla.png)
+
