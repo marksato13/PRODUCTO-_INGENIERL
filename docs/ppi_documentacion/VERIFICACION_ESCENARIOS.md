@@ -1,6 +1,6 @@
 # Verificación de Escenarios — Flujos de Decisión del Motor
 
-**Sistema:** Detección temprana de comportamientos anómalos mediante Isolation Forest  
+**Sistema:** Detección temprana de comportamientos anómalos en redes de datos mediante aprendizaje automático y un mecanismo de control en tiempo real  
 **Universidad:** Universidad Peruana Unión — PPI Ingeniería de Sistemas  
 **Validado:** 2026-06-17 | Motor activo con τ1=−0.4459, τ2=−0.6027
 

@@ -1,7 +1,7 @@
 # Interpretación de Figuras y Resultados EDA
 
 **Documento complementario al Informe de Resultados**
-**PPI — Sistema de Detección Temprana de Comportamientos Anómalos en Redes de Datos**
+**PPI — Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real**
 Universidad Peruana Unión · Junio 2026
 
 ---

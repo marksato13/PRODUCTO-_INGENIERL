@@ -1,6 +1,6 @@
 # Decisión de Modelo en Producción — Por qué nos quedamos con Isolation Forest
 
-**Proyecto:** PPI UPeU — Detección Temprana de Anomalías en Redes  
+**Proyecto:** PPI UPeU — Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real  
 **Estudiante:** Rubén Mark Salazar Tocas  
 **Fecha de decisión:** 2026-06-19  
 **Modelo activo:** `config/modelo_activo.txt` = `"IF"`

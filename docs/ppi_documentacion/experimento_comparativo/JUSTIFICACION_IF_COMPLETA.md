@@ -1,6 +1,6 @@
 # Justificación Experimental: Isolation Forest como Modelo Óptimo
 
-**Proyecto:** PPI UPeU 2026 — Detección temprana de comportamientos anómalos en redes  
+**Proyecto:** PPI UPeU 2026 — Detección temprana de comportamientos anómalos en redes de datos mediante aprendizaje automático y un mecanismo de control en tiempo real  
 **Autor:** Rubén Mark Salazar Tocas  
 **Fecha:** 2026-06-17  
 **Evidencia:** 7 modelos comparados sobre el mismo dataset y protocolo experimental

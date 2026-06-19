@@ -1,6 +1,6 @@
 # Guion de Presentación — XV Jornada Científica EP Ing. Sistemas UPeU 2026
 
-**Proyecto:** Sistema de Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Isolation Forest  
+**Proyecto:** Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real  
 **Estudiante:** Rubén Mark Salazar Tocas  
 **Asesores:** Ing. Nemias Saboya Rios · Ing. Fernando Manuel Asin Gomez  
 **Orden según pizarrón:** ① Carátula → ② Problema → ③ Objetivos → ④ Método + Producto Ingenieril → ⑤ Resultados → ⑥ Conclusiones
@@ -10,7 +10,7 @@
 ## DIAPOSITIVA 1 — CARÁTULA
 
 ### Lo que va en la diapositiva
-- **Título:** Sistema de Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Isolation Forest
+- **Título:** Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real
 - **Subtítulo:** XV Jornada Científica — EP Ingeniería de Sistemas · UPeU
 - **Nombre:** Rubén Mark Salazar Tocas
 - **Asesor:** Ing. Nemias Saboya Rios

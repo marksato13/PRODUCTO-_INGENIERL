@@ -1,6 +1,6 @@
 # Autoencoder en Producción — Documentación Completa
 
-**Proyecto:** PPI UPeU — Detección Temprana de Anomalías en Redes  
+**Proyecto:** PPI UPeU — Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real  
 **Estudiante:** Rubén Mark Salazar Tocas  
 **Fecha:** 2026-06-19  
 **Restricción crítica:** El MVP (`motor_decision.py`, `isolation_forest.pkl`, `metricas_offline.txt`, `ppi-motor.service`) NO fue modificado en ningún momento.

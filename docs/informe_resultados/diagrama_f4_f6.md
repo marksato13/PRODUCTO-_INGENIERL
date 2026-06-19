@@ -1,6 +1,6 @@
 # Diagramas de Flujo — Fase 4 y Fase 6
 
-**PPI — Sistema de Detección Temprana de Comportamientos Anómalos**
+**PPI — Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real**
 Universidad Peruana Unión · Junio 2026
 
 ---

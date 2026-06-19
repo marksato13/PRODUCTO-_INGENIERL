@@ -1,6 +1,6 @@
 ================================================================================
 EDA — ESTADÍSTICAS DESCRIPTIVAS POR GRUPO Y FEATURE
-PPI UPeU 2026 | Generado: 2026-06-19 04:17
+PPI UPeU 2026 | Generado: 2026-06-19 08:28
 Grupo A: 67,135 flows | Grupo B: 302,892 flows | Grupo C: 31,397 flows
 ================================================================================
 

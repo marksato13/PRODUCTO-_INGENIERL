@@ -1,6 +1,6 @@
 # PLAN MAESTRO — Comparación Experimental de Modelos de Detección de Anomalías
 
-**Proyecto:** PPI UPeU — Detección temprana de comportamientos anómalos en redes  
+**Proyecto:** PPI UPeU — Detección temprana de comportamientos anómalos en redes de datos mediante aprendizaje automático y un mecanismo de control en tiempo real  
 **Objetivo:** Demostrar científicamente que Isolation Forest es la elección óptima para este dataset  
 **Fecha:** 2026-06-17  
 **Estado:** PLANIFICACIÓN — implementar fase por fase

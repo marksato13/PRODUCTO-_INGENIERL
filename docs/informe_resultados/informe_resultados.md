@@ -1,4 +1,4 @@
-# Informe de Resultados — Sistema de Detección Temprana de Comportamientos Anómalos en Redes de Datos
+# Informe de Resultados — Detección Temprana de Comportamientos Anómalos en Redes de Datos mediante Aprendizaje Automático y un Mecanismo de Control en Tiempo Real
 
 **Universidad Peruana Unión — Proyecto de Investigación (PPI)**
 **Integrantes:** Rubén Mark Salazar Tocas · Elías Uziel Sauñe Fernández
