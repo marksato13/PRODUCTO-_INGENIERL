@@ -1,0 +1,14 @@
+escenario,n_flows,auc
+20260602_anom_bruteforce_01_eve.json.gz,2061,0.9636
+20260602_anom_httpabuse_01_eve.json.gz,13889,0.9522
+20260602_anom_icmpflood_01_eve.json.gz,23460,0.9966
+20260602_anom_portscan_01_eve.json.gz,3258,0.7734
+20260602_anom_synflood_01_eve.json.gz,95393,0.8563
+20260602_anom_udpflood_01_eve.json.gz,18168,0.9701
+20260603_anom_bruteforce_01_eve.json.gz,100000,0.7739
+20260615_anom_bruteforce_01_eve.json.gz,4824,0.8886
+20260615_anom_httpabuse_01_eve.json.gz,36902,0.8960
+20260615_anom_icmpflood_01_eve.json.gz,100000,0.9996
+20260615_anom_portscan_01_eve.json.gz,100000,0.9134
+20260615_anom_synflood_01_eve.json.gz,330,0.8122
+20260615_anom_udpflood_01_eve.json.gz,100000,0.9787
