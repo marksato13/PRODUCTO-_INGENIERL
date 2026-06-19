@@ -396,3 +396,52 @@ Una mejora documentada para trabajo futuro es el **Ensemble AND gate**: se emite
 
 > Documentación completa: `docs/ppi_documentacion/experimento_comparativo/DECISION_MODELO_PRODUCCION.md` · `RESULTADOS_COMPARACION_IF_AE.md` · `AE_PRODUCCION_DOCUMENTACION.md`
 
+
+---
+
+## 8. Conclusiones
+
+### 8.1 Cumplimiento de requisitos del PPI
+
+El sistema desarrollado cumple todos los requisitos definidos al inicio del proyecto:
+
+| Requisito | Criterio | Resultado | Estado |
+|---|---|---|---|
+| Capacidad de detección | AUC-ROC ≥ 0.85 | **0.8998** | CUMPLE |
+| Respuesta en tiempo real | Latencia P95 < 500 ms | **34.8 ms** | CUMPLE |
+| No interrumpir tráfico legítimo | ITL = 0 % | **0 %** | CUMPLE |
+| Disponibilidad del motor | 100 % en validación | **100 %** | CUMPLE |
+| Reproducibilidad | ≥ 3 corridas por escenario | **40 corridas totales** | CUMPLE |
+
+### 8.2 Contribuciones principales
+
+1. **Pipeline completo de detección inline:** diseño e implementación de un sistema de 6 fases que va desde la captura de tráfico con Suricata hasta el control activo con `iptables/ipset`, operando en tiempo real sin intervención manual.
+
+2. **Modelo no supervisado sobre tráfico real:** el Isolation Forest fue entrenado y evaluado sobre flows capturados en laboratorio (401,424 flows, 47 archivos, 13 escenarios), no sobre datasets sintéticos o públicos.
+
+3. **EDA con hallazgos concretos:** el análisis exploratorio identificó `byte_ratio` como la feature más discriminante (62.8× entre tráfico normal y anómalo) y confirmó que las 14 features tienen significancia estadística (p < 0.001).
+
+4. **Experimento comparativo documentado:** la evaluación del Autoencoder en las mismas condiciones que el IF aporta una base de comparación objetiva y abre la línea de trabajo futuro del Ensemble.
+
+5. **Lead time cuantificado:** el tiempo de detección de SYN flood fue medido empíricamente en ~62 s, explicado por la ventana de cierre de flows de Suricata — un resultado reproducible y documentado.
+
+### 8.3 Limitaciones conocidas
+
+| Limitación | Descripción | Mitigación aplicada |
+|---|---|---|
+| FPR = 20.47 % @ τ1 | 1 de cada 5 flows legítimos recibe score de anomalía | Whitelist de IPs internas — nunca se bloquean |
+| Lead time ~62 s | El motor necesita que Suricata cierre el flow TCP para decidir | Detectores heurísticos (SSH/HTTP) actúan sobre eventos individuales sin esperar cierre |
+| Entorno de laboratorio | Topología de 5 VMs, no red universitaria real | Los escenarios cubren los tipos de ataque más frecuentes en redes LAN universitarias |
+| Modelo estático | El IF no se reentrena automáticamente con nuevo tráfico | Procedimiento de reentrenamiento documentado en F3_especificacion.md |
+
+### 8.4 Trabajo futuro
+
+- **Ensemble IF + AE (AND gate):** reducción teórica de FPR en 49% con overhead de latencia de 0.001 ms.
+- **Reentrenamiento periódico:** incorporar nuevas capturas de tráfico normal para mantener el modelo actualizado ante cambios en los patrones de la red.
+- **Despliegue en red real:** migrar el sistema de laboratorio a la red de la Universidad Peruana Unión con monitoreo de deriva de distribución.
+- **Alertas y notificaciones:** integrar el motor con un sistema de alertas (email, Slack) para notificar decisiones BLOCK en tiempo real.
+
+---
+
+*Informe generado el 2026-06-19. Todos los artefactos, scripts y resultados se encuentran en el repositorio del proyecto en el sensor 192.168.0.110:/home/m4rk/ppi-surikata-producto/.*
+
