@@ -180,3 +180,75 @@ Las 14 features fueron evaluadas con el test no paramétrico Mann-Whitney U (Gru
 
 ![Tabla de estadísticas descriptivas por grupo](../../results/eda/eda_06_stats_tabla.png)
 
+
+---
+
+## 5. Modelo de Detección — Isolation Forest
+
+### 5.1 Selección del algoritmo
+
+Se eligió **Isolation Forest (IF)** por tres razones principales:
+
+1. **Aprendizaje no supervisado:** el modelo se entrena únicamente con tráfico normal (Grupo A), sin requerir muestras etiquetadas de ataques. Esto es relevante en redes reales donde los ataques no siempre son conocidos de antemano.
+2. **Eficiencia computacional:** tiempo de entrenamiento < 10 s para 53,708 flows; inferencia en < 1 ms por flow, compatible con operación inline.
+3. **Interpretabilidad del score:** el score de anomalía IF ∈ (−1, 0) es continuo y permite derivar umbrales de decisión con criterios estadísticos objetivos (índice de Youden, FPR objetivo).
+
+### 5.2 Datos de entrenamiento
+
+El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), aplicando un split 80/20 cronológico:
+
+| Conjunto | Flows | Uso |
+|---|---|---|
+| Entrenamiento (80 %) | 53,708 | Ajuste del modelo IF + StandardScaler |
+| Holdout normal (20 %) | 13,427 | Evaluación FPR (falsos positivos en tráfico legítimo) |
+| Evaluación anómala | 598,285 | Grupo B completo — evaluación TPR (detección real) |
+
+### 5.3 Hiperparámetros del modelo
+
+| Parámetro | Valor | Justificación |
+|---|---|---|
+| `n_estimators` | 300 | AUC estable a partir de n=200; 300 garantiza robustez |
+| `contamination` | 0.05 | Prior conservador: ~5 % de anomalías esperadas |
+| `random_state` | 42 | Reproducibilidad exacta del `.pkl` en cada entrenamiento |
+| `max_samples` | `auto` | `min(256, n_samples)` — valor por defecto sklearn |
+| `max_features` | 1.0 | Usa las 14 features en cada árbol |
+| `sklearn` | 1.9.0 | Fijado en venv — sin mismatch de versiones con el motor |
+
+### 5.4 Derivación de umbrales de decisión
+
+Los umbrales se derivan automáticamente de la curva ROC calculada sobre el conjunto de evaluación (holdout normal + Grupo B):
+
+| Umbral | Valor | Criterio de derivación | Acción |
+|---|---|---|---|
+| τ1 | **−0.4459** | Índice de Youden (maximiza TPR − FPR) | `score > τ1` → **PERMIT** |
+| τ2 | **−0.6027** | FPR ≤ 2 % en tráfico normal | `τ2 < score ≤ τ1` → **LIMIT** (100 pkt/s) |
+| — | — | — | `score ≤ τ2` → **BLOCK** (DROP) |
+
+Los valores τ1/τ2 se almacenan en `results/metricas_offline.txt` y son leídos por el motor en cada arranque. Si se reentrena el modelo, solo es necesario reiniciar el servicio para que los nuevos umbrales entren en vigor.
+
+### 5.5 Scores IF por tipo de tráfico
+
+| Tipo de tráfico | Score IF típico | Decisión esperada |
+|---|---|---|
+| HTTP normal (A1) | −0.10 a −0.25 | PERMIT |
+| SSH legítimo (A2) | −0.15 a −0.30 | PERMIT |
+| SYN flood (B1) | −0.65 a −0.80 | BLOCK |
+| Port scan (B2) | −0.55 a −0.70 | BLOCK |
+| UDP flood (B3) | −0.70 a −0.85 | BLOCK |
+| ICMP flood (B4) | −0.68 a −0.82 | BLOCK |
+| Brute force SSH (B6) | −0.50 a −0.65 | LIMIT / BLOCK |
+
+### 5.6 Métricas del modelo (evaluación offline)
+
+| Métrica | Valor |
+|---|---|
+| AUC-ROC | **0.8998** |
+| Precisión | **99.54 %** |
+| Recall (TPR @ τ1) | **99.40 %** |
+| F1-Score | **0.9947** |
+| FPR @ τ1 | 20.47 % (mitigado con whitelist) |
+| TPR @ τ2 (tasa de bloqueo) | 18.27 % |
+| FPR @ τ2 | 1.99 % |
+
+> **Nota sobre FPR=20.47 %:** este valor se mitiga en producción mediante una whitelist de IPs internas (192.168.0.20, 192.168.0.110, 192.168.0.120, entre otras) que nunca son bloqueadas. Reducir τ1 para bajar el FPR haría escapar ataques de tipo SYN flood cuyo score se ubica cerca de −0.49.
+
