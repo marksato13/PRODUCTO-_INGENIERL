@@ -546,7 +546,72 @@ Por eso `systemctl start ppi-motor.service` depende de haber completado F3.
 
 ---
 
-## 13. Secuencia técnica completa F3
+
+## 13. EDA — Análisis Exploratorio de Features (previo al split 80/20)
+
+El EDA se realiza **antes del split 80/20**, usando el universo completo de flows capturados (Grupos A, B y C). Es un paso puramente exploratorio: no modifica los datos, no filtra samples ni introduce sesgos hacia el conjunto de entrenamiento. Su propósito es confirmar que las 14 features discriminan efectivamente entre tráfico normal y anómalo.
+
+### 13.1 Datos analizados
+
+| Grupo | Tipo | Flows totales | Archivos |
+|---|---|---|---|
+| A | Normal (Desktop → Server) | 67,135 | 28 |
+| B | Anómalo (Kali → Server) | 302,892 | 13 |
+| C | Mixto (Desktop + Kali) | 31,397 | 6 |
+
+> Las gráficas se generan sobre muestras de 15,000 flows por grupo (random_state=42). Las estadísticas descriptivas usan los datos completos.
+
+### 13.2 Hallazgos clave
+
+**Feature más discriminante: `byte_ratio`**
+
+| Grupo | Mediana `byte_ratio` |
+|---|---|
+| A (Normal) | 0.955 |
+| B (Anómalo) | 60.000 |
+| **Ratio A→B** | **62.8×** |
+
+`byte_ratio = bytes_toserver / (bytes_toclient + 1)`. En tráfico de inundación (SYN flood, UDP flood) los bytes enviados superan masivamente los recibidos, disparando esta métrica.
+
+**Protocolo por grupo:**
+
+| Protocolo | Grupo A (Normal) | Grupo B (Anómalo) |
+|---|---|---|
+| TCP | 99.6% | 59.4% |
+| UDP | 0.4% | 21.9% |
+| ICMP | 0.0% | 18.7% |
+
+El Grupo A usa casi exclusivamente TCP (HTTP/SSH). El Grupo B muestra diversidad de protocolos por los escenarios de flood UDP e ICMP.
+
+**Discriminabilidad estadística:** las 14 features presentan diferencias significativas entre grupos A y B (test Mann-Whitney, p < 0.001 en todas). Las features de volumen (`bytes_*`, `pkts_*`) y las derivadas (`pkt_rate`, `byte_rate`, `byte_ratio`) son las más separables.
+
+### 13.3 Gráficas generadas (`results/eda/`)
+
+| Archivo | Contenido |
+|---|---|
+| `eda_01_distribuciones.png` | Histogramas log₁₀ de 6 features clave (pkt_rate, byte_rate, duration, byte_ratio, bytes_toserver, pkts_toserver). A=azul, B=rojo, C=verde |
+| `eda_02_protocolo.png` | Distribución TCP/UDP/ICMP en barras apiladas por grupo |
+| `eda_03_boxplots.png` | Boxplots A vs B en escala log para 6 features (outliers visibles) |
+| `eda_04_correlacion.png` | Heatmap Pearson 14×14 para Grupo A y Grupo B (paneles separados) |
+| `eda_05_dest_ports.png` | Top-10 puertos destino por grupo (concentración en :80, :22, :53) |
+| `eda_06_stats_tabla.png` | Tabla visual de estadísticas descriptivas (mediana, IQR, max) por grupo |
+
+### 13.4 Cómo reproducir el EDA
+
+```bash
+# En sensor (192.168.0.110), con el venv activo:
+source /home/m4rk/ppi-sensor/venv/bin/activate
+cd /home/m4rk/ppi-surikata-producto
+python3 scripts/eda_features.py
+# Salida: results/eda/eda_0{1..6}_*.png  +  results/eda/eda_stats_completas.txt
+# Tiempo estimado: ~3 min (carga 401K flows)
+```
+
+> Documentación completa del EDA y justificación metodológica: `docs/respuestas_asesor/05_EDA_FEATURES.md`
+
+---
+
+## 14. Secuencia técnica completa F3
 
 ```bash
 # ── EN SENSOR (192.168.0.110) ─────────────────────────────────────────────
@@ -579,7 +644,7 @@ grep "tau1\|tau2\|τ1\|τ2" results/motor_decision.log | tail -1
 
 ---
 
-## 14. Criterios de éxito (salida de F3)
+## 15. Criterios de éxito (salida de F3)
 
 | Criterio | Comando de verificación | Resultado esperado |
 |---|---|---|
@@ -606,7 +671,7 @@ y aplicar PERMIT / LIMIT / BLOCK via ipset en el servidor.
 
 ---
 
-## 15. Experimento comparativo: Autoencoder (AE) en paralelo
+## 16. Experimento comparativo: Autoencoder (AE) en paralelo
 
 Como experimento comparativo, se entrenó un **Autoencoder (MLPRegressor sklearn, 14→8→4→8→14)** usando los mismos datos y filtros que el IF:
 
