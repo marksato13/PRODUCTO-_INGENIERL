@@ -252,3 +252,69 @@ Los valores τ1/τ2 se almacenan en `results/metricas_offline.txt` y son leídos
 
 > **Nota sobre FPR=20.47 %:** este valor se mitiga en producción mediante una whitelist de IPs internas (192.168.0.20, 192.168.0.110, 192.168.0.120, entre otras) que nunca son bloqueadas. Reducir τ1 para bajar el FPR haría escapar ataques de tipo SYN flood cuyo score se ubica cerca de −0.49.
 
+
+---
+
+## 6. Validación en Tiempo Real (F6 — 40 Corridas)
+
+### 6.1 Diseño de la validación
+
+La Fase 6 ejecutó el motor de decisión en operación continua durante 40 corridas independientes, cubriendo los 13 escenarios definidos en distintos grupos de validación:
+
+| Grupo de corridas | Corridas | Escenarios cubiertos |
+|---|---|---|
+| Normal | 1–10 | Tráfico legítimo sostenido (A1–A4) |
+| Mixto | 11–20 | SYN flood, port scan, UDP flood, HTTP abuse + tráfico normal simultáneo |
+| Reevaluación | 21–30 | Repetición de escenarios mixtos (robustez) |
+| Final | 31–40 | Validación cierre — mismos escenarios mixtos |
+
+Cada corrida tuvo una duración de 300–317 segundos con al menos 2 minutos de separación entre corridas para garantizar la rotación del `eve.json` y la limpieza de ipset.
+
+### 6.2 Resultados de disponibilidad e ITL
+
+| Métrica | Resultado | Descripción |
+|---|---|---|
+| Disponibilidad del motor | **100 %** (40/40) | El servicio `ppi-motor.service` no presentó caídas en ninguna corrida |
+| Interrupción de Tráfico Legítimo (ITL) | **0 %** (40/40) | Ningún flow de tráfico normal fue bloqueado |
+| Corridas con detección activa | **10/40** | Corridas de escenarios anómalos/mixtos con decisión BLOCK o LIMIT |
+| Corridas sin falsos positivos | **40/40** | Ninguna corrida normal generó bloqueos |
+
+### 6.3 Latencia del pipeline
+
+Medida sobre 1,000 flows procesados en condiciones reales (sensor en operación, Suricata activo):
+
+| Estadístico | Valor | Requisito |
+|---|---|---|
+| Latencia media | 34.5 ms | — |
+| Latencia mínima | 34.2 ms | — |
+| Latencia máxima | 38.7 ms | — |
+| **Latencia P95** | **34.8 ms** | **< 500 ms → CUMPLE** |
+| Throughput | 29 flows / segundo | — |
+
+La latencia P95 de 34.8 ms es **14× inferior** al límite de 500 ms establecido en el plan del PPI.
+
+### 6.4 Lead time de detección — SYN Flood
+
+El lead time es el tiempo transcurrido desde el inicio del ataque hasta que el motor emite la primera decisión BLOCK. Se midió en la corrida 11 (escenario SYN flood, tráfico mixto):
+
+| Parámetro | Valor |
+|---|---|
+| Corrida | 11 (grupo mixto, synflood) |
+| Lead time medido | **61.92 s** |
+| Flows legítimos activos en paralelo | 6,500 |
+| ITL durante el ataque | **0 %** |
+| Decisiones emitidas | BLOCK (1) + LIMIT (1) |
+
+El lead time de ~62 s está determinado por la ventana de acumulación de paquetes de Suricata (cierre de flows TCP): el motor no puede decidir sobre un flow hasta que Suricata lo cierra. Este valor es reproducible en las corridas de SYN flood de los grupos reeval y final.
+
+### 6.5 Detectores heurísticos complementarios
+
+Además del score IF, el motor incorpora dos detectores heurísticos que actúan sobre contadores de eventos, independientemente del score:
+
+| Detector | Umbral LIMIT | Umbral BLOCK | Ventana |
+|---|---|---|---|
+| Brute Force SSH | 5 intentos | 15 intentos | 60 s |
+| HTTP Abuse | 50 req | 100 req | 30 s |
+
+Estos detectores capturan los escenarios B5 y B6 con mayor velocidad que el score IF solo, ya que operan sobre eventos individuales sin esperar el cierre del flow.
+
