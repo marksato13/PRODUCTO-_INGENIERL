@@ -1,7 +1,7 @@
 # Informe de Resultados — Sistema de Detección Temprana de Comportamientos Anómalos en Redes de Datos
 
 **Universidad Peruana Unión — Proyecto de Investigación (PPI)**
-**Estudiante:** Rubén Mark Salazar Tocas
+**Integrantes:** Rubén Mark Salazar Tocas · Elías Uziel Sauñe Fernández
 **Asesores:** Ing. Nemias Saboya Rios · Ing. Fernando Manuel Asin Gomez
 **Fecha:** Junio 2026
 
@@ -12,6 +12,8 @@
 Se diseñó, implementó y validó un sistema de detección temprana de comportamientos anómalos en redes de datos universitarias, basado en el algoritmo **Isolation Forest** entrenado sobre 14 features extraídas de flows de red capturados con **Suricata 7.0.3**. El sistema opera en modo inline sobre el sensor de red, emitiendo decisiones de control de tráfico (**PERMIT / LIMIT / BLOCK**) en tiempo real mediante `iptables/ipset`.
 
 ### Métricas finales del sistema
+
+**Tabla 1.** Métricas finales del sistema
 
 | Métrica | Valor obtenido | Requisito |
 |---|---|---|
@@ -34,6 +36,8 @@ El sistema **cumple todos los requisitos definidos** para el PPI. La latencia de
 ### 2.1 Topología del laboratorio
 
 El sistema se desplegó en un entorno de laboratorio virtualizado compuesto por cinco máquinas con roles diferenciados:
+
+**Tabla 2.** Topología del laboratorio de pruebas
 
 | IP | Máquina Virtual | Rol |
 |---|---|---|
@@ -66,6 +70,8 @@ Todas las fases fueron completadas y validadas. Los artefactos de cada fase son 
 
 Las features se extraen directamente de los campos de cada flow en `eve.json`. Las primeras cuatro son nativas de Suricata; las diez restantes son derivadas calculadas en el parser:
 
+**Tabla 3.** Las 14 features del modelo de detección
+
 | # | Feature | Tipo | Descripción |
 |---|---|---|---|
 | 1 | `pkts_toserver` | nativa | Paquetes enviados al servidor |
@@ -92,6 +98,8 @@ Se definieron 13 escenarios organizados en tres grupos según el tipo de tráfic
 
 ### 3.1 Grupo A — Tráfico Normal (origen: Desktop 192.168.0.20)
 
+**Tabla 4.** Escenarios Grupo A — Tráfico Normal
+
 | ID | Escenario | Herramienta | Duración | Objetivo |
 |---|---|---|---|---|
 | A1 | `http_normal` | `curl` / `wget` → :80 | 10 min | Tráfico HTTP de navegación típica |
@@ -100,6 +108,8 @@ Se definieron 13 escenarios organizados en tres grupos según el tipo de tráfic
 | A4 | `trafico_sostenido` | `curl` + `ssh` mixto | 15 min | Carga continua combinada HTTP+SSH |
 
 ### 3.2 Grupo B — Tráfico Anómalo (origen: Kali 192.168.0.100)
+
+**Tabla 5.** Escenarios Grupo B — Tráfico Anómalo (ataques controlados)
 
 | ID | Escenario | Herramienta | Objetivo del ataque |
 |---|---|---|---|
@@ -111,6 +121,8 @@ Se definieron 13 escenarios organizados en tres grupos según el tipo de tráfic
 | B6 | `bruteforce` | `hydra` → :22 | Fuerza bruta SSH |
 
 ### 3.3 Grupo C — Tráfico Mixto (Desktop + Kali simultáneos)
+
+**Tabla 6.** Escenarios Grupo C — Tráfico Mixto (normal + anómalo simultáneo)
 
 | ID | Escenario | Tráfico normal | Tráfico anómalo |
 |---|---|---|---|
@@ -129,6 +141,8 @@ Antes de realizar el split 80/20 y entrenar el modelo, se realizó un análisis 
 
 ### 4.1 Datos analizados
 
+**Tabla 7.** Distribución del dataset por grupo
+
 | Grupo | Tipo | Flows totales | Archivos |
 |---|---|---|---|
 | A | Normal | 67,135 | 28 |
@@ -142,15 +156,19 @@ Antes de realizar el split 80/20 y entrenar el modelo, se realizó un análisis 
 
 En tráfico normal el servidor responde con volumen similar al recibido. En ataques de inundación (SYN flood, UDP flood) los paquetes enviados superan masivamente los recibidos, disparando esta métrica:
 
+**Tabla 8.** Comparación de `byte_ratio` entre grupos
+
 | Estadístico | Grupo A (Normal) | Grupo B (Anómalo) | Ratio |
 |---|---|---|---|
 | Mediana | 0.955 | 60.000 | **62.8×** |
 
-![Distribuciones log₁₀ de features clave — A (azul), B (rojo), C (verde)](../../results/eda/eda_01_distribuciones.png)
+![Figura 1. Distribuciones log₁₀ de las features clave por grupo — Grupo A (azul), Grupo B (rojo) y Grupo C (verde)](../../results/eda/eda_01_distribuciones.png){width=6.1in}
 
-![Boxplots Grupo A vs Grupo B — escala logarítmica](../../results/eda/eda_03_boxplots.png)
+![Figura 2. Boxplots de las 14 features — Grupo A vs. Grupo B en escala logarítmica](../../results/eda/eda_03_boxplots.png){width=6.1in}
 
 ### 4.3 Distribución de protocolos por grupo
+
+**Tabla 9.** Distribución de protocolos por grupo
 
 | Protocolo | Grupo A (Normal) | Grupo B (Anómalo) |
 |---|---|---|
@@ -160,17 +178,17 @@ En tráfico normal el servidor responde con volumen similar al recibido. En ataq
 
 El tráfico normal usa casi exclusivamente TCP (HTTP y SSH). El tráfico anómalo muestra diversidad de protocolos por los escenarios de flood UDP e ICMP, lo que hace que las features `is_udp` e `is_icmp` sean útiles para el modelo.
 
-![Distribución de protocolos por grupo](../../results/eda/eda_02_protocolo.png)
+![Figura 3. Distribución de protocolos por grupo de tráfico](../../results/eda/eda_02_protocolo.png){width=6.1in}
 
 ### 4.4 Correlación entre features
 
-![Heatmap de correlación Pearson 14×14 — Grupo A (izquierda) y Grupo B (derecha)](../../results/eda/eda_04_correlacion.png)
+![Figura 4. Heatmap de correlación Pearson (14×14) — Grupo A (izquierda) y Grupo B (derecha)](../../results/eda/eda_04_correlacion.png){width=6.1in}
 
 En el Grupo A las features de bytes y paquetes presentan alta correlación entre sí (r > 0.9), lo esperado en tráfico HTTP/SSH simétrico. En el Grupo B esta correlación se rompe: `byte_ratio` y `pkt_ratio` se desacoplan de las features de volumen absoluto, señal característica de los ataques de inundación unidireccionales.
 
 ### 4.5 Puertos de destino
 
-![Top-10 puertos de destino por grupo](../../results/eda/eda_05_dest_ports.png)
+![Figura 5. Top-10 puertos de destino por grupo](../../results/eda/eda_05_dest_ports.png){width=6.1in}
 
 El Grupo A concentra el 100% del tráfico en los puertos :80 (HTTP) y :22 (SSH). El Grupo B distribuye el tráfico en :80, :22 y :53 (UDP flood al DNS), con menor concentración por puerto al incluir escaneos de múltiples puertos (B2 port scan).
 
@@ -178,7 +196,7 @@ El Grupo A concentra el 100% del tráfico en los puertos :80 (HTTP) y :22 (SSH).
 
 Las 14 features fueron evaluadas con el test no paramétrico Mann-Whitney U (Grupo A vs Grupo B). Resultado: **14/14 features con p < 0.001**, confirmando que todas contribuyen información discriminante al modelo.
 
-![Tabla de estadísticas descriptivas por grupo](../../results/eda/eda_06_stats_tabla.png)
+![Figura 6. Estadísticas descriptivas de las 14 features por grupo](../../results/eda/eda_06_stats_tabla.png){width=6.1in}
 
 
 ---
@@ -197,6 +215,8 @@ Se eligió **Isolation Forest (IF)** por tres razones principales:
 
 El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), aplicando un split 80/20 cronológico:
 
+**Tabla 10.** Partición del dataset para entrenamiento y evaluación
+
 | Conjunto | Flows | Uso |
 |---|---|---|
 | Entrenamiento (80 %) | 53,708 | Ajuste del modelo IF + StandardScaler |
@@ -204,6 +224,8 @@ El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), aplicand
 | Evaluación anómala | 598,285 | Grupo B completo — evaluación TPR (detección real) |
 
 ### 5.3 Hiperparámetros del modelo
+
+**Tabla 11.** Hiperparámetros del modelo Isolation Forest
 
 | Parámetro | Valor | Justificación |
 |---|---|---|
@@ -218,6 +240,8 @@ El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), aplicand
 
 Los umbrales se derivan automáticamente de la curva ROC calculada sobre el conjunto de evaluación (holdout normal + Grupo B):
 
+**Tabla 12.** Umbrales de decisión derivados de la curva ROC
+
 | Umbral | Valor | Criterio de derivación | Acción |
 |---|---|---|---|
 | τ1 | **−0.4459** | Índice de Youden (maximiza TPR − FPR) | `score > τ1` → **PERMIT** |
@@ -227,6 +251,8 @@ Los umbrales se derivan automáticamente de la curva ROC calculada sobre el conj
 Los valores τ1/τ2 se almacenan en `results/metricas_offline.txt` y son leídos por el motor en cada arranque. Si se reentrena el modelo, solo es necesario reiniciar el servicio para que los nuevos umbrales entren en vigor.
 
 ### 5.5 Scores IF por tipo de tráfico
+
+**Tabla 13.** Scores IF esperados por tipo de tráfico
 
 | Tipo de tráfico | Score IF típico | Decisión esperada |
 |---|---|---|
@@ -239,6 +265,8 @@ Los valores τ1/τ2 se almacenan en `results/metricas_offline.txt` y son leídos
 | Brute force SSH (B6) | −0.50 a −0.65 | LIMIT / BLOCK |
 
 ### 5.6 Métricas del modelo (evaluación offline)
+
+**Tabla 14.** Métricas offline del modelo Isolation Forest
 
 | Métrica | Valor |
 |---|---|
@@ -261,6 +289,8 @@ Los valores τ1/τ2 se almacenan en `results/metricas_offline.txt` y son leídos
 
 La Fase 6 ejecutó el motor de decisión en operación continua durante 40 corridas independientes, cubriendo los 13 escenarios definidos en distintos grupos de validación:
 
+**Tabla 15.** Grupos de corridas de la Fase 6
+
 | Grupo de corridas | Corridas | Escenarios cubiertos |
 |---|---|---|
 | Normal | 1–10 | Tráfico legítimo sostenido (A1–A4) |
@@ -272,6 +302,8 @@ Cada corrida tuvo una duración de 300–317 segundos con al menos 2 minutos de 
 
 ### 6.2 Resultados de disponibilidad e ITL
 
+**Tabla 16.** Disponibilidad e Interrupción de Tráfico Legítimo (ITL)
+
 | Métrica | Resultado | Descripción |
 |---|---|---|
 | Disponibilidad del motor | **100 %** (40/40) | El servicio `ppi-motor.service` no presentó caídas en ninguna corrida |
@@ -282,6 +314,8 @@ Cada corrida tuvo una duración de 300–317 segundos con al menos 2 minutos de 
 ### 6.3 Latencia del pipeline
 
 Medida sobre 1,000 flows procesados en condiciones reales (sensor en operación, Suricata activo):
+
+**Tabla 17.** Latencia del pipeline de decisión
 
 | Estadístico | Valor | Requisito |
 |---|---|---|
@@ -296,6 +330,8 @@ La latencia P95 de 34.8 ms es **14× inferior** al límite de 500 ms establecido
 ### 6.4 Lead time de detección — SYN Flood
 
 El lead time es el tiempo transcurrido desde el inicio del ataque hasta que el motor emite la primera decisión BLOCK. Se midió en la corrida 11 (escenario SYN flood, tráfico mixto):
+
+**Tabla 18.** Lead time de detección — corrida 11 (SYN flood)
 
 | Parámetro | Valor |
 |---|---|
@@ -313,6 +349,8 @@ El lead time de ~62 s está determinado por la ventana de acumulación de paquet
 
 Además del score IF, el motor incorpora dos detectores heurísticos que actúan sobre contadores de eventos, independientemente del score:
 
+**Tabla 19.** Umbrales de los detectores heurísticos complementarios
+
 | Detector | Umbral LIMIT | Umbral BLOCK | Ventana |
 |---|---|---|---|
 | Brute Force SSH | 5 intentos | 15 intentos | 60 s |
@@ -328,6 +366,8 @@ Estos detectores capturan los escenarios B5 y B6 con mayor velocidad que el scor
 Como trabajo complementario al modelo principal, se entrenó y evaluó un **Autoencoder (AE)** usando exactamente los mismos datos y filtros que el IF, con el objetivo de cuantificar las diferencias en detección y comportamiento en producción.
 
 ### 7.1 Arquitectura del Autoencoder
+
+**Tabla 20.** Arquitectura del Autoencoder comparativo
 
 | Parámetro | Valor |
 |---|---|
@@ -345,6 +385,8 @@ El AE se entrena únicamente con tráfico normal. Un flow anómalo genera un err
 
 Ambos modelos fueron evaluados sobre exactamente los mismos conjuntos:
 
+**Tabla 21.** Datos de evaluación a escala de producción
+
 | Conjunto | Flows | Uso |
 |---|---|---|
 | Entrenamiento (80 % Grupo A) | 53,708 | Ajuste de ambos modelos + StandardScaler |
@@ -352,6 +394,8 @@ Ambos modelos fueron evaluados sobre exactamente los mismos conjuntos:
 | Evaluación anómala (Grupo B completo) | 598,285 | Evaluación TPR |
 
 ### 7.3 Comparación de métricas
+
+**Tabla 22.** Comparación de métricas: Isolation Forest vs. Autoencoder
 
 | Métrica | IF (producción) | AE (comparativo) |
 |---|---|---|
@@ -390,6 +434,8 @@ El IF se mantiene como modelo de producción por cuatro razones:
 
 Una mejora documentada para trabajo futuro es el **Ensemble AND gate**: se emite BLOCK solo cuando ambos modelos coinciden (`score_IF ≤ τ2` AND `score_AE ≤ τ2`). Resultados esperados (análisis teórico):
 
+**Tabla 23.** Beneficios teóricos del Ensemble IF + AE (AND gate)
+
 | Métrica | IF solo | Ensemble IF+AE |
 |---|---|---|
 | FPR | 20.47 % | **−49 %** respecto a IF solo |
@@ -406,6 +452,8 @@ Una mejora documentada para trabajo futuro es el **Ensemble AND gate**: se emite
 ### 8.1 Cumplimiento de requisitos del PPI
 
 El sistema desarrollado cumple todos los requisitos definidos al inicio del proyecto:
+
+**Tabla 24.** Cumplimiento de requisitos del PPI
 
 | Requisito | Criterio | Resultado | Estado |
 |---|---|---|---|
@@ -428,6 +476,8 @@ El sistema desarrollado cumple todos los requisitos definidos al inicio del proy
 5. **Lead time cuantificado:** el tiempo de detección de SYN flood fue medido empíricamente en ~62 s, explicado por la ventana de cierre de flows de Suricata — un resultado reproducible y documentado.
 
 ### 8.3 Limitaciones conocidas
+
+**Tabla 25.** Limitaciones conocidas y mitigaciones aplicadas
 
 | Limitación | Descripción | Mitigación aplicada |
 |---|---|---|

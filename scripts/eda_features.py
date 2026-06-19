@@ -214,7 +214,7 @@ try:
 
     plt.tight_layout()
     p = os.path.join(OUT_DIR, 'eda_01_distribuciones.png')
-    plt.savefig(p, dpi=150)
+    plt.savefig(p, dpi=300)
     plt.close()
     print(f"  ✓ {p}")
 
@@ -259,7 +259,7 @@ try:
 
     plt.tight_layout()
     p = os.path.join(OUT_DIR, 'eda_02_protocolo.png')
-    plt.savefig(p, dpi=150)
+    plt.savefig(p, dpi=300)
     plt.close()
     print(f"  ✓ {p}")
 
@@ -294,7 +294,7 @@ try:
 
     plt.tight_layout()
     p = os.path.join(OUT_DIR, 'eda_03_boxplots.png')
-    plt.savefig(p, dpi=150)
+    plt.savefig(p, dpi=300)
     plt.close()
     print(f"  ✓ {p}")
 
@@ -326,7 +326,7 @@ try:
 
     plt.tight_layout()
     p = os.path.join(OUT_DIR, 'eda_04_correlacion.png')
-    plt.savefig(p, dpi=150)
+    plt.savefig(p, dpi=300)
     plt.close()
     print(f"  ✓ {p}")
 
@@ -358,7 +358,7 @@ try:
 
     plt.tight_layout()
     p = os.path.join(OUT_DIR, 'eda_05_dest_ports.png')
-    plt.savefig(p, dpi=150)
+    plt.savefig(p, dpi=300)
     plt.close()
     print(f"  ✓ {p}")
 
@@ -416,7 +416,7 @@ try:
 
     plt.tight_layout()
     p = os.path.join(OUT_DIR, 'eda_06_stats_tabla.png')
-    plt.savefig(p, dpi=150)
+    plt.savefig(p, dpi=300)
     plt.close()
     print(f"  ✓ {p}")
 
