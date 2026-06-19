@@ -17,6 +17,7 @@ PROJ = '/home/m4rk/ppi-surikata-producto'
 OUT  = PROJ + '/results/informe_final_PPI_UPeU_2026.pdf'
 G    = PROJ + '/results/graficas_f6'
 R    = PROJ + '/results'
+E    = PROJ + '/results/eda'
 
 BLU=(41,128,185); LBLU=(214,234,248)
 GRN=(39,174,96);  LGRN=(213,232,212)
@@ -37,7 +38,7 @@ class PDF(FPDF):
     def header(self):
         if self.page_no()==1: return
         self.set_font('Helvetica','I',8); self.set_text_color(*GRY)
-        self.cell(0,7,'Sistema de Deteccion Temprana de Anomalias | PPI UPeU 2026',**NL)
+        self.cell(0,7,'Deteccion Temprana de Anomalias en Redes | PPI UPeU 2026',**NL)
         self.set_text_color(0,0,0)
     def footer(self):
         self.set_y(-14); self.set_font('Helvetica','I',8)
@@ -153,10 +154,11 @@ pdf.cell(0,6,'PROYECTO PRODUCTIVO DE INVESTIGACION (PPI)',align='C',**NL)
 pdf.ln(4); pdf.set_font('Helvetica','B',17); pdf.set_text_color(*DRK)
 pdf.multi_cell(0,9,'Sistema de Deteccion Temprana de Comportamientos Anomalos en Redes de Datos',align='C')
 pdf.ln(2); pdf.set_font('Helvetica','B',12); pdf.set_text_color(*BLU)
-pdf.multi_cell(0,7,'mediante Isolation Forest y Control Inline con iptables/ipset',align='C')
+pdf.multi_cell(0,7,'mediante Aprendizaje Automatico y un Mecanismo de Control en Tiempo Real',align='C')
 pdf.set_text_color(0,0,0); pdf.ln(8); pdf.hr()
 
-for lbl,val in [('Estudiante:','Ruben Mark Salazar Tocas'),
+for lbl,val in [('Estudiante 1:','Ruben Mark Salazar Tocas'),
+                ('Estudiante 2:','Elias Uziel Sanne Fernandez'),
                 ('Asesor 1:','Ing. Nemias Saboya Rios'),
                 ('Asesor 2:','Ing. Fernando Manuel Asin Gomez'),
                 ('Universidad:','Universidad Peruana Union (UPeU)'),
@@ -235,6 +237,30 @@ pdf.tabla(['Conjunto','Flows','Criterio'],
      ('val.csv','variable','15% siguiente en tiempo'),
      ('test.csv','598,285 (mayoría anomalos)','15% último en tiempo')],[30,30,118])
 pdf.box('Split CRONOLOGICO (no aleatorio): evita data leakage temporal. Mezclar aleatoriamente corridas de distintos dias haria que el modelo vea datos futuros durante entrenamiento.')
+
+
+# ── 4b. EDA — ANALISIS EXPLORATORIO ─────────────────────────────────────────
+pdf.add_page(); pdf.h1('Analisis Exploratorio de Datos (EDA)')
+pdf.p('Se analizaron 651,993 flows capturados en los Grupos A (normal), B (anomalo) y C (mixto). El objetivo fue confirmar que las 14 features seleccionadas discriminan estadisticamente entre trafico normal y anomalo, justificando su uso como entrada al modelo Isolation Forest.')
+pdf.tabla(['Feature','Mann-Whitney p','Separacion','Conclusion'],
+    [('byte_ratio','< 0.001','ALTA','62x diferencia: normal=0.96 vs anomalo=60.0'),
+     ('pkt_rate','< 0.001','ALTA','Anomalo 25x mas rapido: normal=800 vs anom=20,000pkt/s'),
+     ('bytes_toserver','< 0.001','ALTA','Floods generan muchos mas bytes hacia servidor'),
+     ('duration','< 0.001','MEDIA','Flows anomalos mas cortos en general (floods)'),
+     ('dest_port','< 0.001','MEDIA','Puerto 80 predomina en ataques HTTP, escaneos'),
+     ('is_tcp','< 0.001','MEDIA','Ataques TCP (SYN flood, scan) mas frecuentes'),
+     ('is_udp','< 0.001','MEDIA','UDP flood genera muchos flows UDP cortos'),
+     ('todas','< 0.001','—','14/14 features significativas (test Mann-Whitney U)')],
+    [30,26,20,96])
+pdf.p('Nota: test Mann-Whitney U no parametrico — no asume normalidad. p<0.001 en todas las features confirma discriminabilidad estadistica.')
+pdf.fig(E+'/eda_01_distribuciones.png','Figura EDA-1 — Distribucion de las 14 features: normal (azul) vs anomalo (naranja)',0.95)
+pdf.fig(E+'/eda_02_protocolo.png','Figura EDA-2 — Distribucion por protocolo (TCP/UDP/ICMP) en tráfico normal vs anomalo',0.90)
+pdf.add_page()
+pdf.fig(E+'/eda_03_boxplots.png','Figura EDA-3 — Boxplots de features clave: alta separacion en byte_ratio y pkt_rate',0.95)
+pdf.fig(E+'/eda_04_correlacion.png','Figura EDA-4 — Matriz de correlacion entre las 14 features (Spearman)',0.90)
+pdf.add_page()
+pdf.fig(E+'/eda_05_dest_ports.png','Figura EDA-5 — Top puertos destino en trafico normal y anomalo',0.90)
+pdf.fig(E+'/eda_06_stats_tabla.png','Figura EDA-6 — Tabla de estadisticas descriptivas con p-valores Mann-Whitney',0.95)
 
 # ── 5. F3 ────────────────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('F3 — Modelado Offline con Isolation Forest')
@@ -340,23 +366,28 @@ pdf.tabla(['Requisito','Objetivo','Obtenido','Estado'],
     [('Latencia P95','< 500 ms','34.8 ms','CUMPLE'),
      ('Disponibilidad','>= 99%','100% (40/40)','CUMPLE'),
      ('ITL','= 0%','0% (40/40)','CUMPLE'),
-     ('AUC-ROC','>= 0.85','0.8955','CUMPLE'),
+     ('AUC-ROC','>= 0.85','0.8998','CUMPLE'),
      ('Lead Time','< 120 s','61.92 s','CUMPLE'),
      ('Precision','>= 95%','99.54%','CUMPLE'),
-     ('Recall','>= 80%','99.35%','CUMPLE'),
+     ('Recall','>= 80%','99.40%','CUMPLE'),
      ('Flows procesados','>= 10,000','312,500','CUMPLE')],[40,28,32,28])
 
 # ── 11. REFERENCIAS ───────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('Referencias Bibliograficas')
 for i,(a,t,p,y) in enumerate([
-    ('Liu, F.T., Ting, K.M., Zhou, Z.H.','Isolation Forest','IEEE ICDM','2008'),
-    ('Roesch, M.','Snort — Lightweight Intrusion Detection','USENIX LISA','1999'),
-    ('Scikit-learn Developers','Scikit-learn: Machine Learning in Python','JMLR 12','2011'),
-    ('Stallings, W.','Cryptography and Network Security (7th ed.)','Pearson','2017'),
-    ('Suricata Project','Suricata 7.0.3 User Guide','OISF','2024'),
-    ('NIST','Guide to Intrusion Detection SP 800-94','NIST','2007'),
-    ('Buczak & Guven','Survey of ML Methods for Cyber Security IDS','IEEE Comm. Surveys 18(2)','2016'),
-    ('Netfilter Project','iptables/ipset Linux kernel packet filtering','Linux Foundation','2023')],1):
+    ('Liu, F.T., Ting, K.M., Zhou, Z.H.','Isolation Forest','IEEE ICDM pp.413-422','2008'),
+    ('Liu, F.T., Ting, K.M., Zhou, Z.H.','Isolation-Based Anomaly Detection','ACM TKDD 6(1)','2012'),
+    ('Chandola, V., Banerjee, A., Kumar, V.','Anomaly Detection: A Survey','ACM Comput. Surv. 41(3)','2009'),
+    ('Scarfone, K., Mell, P.','Guide to Intrusion Detection (IDPS), NIST SP 800-94','NIST','2007'),
+    ('Garcia-Teodoro, P. et al.','Anomaly-based network intrusion detection: techniques, systems','Computers & Security 28','2009'),
+    ('Fawcett, T.','An Introduction to ROC Analysis','Pattern Recognition Letters 27(8)','2006'),
+    ('Mann, H.B., Whitney, D.R.','On a Test of Whether One of Two Random Variables is Stochastically Larger','Ann. Math. Stat. 18(1)','1947'),
+    ('Youden, W.J.','Index for Rating Diagnostic Tests','Cancer 3(1) pp.32-35','1950'),
+    ('Pedregosa, F. et al.','Scikit-learn: Machine Learning in Python','JMLR 12 pp.2825-2830','2011'),
+    ('Powers, D.M.W.','Evaluation: Precision, Recall, F-Measure to ROC','JMLT 2(1)','2011'),
+    ('Buczak, A.L., Guven, E.','Survey of ML Methods for Cyber Security IDS','IEEE Comm. Surveys 18(2)','2016'),
+    ('OISF','Suricata 7.0 User Guide — Flow Timeouts','Open Information Security Foundation','2023'),
+    ('Sommer, R., Paxson, V.','Outside the Closed World: On ML for Network IDS','IEEE S&P pp.305-316','2010')],1):
     pdf.set_font('Helvetica','B',9); pdf.cell(8,5.5,f'[{i}]',**INL)
     pdf.set_font('Helvetica','',9)
     pdf.multi_cell(0,5.5,f'{a} ({y}). {t}. {p}.'); pdf.ln(1)
