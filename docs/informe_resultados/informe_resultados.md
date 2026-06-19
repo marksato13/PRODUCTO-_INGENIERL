@@ -307,6 +307,8 @@ El lead time es el tiempo transcurrido desde el inicio del ataque hasta que el m
 
 El lead time de ~62 s está determinado por la ventana de acumulación de paquetes de Suricata (cierre de flows TCP): el motor no puede decidir sobre un flow hasta que Suricata lo cierra. Este valor es reproducible en las corridas de SYN flood de los grupos reeval y final.
 
+> **Nota sobre clasificación de tipo:** un SYN flood dirigido a puerto 80 (`hping3 -S --flood -p 80`) puede aparecer en el log con `tipo=HTTP_ABUSE` en lugar de `tipo=SYN_FLOOD`. Esto ocurre porque el detector heurístico `detectar_http_abuse()` contabiliza cada flow con `dest_port=80` como una request HTTP. La decisión de BLOCK es idéntica en ambos casos; el tipo es un campo informativo que no afecta la acción de control.
+
 ### 6.5 Detectores heurísticos complementarios
 
 Además del score IF, el motor incorpora dos detectores heurísticos que actúan sobre contadores de eventos, independientemente del score:
@@ -433,6 +435,7 @@ El sistema desarrollado cumple todos los requisitos definidos al inicio del proy
 | Lead time ~62 s | El motor necesita que Suricata cierre el flow TCP para decidir | Detectores heurísticos (SSH/HTTP) actúan sobre eventos individuales sin esperar cierre |
 | Entorno de laboratorio | Topología de 5 VMs, no red universitaria real | Los escenarios cubren los tipos de ataque más frecuentes en redes LAN universitarias |
 | Modelo estático | El IF no se reentrena automáticamente con nuevo tráfico | Procedimiento de reentrenamiento documentado en F3_especificacion.md |
+| Enforcement bajo flood intenso | Bajo un SYN flood muy intenso, el SSH al servidor para ejecutar `ipset add` puede fallar por timeout (ConnectTimeout=5 s). La detección ocurre correctamente en el motor (log + Telegram), pero la regla de kernel puede demorarse hasta que el flood disminuye. | Los detectores heurísticos (HTTP Abuse, BF SSH) actúan más rápido (~30 s) y reducen la ventana de exposición. |
 
 ### 8.4 Trabajo futuro
 
