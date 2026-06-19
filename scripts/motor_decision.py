@@ -430,10 +430,13 @@ def main():
                     f"proto={proto} requests={hab_n}/{HTTP_VENTANA_SEG}s | BLOCK → {resp}"
                 )
                 telegram_alerta(
-                    "⚠️ PPI ALERTA — " + tipo + "\n"
-                    "Accion : LIMIT (100pkt/s)\nIP     : " + src_ip + "\nProto  : " + proto + "\n"
-                    "Puerto : " + str(dest_port) + "\nScore  : " + f"{score:.4f}" + "\nGrado  : " + grado + "\n"
-                    "Hora   : " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f"🚨 PPI ALERTA — HTTP ABUSE\n"
+                    f"Accion  : BLOCK (DROP)\n"
+                    f"IP      : {src_ip}\n"
+                    f"Proto   : {proto}  Puerto: {dest_port}\n"
+                    f"Requests: {hab_n}/{HTTP_VENTANA_SEG}s\n"
+                    f"Score   : {score:.4f}\n"
+                    f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             elif hab_accion == 'LIMIT' and src_ip not in limitados and src_ip not in bloqueados:
                 limitados.add(src_ip)
@@ -498,11 +501,12 @@ def main():
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | BLOCK"
                 )
                 telegram_alerta(
-                    "🚨 PPI ALERTA — " + tipo + "\n"
-                    "Accion : BLOCK (DROP)\nIP     : " + src_ip
-                    + "\nProto  : " + proto + "\nPuerto : " + str(dest_port)
-                    + "\nScore  : " + f"{score:.4f}" + "\nGrado  : " + grado
-                    + "\nHora   : " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f"🚨 PPI ALERTA — {tipo}\n"
+                    f"Accion  : BLOCK (DROP)\n"
+                    f"IP      : {src_ip}\n"
+                    f"Proto   : {proto}  Puerto: {dest_port}\n"
+                    f"Score   : {score:.4f}  Grado: {grado}\n"
+                    f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
                 log.debug(
@@ -520,11 +524,12 @@ def main():
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | LIMIT"
                 )
                 telegram_alerta(
-                    "\u26a0\ufe0f PPI ALERTA \u2014 " + tipo + "\n"
-                    "Accion : LIMIT (100pkt/s)\nIP     : " + src_ip
-                    + "\nProto  : " + proto + "\nPuerto : " + str(dest_port)
-                    + "\nScore  : " + f"{score:.4f}" + "\nGrado  : " + grado
-                    + "\nHora   : " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f"⚠️ PPI ALERTA — {tipo}\n"
+                    f"Accion  : LIMIT (100 pkt/s)\n"
+                    f"IP      : {src_ip}\n"
+                    f"Proto   : {proto}  Puerto: {dest_port}\n"
+                    f"Score   : {score:.4f}  Grado: {grado}\n"
+                    f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
                 log.debug(
