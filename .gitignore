@@ -15,3 +15,5 @@ logs/
 *.bak
 results/motor_decision.log
 scripts/validation/suricata_revision.txt
+!docs/*.pptx
+!docs/*.zip
