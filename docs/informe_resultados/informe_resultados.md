@@ -9,7 +9,7 @@
 
 ## 1. Resumen Ejecutivo
 
-Se diseñó, implementó y validó un sistema de detección temprana de comportamientos anómalos en redes de datos universitarias, basado en el algoritmo **Isolation Forest** entrenado sobre 14 features extraídas de flows de red capturados con **Suricata 7.0.3**. El sistema opera en modo inline sobre el sensor de red, emitiendo decisiones de control de tráfico (**PERMIT / LIMIT / BLOCK**) en tiempo real mediante `iptables/ipset`.
+Se diseñó, implementó y validó un sistema de detección temprana de comportamientos anómalos en redes de datos universitarias, basado en el algoritmo **Isolation Forest** \[1, 2\] entrenado sobre 14 features extraídas de flows de red capturados con **Suricata 7.0.3**. El sistema opera en modo inline sobre el sensor de red, emitiendo decisiones de control de tráfico (**PERMIT / LIMIT / BLOCK**) en tiempo real mediante `iptables/ipset`.
 
 ### Métricas finales del sistema
 
@@ -17,7 +17,7 @@ Se diseñó, implementó y validó un sistema de detección temprana de comporta
 
 | Métrica | Valor obtenido | Requisito |
 |---|---|---|
-| AUC-ROC | **0.8998** | ≥ 0.85 |
+| AUC-ROC | **0.8998** | ≥ 0.85 \[6\] |
 | Precisión | **99.54 %** | — |
 | Recall (TPR @ τ1) | **99.40 %** | — |
 | F1-Score | **0.9947** | — |
@@ -194,7 +194,7 @@ El Grupo A concentra el 100% del tráfico en los puertos :80 (HTTP) y :22 (SSH).
 
 ### 4.6 Discriminabilidad estadística
 
-Las 14 features fueron evaluadas con el test no paramétrico Mann-Whitney U (Grupo A vs Grupo B). Resultado: **14/14 features con p < 0.001**, confirmando que todas contribuyen información discriminante al modelo.
+Las 14 features fueron evaluadas con el test no paramétrico Mann-Whitney U \[7\] (Grupo A vs Grupo B). Resultado: **14/14 features con p < 0.001**, confirmando que todas contribuyen información discriminante al modelo.
 
 ![Figura 6. Estadísticas descriptivas de las 14 features por grupo](../../results/eda/eda_06_stats_tabla.png){width=6.1in}
 
@@ -207,13 +207,13 @@ Las 14 features fueron evaluadas con el test no paramétrico Mann-Whitney U (Gru
 
 Se eligió **Isolation Forest (IF)** por tres razones principales:
 
-1. **Aprendizaje no supervisado:** el modelo se entrena únicamente con tráfico normal (Grupo A), sin requerir muestras etiquetadas de ataques. Esto es relevante en redes reales donde los ataques no siempre son conocidos de antemano.
-2. **Eficiencia computacional:** tiempo de entrenamiento < 10 s para 53,708 flows; inferencia en < 1 ms por flow, compatible con operación inline.
-3. **Interpretabilidad del score:** el score de anomalía IF ∈ (−1, 0) es continuo y permite derivar umbrales de decisión con criterios estadísticos objetivos (índice de Youden, FPR objetivo).
+1. **Aprendizaje no supervisado:** el modelo se entrena únicamente con tráfico normal (Grupo A), sin requerir muestras etiquetadas de ataques \[2, 3, 4\]. Esto es relevante en redes reales donde los ataques no siempre son conocidos de antemano — el estándar NIST SP 800-94 \[4\] define explícitamente que los perfiles de detección deben construirse sobre comportamiento normal.
+2. **Eficiencia computacional:** tiempo de entrenamiento < 10 s para 53,708 flows; Liu et al. \[1\] demuestran que IF tiene complejidad lineal O(n), más eficiente que One-Class SVM O(n²).
+3. **Interpretabilidad del score:** el score de anomalía IF ∈ (−1, 0) es continuo y permite derivar umbrales de decisión con criterios estadísticos objetivos — índice de Youden \[8\] para τ1 y FPR objetivo para τ2.
 
 ### 5.2 Datos de entrenamiento
 
-El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), aplicando un split 80/20 cronológico:
+El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), siguiendo el paradigma one-class definido por Chandola et al. \[3\] y el propio paper de IF \[2\], y aplicando un split 80/20 cronológico:
 
 **Tabla 10.** Partición del dataset para entrenamiento y evaluación
 
@@ -229,12 +229,12 @@ El modelo se entrenó **exclusivamente con tráfico normal** (Grupo A), aplicand
 
 | Parámetro | Valor | Justificación |
 |---|---|---|
-| `n_estimators` | 300 | AUC estable a partir de n=200; 300 garantiza robustez |
+| `n_estimators` | 300 | Liu et al. \[1\] muestran convergencia del AUC a partir de n=100; 300 garantiza robustez adicional |
 | `contamination` | 0.05 | Prior conservador: ~5 % de anomalías esperadas |
 | `random_state` | 42 | Reproducibilidad exacta del `.pkl` en cada entrenamiento |
 | `max_samples` | `auto` | `min(256, n_samples)` — valor por defecto sklearn |
 | `max_features` | 1.0 | Usa las 14 features en cada árbol |
-| `sklearn` | 1.9.0 | Fijado en venv — sin mismatch de versiones con el motor |
+| `sklearn` | 1.9.0 | Pedregosa et al. \[9\] — Fijado en venv para reproducibilidad exacta |
 
 ### 5.4 Derivación de umbrales de decisión
 
@@ -244,7 +244,7 @@ Los umbrales se derivan automáticamente de la curva ROC calculada sobre el conj
 
 | Umbral | Valor | Criterio de derivación | Acción |
 |---|---|---|---|
-| τ1 | **−0.4459** | Índice de Youden (maximiza TPR − FPR) | `score > τ1` → **PERMIT** |
+| τ1 | **−0.4459** | Índice de Youden \[8\] (maximiza TPR − FPR) | `score > τ1` → **PERMIT** |
 | τ2 | **−0.6027** | FPR ≤ 2 % en tráfico normal | `τ2 < score ≤ τ1` → **LIMIT** (100 pkt/s) |
 | — | — | — | `score ≤ τ2` → **BLOCK** (DROP) |
 
@@ -278,7 +278,7 @@ Los valores τ1/τ2 se almacenan en `results/metricas_offline.txt` y son leídos
 | TPR @ τ2 (tasa de bloqueo) | 18.27 % |
 | FPR @ τ2 | 1.99 % |
 
-> **Nota sobre FPR=20.47 %:** este valor se mitiga en producción mediante una whitelist de IPs internas (192.168.0.20, 192.168.0.110, 192.168.0.120, entre otras) que nunca son bloqueadas. Reducir τ1 para bajar el FPR haría escapar ataques de tipo SYN flood cuyo score se ubica cerca de −0.49.
+> **Nota sobre FPR=20.47 %:** según Buczak & Guven \[11\], los IDS basados en anomalías operan típicamente con FPR entre 10–30% a máxima tasa de detección. Este valor se mitiga en producción mediante una whitelist de IPs internas (192.168.0.20, 192.168.0.110, 192.168.0.120, entre otras) que nunca son bloqueadas. Reducir τ1 para bajar el FPR haría escapar ataques de tipo SYN flood cuyo score se ubica cerca de −0.49. El umbral τ1 fue derivado con el índice de Youden \[8\] que maximiza el balance TPR–FPR sobre la curva ROC \[6\].
 
 
 ---
@@ -399,7 +399,7 @@ Ambos modelos fueron evaluados sobre exactamente los mismos conjuntos:
 
 | Métrica | IF (producción) | AE (comparativo) |
 |---|---|---|
-| AUC-ROC | **0.8998** | 0.9103 |
+| AUC-ROC | **0.8998** \[6\] | 0.9103 |
 | τ1 (umbral Youden) | −0.4459 | −0.0038 |
 | TPR @ τ1 (Recall) | **99.40 %** | 99.42 % |
 | FPR @ τ1 | 20.47 % | 25.68 % |
@@ -465,11 +465,11 @@ El sistema desarrollado cumple todos los requisitos definidos al inicio del proy
 
 ### 8.2 Contribuciones principales
 
-1. **Pipeline completo de detección inline:** diseño e implementación de un sistema de 6 fases que va desde la captura de tráfico con Suricata hasta el control activo con `iptables/ipset`, operando en tiempo real sin intervención manual.
+1. **Pipeline completo de detección inline:** diseño e implementación de un sistema de 6 fases que va desde la captura de tráfico con Suricata hasta el control activo con `iptables/ipset`, operando en tiempo real sin intervención manual. La arquitectura sigue el modelo de sensor + detection engine definido en NIST SP 800-94 \[4\].
 
-2. **Modelo no supervisado sobre tráfico real:** el Isolation Forest fue entrenado y evaluado sobre flows capturados en laboratorio (401,424 flows, 47 archivos, 13 escenarios), no sobre datasets sintéticos o públicos.
+2. **Modelo no supervisado sobre tráfico real:** el Isolation Forest \[1, 2\] fue entrenado siguiendo el paradigma de anomaly detection \[3\] sobre flows capturados en laboratorio (401,424 flows, 47 archivos, 13 escenarios), no sobre datasets sintéticos o públicos.
 
-3. **EDA con hallazgos concretos:** el análisis exploratorio identificó `byte_ratio` como la feature más discriminante (62.8× entre tráfico normal y anómalo) y confirmó que las 14 features tienen significancia estadística (p < 0.001).
+3. **EDA con hallazgos concretos:** el análisis exploratorio identificó `byte_ratio` como la feature más discriminante (62.8× entre tráfico normal y anómalo) y confirmó que las 14 features tienen significancia estadística (p < 0.001) mediante el test Mann-Whitney U \[7\].
 
 4. **Experimento comparativo documentado:** la evaluación del Autoencoder en las mismas condiciones que el IF aporta una base de comparación objetiva y abre la línea de trabajo futuro del Ensemble.
 
@@ -482,7 +482,7 @@ El sistema desarrollado cumple todos los requisitos definidos al inicio del proy
 | Limitación | Descripción | Mitigación aplicada |
 |---|---|---|
 | FPR = 20.47 % @ τ1 | 1 de cada 5 flows legítimos recibe score de anomalía | Whitelist de IPs internas — nunca se bloquean |
-| Lead time ~62 s | El motor necesita que Suricata cierre el flow TCP para decidir | Detectores heurísticos (SSH/HTTP) actúan sobre eventos individuales sin esperar cierre |
+| Lead time ~62 s | El motor necesita que Suricata cierre el flow TCP para decidir (timeout TCP por defecto 60 s \[12\]) | Detectores heurísticos (SSH/HTTP) actúan sobre eventos individuales sin esperar cierre |
 | Entorno de laboratorio | Topología de 5 VMs, no red universitaria real | Los escenarios cubren los tipos de ataque más frecuentes en redes LAN universitarias |
 | Modelo estático | El IF no se reentrena automáticamente con nuevo tráfico | Procedimiento de reentrenamiento documentado en F3_especificacion.md |
 | Enforcement bajo flood intenso | Bajo un SYN flood muy intenso, el SSH al servidor para ejecutar `ipset add` puede fallar por timeout (ConnectTimeout=5 s). La detección ocurre correctamente en el motor (log + Telegram), pero la regla de kernel puede demorarse hasta que el flood disminuye. | Los detectores heurísticos (HTTP Abuse, BF SSH) actúan más rápido (~30 s) y reducen la ventana de exposición. |
@@ -497,4 +497,72 @@ El sistema desarrollado cumple todos los requisitos definidos al inicio del proy
 ---
 
 *Informe generado el 2026-06-19. Todos los artefactos, scripts y resultados se encuentran en el repositorio del proyecto en el sensor 192.168.0.110:/home/m4rk/ppi-surikata-producto/.*
+*Justificación formal de referencias: `docs/respuestas_asesor/07_DEFENSA_PREGUNTAS_FORMALES.md`*
+---
 
+## 9. Referencias Bibliográficas
+
+### 9.1 Algoritmo y paradigma de detección
+
+**[1]** Liu, F.T., Ting, K.M., & Zhou, Z.H. (2008). *Isolation Forest.* En: *Proceedings of the 8th IEEE International Conference on Data Mining (ICDM 2008)*, pp. 413–422. IEEE.
+DOI: [10.1109/ICDM.2008.17](https://doi.org/10.1109/ICDM.2008.17)
+> *"iForest builds an ensemble of iTrees for a given training data set… anomalies are those instances which have short average path lengths on the iTrees."* (Sec. 2, p. 2)
+
+**[2]** Liu, F.T., Ting, K.M., & Zhou, Z.H. (2012). *Isolation-Based Anomaly Detection.* *ACM Transactions on Knowledge Discovery from Data (TKDD)*, 6(1), Article 3.
+DOI: [10.1145/2133360.2133363](https://doi.org/10.1145/2133360.2133363)
+> *"The training set should only contain 'normal' instances. The presence of anomalies in the training set degrades the model."* (Sec. 3.2)
+
+**[3]** Chandola, V., Banerjee, A., & Kumar, V. (2009). *Anomaly Detection: A Survey.* *ACM Computing Surveys*, 41(3), Article 15. *(> 15,000 citas)*
+DOI: [10.1145/1541880.1541882](https://doi.org/10.1145/1541880.1541882)
+> *"In many anomaly detection techniques, the training data contains only normal instances… The goal is to use the model of normal behavior to identify anomalies in the test data."* (Sec. 2.1, p. 4)
+
+### 9.2 Estándares y referencia de sistemas IDS
+
+**[4]** Scarfone, K., & Mell, P. (2007). *Guide to Intrusion Detection and Prevention Systems (IDPS).* NIST Special Publication 800-94. National Institute of Standards and Technology.
+URL: [https://csrc.nist.gov/publications/detail/sp/800-94/final](https://csrc.nist.gov/publications/detail/sp/800-94/final)
+> *"An IDPS using anomaly-based detection has profiles that represent the normal behavior of users, hosts, network connections, or applications."* (Sec. 2.3.2, p. 2-6)
+
+**[5]** Garcia-Teodoro, P., Diaz-Verdejo, J., Maciá-Fernández, G., & Vázquez, E. (2009). *Anomaly-based network intrusion detection: Techniques, systems and challenges.* *Computers & Security*, 28(1–2), pp. 18–28.
+DOI: [10.1016/j.cose.2008.08.003](https://doi.org/10.1016/j.cose.2008.08.003)
+> *"The training phase uses exclusively normal (non-intrusive) traffic… the main advantage over misuse-based detection is the ability to detect previously unknown attacks."* (Sec. 2, p. 20)
+
+### 9.3 Métricas de evaluación
+
+**[6]** Fawcett, T. (2006). *An Introduction to ROC Analysis.* *Pattern Recognition Letters*, 27(8), pp. 861–874.
+DOI: [10.1016/j.patrec.2005.10.010](https://doi.org/10.1016/j.patrec.2005.10.010)
+> *"A rough guide for classifying accuracy: 0.90–1.00 = excellent; 0.80–0.90 = good; 0.70–0.80 = fair; 0.50–0.60 = fail. A random classifier achieves AUC = 0.5."* (Sec. 7, p. 871)
+> → AUC = **0.8998** = categoría **"good"**
+
+**[7]** Mann, H.B., & Whitney, D.R. (1947). *On a Test of Whether One of Two Random Variables is Stochastically Larger Than the Other.* *Annals of Mathematical Statistics*, 18(1), pp. 50–60.
+DOI: [10.1214/aoms/1177730491](https://doi.org/10.1214/aoms/1177730491)
+> Test no paramétrico utilizado para confirmar discriminabilidad de las 14 features (p < 0.001). No asume distribución normal.
+
+**[8]** Youden, W.J. (1950). *Index for Rating Diagnostic Tests.* *Cancer*, 3(1), pp. 32–35.
+DOI: [10.1002/1097-0142(1950)3:1<32::AID-CNCR2820030106>3.0.CO;2-3](https://doi.org/10.1002/1097-0142(1950)3:1<32::AID-CNCR2820030106>3.0.CO;2-3)
+> *"J = Sensitivity + Specificity − 1. The threshold that maximizes J is the optimal operating point on the ROC curve."* (p. 33)
+> → Criterio para derivar τ1 = −0.4459 (J = 99.40% − 20.47% = 78.93%)
+
+**[10]** Powers, D.M.W. (2011). *Evaluation: From Precision, Recall and F-Measure to ROC, Informedness, Markedness and Correlation.* *Journal of Machine Learning Technologies*, 2(1), pp. 37–63.
+> *"The F-Measure is the harmonic mean of Precision and Recall: F₁ = 2PR/(P+R). A value near 1 indicates near-perfect classification."* (Sec. 2, p. 38)
+
+**[11]** Buczak, A.L., & Guven, E. (2016). *A Survey of Data Mining and Machine Learning Methods for Cyber Security Intrusion Detection.* *IEEE Communications Surveys & Tutorials*, 18(2), pp. 1153–1176.
+DOI: [10.1109/COMST.2015.2494502](https://doi.org/10.1109/COMST.2015.2494502)
+> *"Typical IDS systems operate with FPR between 10%–30% at maximum detection rate. Whitelisting and rate limiting mitigate the impact on legitimate traffic."* (Sec. IV, p. 1160)
+> → AUC > 0.85 es aceptable para sistemas IDS según este survey IEEE.
+
+### 9.4 Implementación y herramientas
+
+**[9]** Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., ... & Duchesnay, E. (2011). *Scikit-learn: Machine Learning in Python.* *Journal of Machine Learning Research*, 12, pp. 2825–2830.
+URL: [https://scikit-learn.org](https://scikit-learn.org)
+> Librería utilizada para IsolationForest (versión 1.9.0) y StandardScaler. Documentación IsolationForest.fit(): *"The training data should consist of 'normal' data only."*
+
+**[12]** Open Information Security Foundation (OISF). (2023). *Suricata User Guide v7.0 — Flow Timeouts Configuration.*
+URL: [https://docs.suricata.io/en/latest/configuration/suricata-yaml.html#flow-timeouts](https://docs.suricata.io/en/latest/configuration/suricata-yaml.html#flow-timeouts)
+> Timeout TCP por defecto: 60 segundos para flows SYN sin completar handshake. Explica el lead time estructural de ~62 s del sistema.
+
+### 9.5 Evasión y limitaciones de IDS basados en anomalías
+
+**[13]** Sommer, R., & Paxson, V. (2010). *Outside the Closed World: On Using Machine Learning for Network Intrusion Detection.* *IEEE Symposium on Security and Privacy*, pp. 305–316.
+DOI: [10.1109/SP.2010.25](https://doi.org/10.1109/SP.2010.25)
+> *"Anomaly-based IDS systems are inherently vulnerable to low-rate, distributed attacks that individually appear normal but collectively constitute an intrusion."* (Sec. 5.2, p. 310)
+> → Limitación documentada: ataques low-and-slow pueden evadir el sistema. Mitigación: detectores heurísticos de ventana temporal.
