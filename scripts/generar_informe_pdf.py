@@ -38,7 +38,7 @@ class PDF(FPDF):
     def header(self):
         if self.page_no()==1: return
         self.set_font('Helvetica','I',8); self.set_text_color(*GRY)
-        self.cell(0,7,'Deteccion Temprana de Anomalias en Redes | PPI UPeU 2026',**NL)
+        self.cell(0,7,'Aprendizaje Automatico para Deteccion de Anomalias en Red | PPI UPeU 2026',**NL)
         self.set_text_color(0,0,0)
     def footer(self):
         self.set_y(-14); self.set_font('Helvetica','I',8)
@@ -193,7 +193,7 @@ pdf.h1('Metodologia — Pipeline de 6 Fases')
 pdf.p('El sistema se desarrolla en 6 fases secuenciales donde cada fase consume artefactos de la anterior.')
 pdf.tabla(['Fase','Nombre','Descripcion'],
     [('F1','Entorno Laboratorio','5 VMs, red 192.168.0.0/24, Suricata 7.0.3'),
-     ('F2','Captura Trafico','51 capturas eve.json.gz: 4 normales+6 anomalos+3 mixtos'),
+     ('F2','Captura Trafico','47 archivos eve.json.gz: 28 normal (4 escenarios x multiples corridas) + 13 anom + 6 mixto'),
      ('F3','Modelado Offline','Isolation Forest n=300, 14 features, curva ROC, tau1/tau2'),
      ('F4','Motor Decision','tail eve.json, extraccion features, scoring IF, accion'),
      ('F5','Control Inline','ipset/iptables en servidor, enforce.sh, dashboard web :8080'),
@@ -217,26 +217,32 @@ for item in ['Suricata 7.0.3: captura pasiva en interfaz ens35, salida EVE JSON.
 
 # ── 4. F2 ────────────────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('F2 — Captura de Trafico')
-pdf.tabla(['ID','Grupo','Escenario','Origen','Herramienta','Dur.'],
-    [('A1','Normal','http_normal','Desktop','curl->nginx:80','10m'),
-     ('A2','Normal','ssh_legitimo','Desktop','ssh->:22','8m'),
-     ('A3','Normal','transferencia','Desktop','scp/wget','10m'),
-     ('A4','Normal','sostenido','Desktop','curl+ssh','15m'),
-     ('B1','Anomalo','syn_flood','Kali','hping3 -S -p80','10m'),
-     ('B2','Anomalo','port_scan','Kali','nmap -sS 1-1024','10m'),
-     ('B3','Anomalo','udp_flood','Kali','hping3 --udp :53','10m'),
-     ('B4','Anomalo','icmp_flood','Kali','hping3 -1','10m'),
-     ('B5','Anomalo','http_abuse','Kali','curl bucle :80','10m'),
-     ('B6','Anomalo','bruteforce','Kali','hydra :22','10m'),
-     ('C1','Mixto','http_syn','Desk+Kali','curl+hping3','10m'),
-     ('C2','Mixto','ssh_scan','Desk+Kali','ssh+nmap','10m'),
-     ('C3','Mixto','trans_udp','Desk+Kali','scp+hping3','10m')],
-    [12,22,30,28,42,14])
-pdf.tabla(['Conjunto','Flows','Criterio'],
-    [('train.csv','53,708 normales','70% primero en tiempo (evita leakage)'),
-     ('val.csv','variable','15% siguiente en tiempo'),
-     ('test.csv','598,285 (mayoría anomalos)','15% último en tiempo')],[30,30,118])
-pdf.box('Split CRONOLOGICO (no aleatorio): evita data leakage temporal. Mezclar aleatoriamente corridas de distintos dias haria que el modelo vea datos futuros durante entrenamiento.')
+pdf.tabla(['Tipo','Escenarios','Archivos raw','Flows aprox.'],
+    [('Normal (Grupo A)','http, ssh, transferencia, sostenido','28 archivos (multiples corridas)','67,135 flows'),
+     ('Anomalo (Grupo B)','syn_flood, port_scan, udp_flood, icmp_flood, http_abuse, bruteforce','13 archivos (2 fechas + extra BF)','598,285 flows'),
+     ('Mixto (Grupo C)','http_syn, ssh_portscan, descarga_udp','6 archivos (3 de jun-02, 3 de jun-16)','variable')],
+    [28,66,50,28])
+pdf.tabla(['Escenario','Origen','Herramienta','Detalle'],
+    [('http_normal','Desktop 192.168.0.20','curl, wget','GET :80 con pausas 5-10s'),
+     ('ssh_legitimo','Desktop 192.168.0.20','ssh, scp','Sesion interactiva :22'),
+     ('transferencia','Desktop 192.168.0.20','scp, wget','Descarga archivos grandes'),
+     ('sostenido','Desktop 192.168.0.20','curl+ssh mixto','Trafico combinado 15min'),
+     ('syn_flood','Kali 192.168.0.100','hping3 -S -p 80','SYN sin completar handshake'),
+     ('port_scan','Kali 192.168.0.100','nmap -sS 1-1024','Escaneo sigiloso puertos'),
+     ('udp_flood','Kali 192.168.0.100','hping3 --udp :53','Inundacion UDP puerto 53'),
+     ('icmp_flood','Kali 192.168.0.100','hping3 -1 --flood','Ping flood sin limite'),
+     ('http_abuse','Kali 192.168.0.100','curl bucle continuo','100+ req/30s a :80'),
+     ('bruteforce','Kali 192.168.0.100','hydra/sshpass :22','Intentos contrasena SSH'),
+     ('mixto_http_syn','Desktop+Kali','curl+hping3','Normal+SYN flood simultaneo'),
+     ('mixto_ssh_scan','Desktop+Kali','ssh+nmap','Normal+escaneo simultaneo'),
+     ('mixto_descarga_udp','Desktop+Kali','scp+hping3','Normal+UDP flood simultaneo')],
+    [28,36,36,78])
+pdf.tabla(['Artefacto','Flows','Descripcion'],
+    [('normal_holdout.csv','13,427 (20% aleatorio)','Reservado para evaluacion offline en fase3_evaluar.py'),
+     ('data/raw/*_normal_*.gz','67,135 totales','Fuente directa — 28 archivos de 4 escenarios y multiples corridas'),
+     ('data/raw/*_anom_*.gz','598,285','Fuente directa — 13 archivos (BF x3, HTTP x2, ICMP x2, PS x2, SYN x2, UDP x2)'),
+     ('data/raw/*_mixto_*.gz','variable','Fuente directa — 6 archivos (3 de jun-02, 3 de jun-16)')],[50,28,100])
+pdf.box('Split 80/20 ALEATORIO (random_state=42, shuffle=True): el 80% de los flows normales entrena el modelo, el 20% restante queda como holdout para evaluar FP/FPR sobre datos normales nunca vistos. No existe particion 70/15/15 — esa era la diseno anterior eliminado porque IF no supervisado no necesita validacion con etiquetas.')
 
 
 # ── 4b. EDA — ANALISIS EXPLORATORIO ─────────────────────────────────────────
@@ -286,12 +292,23 @@ pdf.kpis([('AUC-ROC','0.8998',BLU),('Precision','99.54%',GRN),('Recall','99.40%'
 pdf.fig(R+'/auc_roc.png','Figura 1 — Curva ROC del modelo Isolation Forest (AUC=0.8998)',0.72)
 pdf.fig(R+'/isolation_forest_resultado.png','Figura 2 — Distribucion de scores IF: normal (azul) vs anomalo (rojo)',0.72)
 pdf.fig(R+'/sensibilidad/sensibilidad_n_flows.png','Figura 3 — AUC vs n_estimators (estable a partir de n=200)',0.72)
-pdf.tabla(['Escenario','AUC','Det%','Score medio'],
-    [('B1 SYN Flood','0.8302','99.6%','-0.496'),('B2 Port Scan','0.9726','93.5%','-0.727'),
-     ('B3 UDP Flood','0.9465','99.5%','-0.567'),('B4 ICMP Flood','0.8867','100%','-0.526'),
-     ('B5 HTTP Abuse','0.9562','97.5%','-0.585'),('B6 BruteForce','0.8623','98.4%','-0.515'),
-     ('C1 HTTP+SYN','0.8201','100%','-0.490'),('C2 SSH+Scan','0.8602','98.5%','-0.507'),
-     ('C3 Trans+UDP','0.9253','99.7%','-0.562')],[35,18,16,25])
+pdf.tabla(['Archivo raw (captura)','Flows','AUC-IF','AUC-AE'],
+    [('BruteForce 02-jun','2,061','0.9727','0.9649'),
+     ('HTTP Abuse 02-jun','13,889','0.9545','0.9516'),
+     ('ICMP Flood 02-jun','23,460','0.9160','0.9966'),
+     ('Port Scan 02-jun','3,258','0.8351','0.9901'),
+     ('SYN Flood 02-jun','95,393','0.8815','0.9517'),
+     ('UDP Flood 02-jun','18,168','0.9579','0.9881'),
+     ('BruteForce 03-jun','100,000','0.8252','0.9863'),
+     ('BruteForce 15-jun','4,824','0.9728','0.9036'),
+     ('HTTP Abuse 15-jun','36,902','0.9749','0.9111'),
+     ('ICMP Flood 15-jun','100,000','0.8955','0.9996'),
+     ('Port Scan 15-jun','100,000','0.9508','0.9918'),
+     ('SYN Flood 15-jun','330','0.9515','0.8287'),
+     ('UDP Flood 15-jun','100,000','0.9623','0.9883'),
+     ('AUC medio (IF=0.9270 / AE=0.9579)','598,285','0.9270','0.9579')],
+    [48,20,18,18])
+pdf.p('Nota: AUC-IF = AUC del Isolation Forest de produccion. AUC-AE = Autoencoder del experimento comparativo. IF elegido sobre AE por validacion F6 (40 corridas, disponibilidad=100%, ITL=0%).')
 
 # ── 6. F4 ────────────────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('F4 — Motor de Decision en Tiempo Real')
@@ -319,6 +336,34 @@ pdf.tabla(['Prueba T3-T5','Resultado'],
      ('GET / HTTP','PASS: HTTP 200 en 17ms'),
      ('SSE /api/stream','PASS: Streaming activo, 1 cliente'),
      ('POST /api/block','PASS: {"ok":true}')],[60,118])
+
+
+# ── 7b. EXPERIMENTO COMPARATIVO ──────────────────────────────────────────────
+pdf.add_page(); pdf.h1('Experimento Comparativo — Seleccion de Modelo')
+pdf.p('Antes de fijar Isolation Forest como modelo de produccion, se evaluaron 7 modelos sobre el mismo conjunto de 611,712 flows (normal_holdout + todos los archivos anomalos).')
+pdf.tabla(['Modelo','Paradigma','AUC-ROC','Recall','FPR','T.train'],
+    [('Isolation Forest','one-class','0.8998','99.40%','20.47%','< 10 s'),
+     ('Autoencoder (AE)','one-class','0.9103','99.42%','25.68%','115.6 s'),
+     ('One-Class SVM','one-class','0.9712','93.03%','8.02%','0.6 s'),
+     ('LOF','one-class','0.8418','59.00%','5.19%','0.3 s'),
+     ('Random Forest (*)','supervisado','0.9997','99.86%','0.40%','9.8 s'),
+     ('XGBoost (*)','supervisado','0.9995','99.86%','0.42%','77.8 s'),
+     ('Decision Tree (*)','supervisado','0.9972','99.75%','0.52%','0.1 s')],
+    [38,24,20,18,16,22])
+pdf.p('(*) Supervisados requieren etiquetas de ataque en entrenamiento — no replicables en produccion real donde ataques futuros son desconocidos.')
+pdf.h3('Por que se elige Isolation Forest sobre Autoencoder (AUC mayor)')
+pdf.tabla(['Criterio','IF','AE','Ganador'],
+    [('AUC-ROC global','0.8998','0.9103','AE (+1.16%)'),
+     ('Recall @ tau1','99.40%','99.42%','Empate'),
+     ('FPR @ tau1 (menor = mejor)','20.47%','25.68%','IF mejor'),
+     ('Block% @ tau2','18.27%','54.62%','AE (3x mas BLOCK)'),
+     ('Corridas F6 validadas en vivo','40/40','0 corridas','IF certificado'),
+     ('Disponibilidad F6','100%','No medida','IF certificado'),
+     ('ITL en F6','0%','No medida','IF certificado'),
+     ('Tiempo de entrenamiento','< 10 s','115.6 s','IF 12x mas rapido'),
+     ('Tamano modelo serializado','2.5 MB','16 KB','AE mas ligero')],
+    [56,18,18,40])
+pdf.box('Razon de seleccion: IF tiene 40 corridas validadas en produccion real con Disponibilidad=100% e ITL=0%. El AE solo fue evaluado offline. En un sistema IPS que toma acciones reales (DROP, LIMIT) sobre trafico de produccion, la validacion en vivo es el criterio determinante. El AE queda documentado como mejora futura con mayor Block% (54.6% vs 18.3%).')
 
 # ── 8. F6 ────────────────────────────────────────────────────────────────────
 pdf.add_page(); pdf.h1('F6 — Validacion del Sistema (40 Corridas)')
