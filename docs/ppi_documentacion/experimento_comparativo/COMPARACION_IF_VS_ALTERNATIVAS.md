@@ -128,6 +128,8 @@ OCSVM sería viable como alternativa al IF si se aceptara un Recall menor (~93%)
 | Reentrenamiento | ✅ systemctl restart | |
 | **Puntaje ponderado** | ✅ **9.75/10** | 8.70/10 |
 
+> **Importante:** Los valores del AE en esta tabla son del **experimento comparativo** (n_train=9,398, test=7,629 flows balanceados). La evaluación de producción del AE con los mismos datos que el IF (n_train=53,708, 611,712 flows reales) muestra: AUC=0.9103, Recall=99.42%, FPR=25.68%@τ1, **Block%=54.62%@τ2** (vs IF=18.27% — AE bloquea 3× más ataques con FPR≤2%). Documentado en `RESULTADOS_COMPARACION_IF_AE.md`.
+
 **Resultado:** IF gana en Recall y madurez del pipeline. AE gana en casi todo lo demás.
 
 **Solución óptima:** Ensemble AND (IF + AE) — combina las fortalezas de ambos:
@@ -141,7 +143,7 @@ OCSVM sería viable como alternativa al IF si se aceptara un Recall menor (~93%)
 
 > *"El modelo ideal para nuestro sistema es Isolation Forest. En el experimento comparativo con 7 modelos, IF obtuvo el mayor Recall entre todos los modelos one-class: 99.53%, frente al 98.83% del Autoencoder y el 93.03% del One-Class SVM. En el sistema en producción, con la distribución real de tráfico, IF alcanza Precision=99.54% y F1=0.9947.*
 >
-> *El segundo mejor modelo es el Autoencoder. Obtuvo mayor AUC (0.9580 vs 0.9159), mayor F1 en el experimento (0.9394 vs 0.8953), y la mitad de falsas alarmas (FPR=10.35% vs 20.38%). Su única debilidad frente a IF es el Recall, apenas 0.7 puntos porcentuales menor.*
+> *"El segundo mejor modelo es el Autoencoder. En el experimento comparativo obtuvo mayor AUC (0.9580 vs 0.9159), mayor F1 (0.9394 vs 0.8953), y la mitad de falsas alarmas (FPR=10.35% vs 20.38%). En la evaluación de producción con los mismos datos que el IF (53,708 flows normales, 598,285 anómalos reales), el AE obtuvo AUC=0.9103 y una tasa de bloqueo directo (Block%@τ2) de 54.62% vs 18.27% del IF — bloquea 3× más ataques con el mismo FPR≤2%. Su único trade-off frente a IF: Recall 0.7pp menor y ausencia de las 40 corridas de validación en vivo.*
 >
 > *De hecho, cuando combinamos IF y Autoencoder en un ensemble AND — donde se bloquea solo cuando AMBOS modelos coinciden — obtenemos lo mejor de los dos: el FPR cae un 49% y el F1 sube 4.8 puntos porcentuales, con un costo de solo 0.7pp en Recall. Esta mejora está validada experimentalmente y la proponemos como trabajo futuro."*
 

@@ -49,6 +49,9 @@ IF destaca claramente en **Recall** (barra roja más alta). OCSVM destaca en **1
 | One-Class SVM | one-class | **0.9712** | 0.9303 | 0.9211 | 0.0802 |
 | LOF | one-class | 0.8418 | 0.5900 ❌ | 0.7160 | 0.0519 |
 | Autoencoder | one-class | 0.9580 | 0.9883 | **0.9394** | 0.1035 |
+
+> **Nota AE:** Los valores del Autoencoder en esta tabla corresponden al **experimento comparativo** (n_train=9,398, test balanceado de 7,629 flows). La evaluación de producción del AE con los mismos datos que el IF (n_train=53,708, 611,712 flows reales) da AUC=0.9103, Recall=99.42%, FPR=25.68% @ τ1, Block%=54.62% @ τ2. Ver `AE_PRODUCCION_DOCUMENTACION.md` y `RESULTADOS_COMPARACION_IF_AE.md`.
+
 | Random Forest \* | supervisado | 0.9997 | 0.9986 | 0.9971 | 0.0040 |
 | XGBoost \* | supervisado | 0.9995 | 0.9986 | 0.9969 | 0.0042 |
 | Decision Tree \* | supervisado | 0.9972 | 0.9975 | 0.9958 | 0.0052 |

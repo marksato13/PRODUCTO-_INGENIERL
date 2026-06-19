@@ -146,6 +146,8 @@
 | Lead Time SYN Flood | **61.92 s** | — | — |
 | Disponibilidad | **100%** | ≥ 99% | CUMPLE |
 | ITL (interrupción tráfico legítimo) | **0%** | = 0% | CUMPLE |
+| AUC-ROC Autoencoder (comparativo) | **0.9103** | — | — |
+| Block% AE @ τ2 vs IF (54.6% vs 18.3%) | **3× mejor bloqueo** | — | — |
 
 - **Imágenes:**
   - `auc_roc.png` — curva ROC con τ1 y τ2 marcados
@@ -163,6 +165,8 @@
 > "El lead time — tiempo desde que inicia un SYN flood hasta el primer bloqueo — es de 62 segundos. Ese tiempo no es del motor, sino del timeout TCP de Suricata para cerrar el flow. El motor en sí actúa en menos de 100 milisegundos."
 
 > "En las 40 corridas de validación: disponibilidad del 100%, cero interrupciones al tráfico legítimo. El sistema no bloqueó ni una vez a un usuario normal."
+
+> "Como experimento comparativo, también implementamos un Autoencoder que obtuvo AUC=0.9103 y bloquea directamente 3 veces más ataques que el IF con la misma tasa de falsos positivos. Isolation Forest permanece como modelo de producción por tener las 40 corridas de validación en vivo certificadas."
 
 **Tiempo estimado:** 75 segundos
 

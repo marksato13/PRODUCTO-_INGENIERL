@@ -603,3 +603,33 @@ el motor arranca leyendo τ1=−0.4459 / τ2=−0.6027. Los archivos `.pkl` y el
 **Siguiente fase:** `F4_especificacion.md` — motor de decisión en tiempo real que
 lee `models/*.pkl` y `metricas_offline.txt` para clasificar cada flow de `eve.json`
 y aplicar PERMIT / LIMIT / BLOCK via ipset en el servidor.
+
+---
+
+## 15. Experimento comparativo: Autoencoder (AE) en paralelo
+
+Como experimento comparativo, se entrenó un **Autoencoder (MLPRegressor sklearn, 14→8→4→8→14)** usando los mismos datos y filtros que el IF:
+
+| Parámetro | IF (producción) | AE (comparativo) |
+|---|---|---|
+| n_train | 53,708 flows (Grupo A) | 53,708 flows (Grupo A) |
+| Split | 80/20, random_state=42 | 80/20, random_state=42 |
+| Scaler | StandardScaler (fit en 80%) | StandardScaler (fit en 80%) |
+| Evaluación normal | 13,427 flows holdout | 13,427 flows holdout |
+| Evaluación anómala | 598,285 flows Grupo B | 598,285 flows Grupo B |
+
+### Resultados de evaluación (escala de producción completa)
+
+| Métrica | IF | AE |
+|---|---|---|
+| AUC-ROC | **0.8998** | 0.9103 |
+| τ1 (Youden) | −0.4459 | −0.0038 |
+| TPR @ τ1 | **99.40%** | 99.42% |
+| FPR @ τ1 | **20.47%** | 25.68% |
+| τ2 (FPR≤2%) | −0.6027 | −0.0745 |
+| TPR @ τ2 (Block) | 18.27% | **54.62%** |
+| FPR @ τ2 | 1.99% | 2.00% |
+| F1 | **0.9947** | 0.9942 |
+| Tiempo entrenamiento | < 10 s | 115.6 s |
+
+**Decisión:** IF permanece como modelo de producción (40 corridas F6 validadas, todos los requisitos cumplidos). El AE queda como experimento comparativo. El Ensemble IF+AE (AND gate) se propone como trabajo futuro (reduce FPR en 49%, +4.8pp F1). Ver `AE_PRODUCCION_DOCUMENTACION.md`, `RESULTADOS_COMPARACION_IF_AE.md`, `DECISION_MODELO_PRODUCCION.md`.
