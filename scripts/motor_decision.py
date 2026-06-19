@@ -408,6 +408,16 @@ def main():
         dest_port = e.get('dest_port', 0) or 0
         proto     = e.get('proto', '?')
 
+        # features clave para alertas (calculadas del dict e, no del scaler)
+        _fl  = e.get('flow', {})
+        _bts = _fl.get('bytes_toserver', 0) or 0
+        _btc = _fl.get('bytes_toclient',  0) or 0
+        _pts = _fl.get('pkts_toserver',   0) or 0
+        _ptc = _fl.get('pkts_toclient',   0) or 0
+        _dur = max(flow_duration(e), 0.001)
+        byte_ratio = _bts / (_btc + 1)
+        pkt_rate   = (_pts + _ptc) / _dur
+
         # ts_flow: timestamp del flow para detectores temporales
         try:
             ts_flow = datetime.fromisoformat(
@@ -506,6 +516,8 @@ def main():
                     f"IP      : {src_ip}\n"
                     f"Proto   : {proto}  Puerto: {dest_port}\n"
                     f"Score   : {score:.4f}  Grado: {grado}\n"
+                    f"byte_ratio: {byte_ratio:.2f}  (normal ≈ 0.95)\n"
+                    f"pkt_rate  : {pkt_rate:,.1f} pkt/s\n"
                     f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
@@ -529,6 +541,8 @@ def main():
                     f"IP      : {src_ip}\n"
                     f"Proto   : {proto}  Puerto: {dest_port}\n"
                     f"Score   : {score:.4f}  Grado: {grado}\n"
+                    f"byte_ratio: {byte_ratio:.2f}  (normal ≈ 0.95)\n"
+                    f"pkt_rate  : {pkt_rate:,.1f} pkt/s\n"
                     f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
