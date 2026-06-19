@@ -681,23 +681,23 @@ tbody td{padding:6px 10px;vertical-align:middle}
 
       <div class="sh"><i class="bi bi-cpu"></i>Métricas del Modelo — Isolation Forest</div>
       <div class="g8 gap">
-        <div class="mcard"><div class="ml">Accuracy</div><div class="mv cb">99.97%</div>
-          <div class="mb"><div class="mb-f" style="width:99.97%;background:var(--blue)"></div></div></div>
-        <div class="mcard"><div class="ml">Precision</div><div class="mv cg">99.96%</div>
-          <div class="mb"><div class="mb-f" style="width:99.96%;background:var(--green)"></div></div></div>
-        <div class="mcard"><div class="ml">Recall</div><div class="mv cy">99.30%</div>
-          <div class="mb"><div class="mb-f" style="width:99.30%;background:var(--yellow)"></div></div></div>
-        <div class="mcard"><div class="ml">F1 Score</div><div class="mv cp">0.9963</div>
-          <div class="mb"><div class="mb-f" style="width:99.63%;background:var(--purple)"></div></div></div>
-        <div class="mcard"><div class="ml">AUC-ROC</div><div class="mv cb">0.9440</div>
-          <div class="mb"><div class="mb-f" style="width:94.40%;background:var(--blue)"></div></div></div>
+        <div class="mcard"><div class="ml">Precision</div><div class="mv cg">99.54%</div>
+          <div class="mb"><div class="mb-f" style="width:99.54%;background:var(--green)"></div></div></div>
+        <div class="mcard"><div class="ml">Recall</div><div class="mv cy">99.40%</div>
+          <div class="mb"><div class="mb-f" style="width:99.40%;background:var(--yellow)"></div></div></div>
+        <div class="mcard"><div class="ml">F1 Score</div><div class="mv cp">0.9947</div>
+          <div class="mb"><div class="mb-f" style="width:99.47%;background:var(--purple)"></div></div></div>
+        <div class="mcard"><div class="ml">AUC-ROC</div><div class="mv cb">0.8998</div>
+          <div class="mb"><div class="mb-f" style="width:89.98%;background:var(--blue)"></div></div></div>
         <div class="mcard"><div class="ml">Lat. P95</div><div class="mv cg">34.8ms</div>
           <div style="font-size:.62rem;color:var(--muted);margin-top:3px">req &lt;500ms ✓</div></div>
         <div class="mcard"><div class="ml">ITL</div><div class="mv cg">0%</div>
-          <div style="font-size:.62rem;color:var(--muted);margin-top:3px">0 falsos positivos</div></div>
+          <div style="font-size:.62rem;color:var(--muted);margin-top:3px">F6 · whitelist activa</div></div>
+        <div class="mcard"><div class="ml">Corridas F6</div><div class="mv cb">40</div>
+          <div style="font-size:.62rem;color:var(--muted);margin-top:3px">40/40 disponibilidad</div></div>
         <div class="mcard"><div class="ml">Umbrales</div>
           <div style="font-size:.8rem;font-weight:700;font-family:monospace;line-height:1.7">
-            <span class="cy">τ1=-0.4973</span><br><span class="cr">τ2=-0.6873</span>
+            <span class="cy">τ1=-0.4459</span><br><span class="cr">τ2=-0.6027</span>
           </div></div>
       </div>
     </div><!-- /dashboard -->
@@ -781,8 +781,8 @@ tbody td{padding:6px 10px;vertical-align:middle}
           <div class="ch-wrap-lg"><canvas id="chartDona2"></canvas></div>
         </div>
         <div class="card">
-          <div class="ct"><i class="bi bi-bar-chart-line"></i>Métricas del modelo</div>
-          <div class="ch-wrap-lg"><canvas id="chartMetrics"></canvas></div>
+          <div class="ct"><i class="bi bi-bar-chart-line"></i>Top IPs detectadas</div>
+          <div style="padding:8px 0;font-size:.8rem;color:var(--muted)" id="top-ips-list">Sin datos aún</div>
         </div>
       </div>
     </div><!-- /analisis -->
@@ -833,11 +833,11 @@ tbody td{padding:6px 10px;vertical-align:middle}
           <div class="ct"><i class="bi bi-braces"></i>Isolation Forest — Configuración</div>
           <table style="width:100%;font-size:.8rem;border-collapse:collapse">
             <tr><td class="cm" style="padding:6px 0;width:160px">Algoritmo</td><td class="mono">Isolation Forest</td></tr>
-            <tr><td class="cm" style="padding:6px 0">scikit-learn</td><td class="mono">1.8.0</td></tr>
+            <tr><td class="cm" style="padding:6px 0">scikit-learn</td><td class="mono">1.9.0</td></tr>
             <tr><td class="cm" style="padding:6px 0">n_estimators</td><td class="mono">300 árboles</td></tr>
             <tr><td class="cm" style="padding:6px 0">contamination</td><td class="mono">0.05</td></tr>
-            <tr><td class="cm" style="padding:6px 0">Entrenamiento</td><td class="mono">684 flujos normales</td></tr>
-            <tr><td class="cm" style="padding:6px 0">Dataset total</td><td class="mono">376,827 flujos · 40 corridas</td></tr>
+            <tr><td class="cm" style="padding:6px 0">Entrenamiento</td><td class="mono">53,708 flujos normales (Grupo A 80%)</td></tr>
+            <tr><td class="cm" style="padding:6px 0">Dataset total</td><td class="mono">401,424 flujos · 47 archivos</td></tr>
             <tr><td class="cm" style="padding:6px 0">Features</td><td class="mono">14 (pkts, bytes, rates, proto)</td></tr>
             <tr><td class="cm" style="padding:6px 0">Modelo (.pkl)</td><td class="mono">2.4 MB en RAM</td></tr>
           </table>
@@ -1363,7 +1363,7 @@ const chartDona = new Chart(document.getElementById('chartDona').getContext('2d'
 });
 
 // Gráficos vista análisis
-let chartLine2,chartDona2,chartMetrics;
+let chartLine2,chartDona2;
 function initAnalysisCharts(){
   if(chartLine2) return;
   chartLine2=new Chart(document.getElementById('chartLine2').getContext('2d'),{
@@ -1381,19 +1381,8 @@ function initAnalysisCharts(){
     options:{...BASE,cutout:'55%',plugins:{...BASE.plugins,
       legend:{position:'bottom',labels:{color:'#8b949e',font:{size:9},boxWidth:10}}}}
   });
-  chartMetrics=new Chart(document.getElementById('chartMetrics').getContext('2d'),{
-    type:'bar',
-    data:{labels:['Accuracy','Precision','Recall','F1 Score','AUC-ROC'],
-      datasets:[{label:'Valor (%)',
-        data:[99.97,99.96,99.30,99.63,94.40],
-        backgroundColor:['rgba(88,166,255,.8)','rgba(63,185,80,.8)','rgba(227,179,65,.8)',
-          'rgba(188,140,255,.8)','rgba(88,166,255,.7)'],
-        borderRadius:4}]},
-    options:{...BASE,indexAxis:'y',scales:{
-      x:{min:80,max:100,ticks:{color:'#8b949e',font:{size:9}},grid:{color:'#21262d'}},
-      y:{ticks:{color:'#8b949e',font:{size:10}},grid:{color:'#21262d'}}
-    }}
-  });
+  // chartMetrics eliminado — datos eran hardcoded e incorrectos
+  // se reemplazó por lista de top IPs en el panel de análisis
 }
 
 async function refreshCharts(){
