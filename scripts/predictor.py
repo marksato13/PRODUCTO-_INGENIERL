@@ -111,21 +111,24 @@ def construir_features(historial, tiempo_desde_ultima):
     Construye el vector de features a partir del historial de gaps.
     tiempo_desde_ultima: segundos desde la última stats line (gap parcial actual).
     """
-    if len(historial) < 4:
+    if len(historial) < 2:
         return None
 
     # Calcular gaps entre stats consecutivas dentro de la sesión
     gaps = []
     for i in range(1, len(historial)):
         delta = (historial[i]['ts'] - historial[i-1]['ts']).total_seconds()
-        if 0 < delta < 3600:   # descartar gaps imposibles
+        if 0 < delta < 3600:
             gaps.append(delta)
 
-    if len(gaps) < 3:
+    if len(gaps) < 1:
         return None
 
-    gap_actual = tiempo_desde_ultima  # gap parcial (en curso)
-    g = gaps  # historial de gaps completados
+    gap_actual = tiempo_desde_ultima
+    g = gaps
+    # Rellenar lags faltantes con el último gap disponible
+    while len(g) < 3:
+        g = [g[0]] + g
 
     feat = {
         'gap':      gap_actual,
