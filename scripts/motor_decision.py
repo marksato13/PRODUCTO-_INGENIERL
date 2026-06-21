@@ -441,11 +441,14 @@ def main():
         except Exception:
             ts_flow = time.time()
 
+        # flag para contar anomalía UNA sola vez por flow (evitar doble conteo)
+        _flow_anomaly = False
+
         # ── Detector de HTTP Abuse (override temporal) ────────
         http_ab = detectar_http_abuse(src_ip, dest_port, ts_flow, http_requests)
         if http_ab:
             hab_accion, hab_n = http_ab
-            total_anom   += 1
+            _flow_anomaly = True
             total_http_ab += 1
             if hab_accion == 'BLOCK' and src_ip not in bloqueados:
                 bloqueados.add(src_ip)
@@ -481,8 +484,8 @@ def main():
         bf = detectar_brute_force(src_ip, dest_port, ts_flow, ssh_intentos)
         if bf:
             bf_accion, bf_n = bf
-            total_anom += 1
-            total_bf   += 1
+            _flow_anomaly = True
+            total_bf += 1
             if bf_accion == 'BLOCK' and src_ip not in bloqueados:
                 bloqueados.add(src_ip)
                 limitados.discard(src_ip)
@@ -536,7 +539,7 @@ def main():
         tipo   = clasificar_tipo(e, score, accion, ssh_intentos, http_requests)
 
         if accion == 'BLOCK':
-            total_anom += 1
+            _flow_anomaly = True
             if src_ip not in bloqueados:
                 bloqueados.add(src_ip)
                 if src_ip in limitados:
@@ -565,7 +568,7 @@ def main():
                 )
 
         elif accion == 'LIMIT':
-            total_anom += 1
+            _flow_anomaly = True
             if src_ip not in limitados and src_ip not in bloqueados:
                 limitados.add(src_ip)
                 resp = limitar_ip(src_ip)
@@ -596,7 +599,15 @@ def main():
                 f"proto={proto} score={score:.4f} | PERMIT"
             )
 
+        # conteo único de anomalía por flow (fix M1 doble conteo)
+        if _flow_anomaly:
+            total_anom += 1
+
         latencias_ms.append(latencia_ms)
+
+        # Purgar _score_hist cada 10,000 flows para evitar memory leak
+        if total_flows % 10_000 == 0 and _score_hist:
+            _score_hist.clear()
 
         if total_flows % 500 == 0:
             lat_med = sum(latencias_ms) / len(latencias_ms) if latencias_ms else 0
