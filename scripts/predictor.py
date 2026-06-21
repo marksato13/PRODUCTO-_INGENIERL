@@ -106,12 +106,18 @@ def parsear_historial_stats(n=20):
 
     return rows[-n:] if len(rows) >= 2 else []
 
+MAX_GAP_INACTIVIDAD = 600  # 10 min sin stats → sistema inactivo, no predecir
+
 def construir_features(historial, tiempo_desde_ultima):
     """
     Construye el vector de features a partir del historial de gaps.
     tiempo_desde_ultima: segundos desde la última stats line (gap parcial actual).
     """
     if len(historial) < 2:
+        return None
+
+    # Si el sistema lleva >10 min sin estadísticas, está inactivo — no predecir
+    if tiempo_desde_ultima > MAX_GAP_INACTIVIDAD:
         return None
 
     # Calcular gaps entre stats consecutivas dentro de la sesión
