@@ -25,11 +25,16 @@ import urllib.parse
 import threading
 import queue as _queue
 
-# ── Telegram ──────────────────────────────────────────────────
-TG_TOKEN   = "8677152686:AAEUKDJm0gbkc7Vu3NwRcNaxqx3iqQwaa7g"
-TG_CHAT_ID = "8512353253"
-TG_ENABLED = True
-TG_RELAY   = "http://192.168.0.20:8889/telegram"  # Desktop relay (sensor sin internet)
+# ── Telegram — credenciales en config/telegram.conf (fuera de git) ────
+_TG_CONF   = "/home/m4rk/ppi-surikata-producto/config/telegram.conf"
+TG_TOKEN   = ""
+TG_CHAT_ID = ""
+TG_RELAY   = "http://192.168.0.20:8889/telegram"
+if os.path.exists(_TG_CONF):
+    for _ln in open(_TG_CONF).read().splitlines():
+        if _ln.startswith("TG_TOKEN="):   TG_TOKEN   = _ln.split("=",1)[1].strip()
+        elif _ln.startswith("TG_CHAT_ID="): TG_CHAT_ID = _ln.split("=",1)[1].strip()
+TG_ENABLED = bool(TG_TOKEN and TG_CHAT_ID)
 
 # ─────────────────────────────────────────────────────────────────────────────
 EVE_PATH  = "/var/log/suricata/eve.json"
