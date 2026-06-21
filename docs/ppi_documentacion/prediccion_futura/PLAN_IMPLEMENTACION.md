@@ -1,466 +1,301 @@
-# Plan de Implementación por Fases — Módulo de Predicción
+# Plan de Implementación por Fases — Módulo de Predicción (REVISADO)
 
 **Proyecto:** PPI UPeU 2026  
 **Fecha:** 2026-06-21  
-**Tiempo total estimado:** 11–16 horas (2 días a full)
+**Revisión:** Corrige 5 errores arquitectónicos del plan anterior
 
 ---
 
-## Estructura de archivos completa
+## Correcciones al plan anterior
 
-```
-/home/m4rk/ppi-surikata-producto/
-│
-├── scripts/
-│   ├── motor_decision.py              [EXISTENTE — no se toca]
-│   ├── dashboard_web.py               [EXTENDER en Fase 5]
-│   ├── enforce.sh                     [EXISTENTE — lo invoca predictor]
-│   ├── entrenar_predictor.py          [NUEVO — Fases 1 y 2]
-│   └── predictor.py                   [NUEVO — Fase 3]
-│
-├── models/
-│   ├── isolation_forest.pkl           [EXISTENTE]
-│   ├── scaler.pkl                     [EXISTENTE]
-│   ├── predictor_modelo.pkl           [NUEVO — modelo ganador serializado]
-│   ├── predictor_tipo.txt             [NUEVO — "XGBoost" o "RandomForest"]
-│   └── features_predictor.txt         [NUEVO — lista de features en orden]
-│
-├── data/
-│   └── series_temporal_60s.csv        [NUEVO — dataset tiempo extraído]
-│
-├── results/
-│   ├── motor_decision.log             [EXISTENTE — input del predictor]
-│   ├── predictor.log                  [NUEVO — output del predictor en vivo]
-│   ├── comparacion_predictores.txt    [NUEVO — XGBoost vs RF vs ARIMA]
-│   ├── metricas_predictor.txt         [NUEVO — métricas del modelo en producción]
-│   └── graficas_predictor/
-│       ├── roc_comparacion.png        [NUEVO — ROC los 3 modelos superpuestas]
-│       ├── shap_predictor.png         [NUEVO — SHAP feature importance]
-│       └── timeline_prediccion.png    [NUEVO — P(ataque) vs BLOCKs reales]
-│
-└── config/systemd/
-    ├── ppi-motor.service              [EXISTENTE]
-    ├── ppi-dashboard.service          [EXISTENTE]
-    └── ppi-predictor.service          [NUEVO — Fase 4]
-```
-
----
-
-## Fase 0 — Extracción del dataset temporal
-**Tiempo: 1–2 horas | Archivos: `data/series_temporal_60s.csv`**
-
-### Qué se hace
-Parsear `results/motor_decision.log` (1.17M líneas, 11,516 estadísticas) y
-convertirlo en ventanas de 60 segundos con features de lag.
-
-### Cómo validar que salió bien
-```bash
-python3 scripts/entrenar_predictor.py --solo-dataset
-# Debe imprimir:
-# Ventanas totales : ~3,455
-# Con ataque (y=1): ~150–250   (Δbloqueados_{t+1} > 0)
-# Sin ataque (y=0): ~3,200–3,300
-# Ratio desbalance : ~1:14 a 1:20
-# Archivo guardado : data/series_temporal_60s.csv
-```
-
-### Criterio de éxito
-- Ventanas totales ≥ 2,000
-- Positivos (ataques) ≥ 100
-- No hay NaN en features de lag (el script hace `dropna()`)
-
-### Si algo falla
-El log tiene dos formatos distintos de línea `Estadísticas` (antes y después
-de cierta fecha). El regex debe manejar ambos. Revisar con:
-```bash
-grep 'Estadísticas' results/motor_decision.log | head -5
-grep 'Estadísticas' results/motor_decision.log | tail -5
-```
-
----
-
-## Fase 1 — Comparación de modelos (ARIMA vs RF vs XGBoost)
-**Tiempo: 2–3 horas | Archivos: `results/comparacion_predictores.txt`, `results/graficas_predictor/roc_comparacion.png`**
-
-### Por qué comparar tres modelos
-No elegir XGBoost a ciegas. Con los datos reales del proyecto, dejar que
-las métricas decidan. ARIMA actúa como **baseline estadístico** — si XGBoost
-no lo supera claramente, no vale la pena la complejidad adicional.
-
-### Split temporal (obligatorio — nunca aleatorio en series de tiempo)
-```
-Train : ventanas 02-jun → 14-jun  (~80%, ≈2,764 filas)
-Test  : ventanas 15-jun → 19-jun  (~20%, ≈691  filas)
-```
-El test debe ser siempre el período más reciente, no una muestra aleatoria.
-Mezclar pasado y futuro en series temporales infla artificialmente el AUC.
-
-### Los tres modelos a comparar
-
-**Modelo A — ARIMA (baseline)**
-```python
-from statsmodels.tsa.arima.model import ARIMA
-
-# Serie univariada: tasa de anomalías por ventana 60s
-serie_train = df_train['Δanom']
-modelo_arima = ARIMA(serie_train, order=(3, 1, 2)).fit()
-forecast = modelo_arima.forecast(steps=len(df_test))
-# Convertir forecast a probabilidad: sigmoid((forecast - mean) / std)
-```
-- Solo usa `Δanom` — ignora http_abuse, hora, lags cruzados
-- Referencia mínima: si los otros no lo superan, usar ARIMA
-
-**Modelo B — Random Forest**
-```python
-from sklearn.ensemble import RandomForestClassifier
-
-clf_rf = RandomForestClassifier(
-    n_estimators=300,
-    max_depth=8,
-    class_weight='balanced',   # maneja desbalance 1:16 automáticamente
-    random_state=42,
-    n_jobs=-1
-)
-clf_rf.fit(X_train, y_train)
-```
-
-**Modelo C — XGBoost**
-```python
-from xgboost import XGBClassifier
-
-ratio = (y_train == 0).sum() / (y_train == 1).sum()
-clf_xgb = XGBClassifier(
-    n_estimators=300,
-    max_depth=4,
-    learning_rate=0.05,
-    scale_pos_weight=ratio,    # control fino del desbalance
-    subsample=0.8,
-    colsample_bytree=0.8,
-    early_stopping_rounds=20,  # para automáticamente
-    eval_metric='auc',
-    random_state=42,
-    verbosity=0
-)
-clf_xgb.fit(X_train, y_train, eval_set=[(X_test, y_test)])
-```
-
-### Métricas de comparación (sobre el test set)
-
-| Métrica | Por qué importa |
-|---|---|
-| **AUC-ROC** | Discriminación global independiente del umbral |
-| **Precision@τ** | De las veces que alerta, cuántas son reales |
-| **Recall@τ** | De los ataques reales, cuántos anticipa |
-| **F1@τ** | Balance precision/recall |
-| Tiempo de entrenamiento | Relevante para re-entrenamiento futuro |
-| Tamaño modelo (KB) | Relevante para el sensor (RAM limitada) |
-
-Umbral τ: el que maximiza F1 en el test set (no en el train).
-
-### Output de esta fase
-```
-results/comparacion_predictores.txt
-────────────────────────────────────────────────────────
-Modelo       AUC-ROC  Precision  Recall   F1    τ
-────────────────────────────────────────────────────────
-ARIMA        0.XX     0.XX       0.XX     0.XX  —
-RandomForest 0.XX     0.XX       0.XX     0.XX  0.XX
-XGBoost      0.XX     0.XX       0.XX     0.XX  0.XX
-────────────────────────────────────────────────────────
-GANADOR: [modelo] con AUC=[valor]
-```
-
----
-
-## Fase 2 — Decisión del modelo de producción
-**Tiempo: 30 minutos | Archivos: `models/predictor_modelo.pkl`, `models/predictor_tipo.txt`, `models/features_predictor.txt`, `results/metricas_predictor.txt`, `results/graficas_predictor/shap_predictor.png`**
-
-### Criterio de decisión
-
-```
-¿XGBoost AUC > RF AUC por más de 2pp?  → XGBoost gana
-¿Diferencia ≤ 2pp?                      → RF gana (más simple, más robusto)
-¿Ambos AUC < ARIMA + 5pp?              → revisar features, no implementar
-```
-
-El modelo que no gane se documenta en `comparacion_predictores.txt`
-como experimento — igual que AE vs IF en el experimento comparativo.
-
-### Serialización del ganador
-```python
-import joblib
-
-# El archivo se llama siempre igual — predictor.py no sabe ni le importa
-# qué modelo ganó, solo carga el pkl
-joblib.dump(clf_ganador, 'models/predictor_modelo.pkl')
-
-# Registro del tipo para el informe
-with open('models/predictor_tipo.txt', 'w') as f:
-    f.write('XGBoost')   # o 'RandomForest'
-
-# Features en orden exacto (predictor.py las lee para construir el vector)
-with open('models/features_predictor.txt', 'w') as f:
-    f.write('\n'.join(FEATURES))
-
-# Métricas finales
-with open('results/metricas_predictor.txt', 'w') as f:
-    f.write(f"Modelo: {tipo}\n")
-    f.write(f"AUC-ROC: {auc:.4f}\n")
-    f.write(f"Precision@τ: {prec:.4f}\n")
-    f.write(f"Recall@τ:    {rec:.4f}\n")
-    f.write(f"F1@τ:        {f1:.4f}\n")
-    f.write(f"Umbral τ:    {tau:.4f}\n")
-    f.write(f"Train: 02-jun → 14-jun ({len(X_train)} ventanas)\n")
-    f.write(f"Test:  15-jun → 19-jun ({len(X_test)} ventanas)\n")
-```
-
-### Gráficas de esta fase
-- `roc_comparacion.png` — tres curvas ROC superpuestas (ARIMA / RF / XGBoost)
-- `shap_predictor.png` — SHAP del modelo ganador (qué feature más predice)
-- `timeline_prediccion.png` — línea de tiempo: P(ataque) vs BLOCKs reales del IF
-
----
-
-## Fase 3 — Proceso predictor en producción (`predictor.py`)
-**Tiempo: 2–3 horas | Archivos: `scripts/predictor.py`, `results/predictor.log`**
-
-### Qué hace
-Corre en paralelo al motor. Cada 60 segundos:
-1. Lee las últimas N líneas de `motor_decision.log`
-2. Extrae la ventana actual y construye el vector de features
-3. Carga `predictor_modelo.pkl` y llama `predict_proba()`
-4. Según el resultado, actúa:
-
-```
-P < 0.40          → log INFO "OK"           (silencio en Telegram)
-0.40 ≤ P < 0.70   → log INFO "RIESGO-MEDIO" (visible en dashboard, no Telegram)
-P ≥ 0.70          → log WARNING "ALERTA"    (Telegram + enforce.sh LIMIT)
-```
-
-### Formato de `predictor.log`
-```
-2026-06-21 14:32:00 | INFO    | OK          | P=0.21 | top=anom_lag1=0
-2026-06-21 14:33:00 | INFO    | RIESGO-MEDIO| P=0.55 | top=anom_lag2=47
-2026-06-21 14:34:00 | WARNING | ALERTA      | P=0.83 | top=anom_lag1=312
-```
-
-### Verificación
-```bash
-# Arrancar manualmente
-python3 scripts/predictor.py
-
-# En otra terminal, verificar que escribe cada 60s
-tail -f results/predictor.log
-
-# Disparar un ataque desde Kali y ver si P sube
-ssh m4rk@192.168.0.100 "hping3 -S -p 80 -i u3000 192.168.0.120 &"
-# → En ~60-120s debe aparecer WARNING ALERTA en predictor.log
-```
-
----
-
-## Fase 4 — Servicio systemd (`ppi-predictor.service`)
-**Tiempo: 30 minutos | Archivos: `config/systemd/ppi-predictor.service`**
-
-### Contenido del servicio
-```ini
-[Unit]
-Description=PPI Predictor — clasificacion binaria temporal
-After=ppi-motor.service
-Requires=ppi-motor.service
-
-[Service]
-Type=simple
-User=m4rk
-WorkingDirectory=/home/m4rk/ppi-surikata-producto
-ExecStart=/home/m4rk/ppi-sensor/venv/bin/python3 scripts/predictor.py
-Restart=always
-RestartSec=10
-StandardOutput=append:/home/m4rk/ppi-surikata-producto/results/predictor.log
-StandardError=append:/home/m4rk/ppi-surikata-producto/results/predictor.log
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Instalación
-```bash
-sudo cp config/systemd/ppi-predictor.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable ppi-predictor.service
-sudo systemctl start ppi-predictor.service
-sudo systemctl status ppi-predictor.service
-```
-
-### Verificación
-```bash
-# Los tres servicios deben estar activos simultáneamente
-sudo systemctl status ppi-motor.service
-sudo systemctl status ppi-predictor.service
-sudo systemctl status ppi-dashboard.service
-```
-
----
-
-## Fase 5 — Visibilidad en dashboard (`dashboard_web.py`)
-**Tiempo: 2–3 horas | Archivos: `scripts/dashboard_web.py` (extensión)**
-
-### Qué agregar
-
-**1. Segundo lector de log** (hilo paralelo al existente)
-```python
-PREDICTOR_LOG = BASE + '/results/predictor.log'
-
-PRED_RE = re.compile(
-    r'(\d{2}:\d{2}:\d{2}) \| \w+ \| (\w[\w-]*) \| P=([\d.]+)'
-)
-
-def predictor_reader():
-    pred_state = {"p": 0.0, "nivel": "OK", "ts": "—", "historial": []}
-    while True:
-        if not os.path.exists(PREDICTOR_LOG):
-            time.sleep(5); continue
-        with open(PREDICTOR_LOG, "r", errors="ignore") as f:
-            f.seek(0, 2)
-            while True:
-                ln = f.readline()
-                if ln:
-                    m = PRED_RE.search(ln)
-                    if m:
-                        ev = {"ts": m.group(1),
-                              "nivel": m.group(2),
-                              "p": float(m.group(3))}
-                        pred_state.update({"p": ev["p"],
-                                           "nivel": ev["nivel"],
-                                           "ts": ev["ts"]})
-                        pred_state["historial"] = \
-                            ([ev] + pred_state["historial"])[:10]
-                        push_sse({"type": "predictor", **ev})
-                else:
-                    time.sleep(0.5)
-```
-
-**2. Panel HTML en el sidebar**
-```html
-<!-- Insertar junto al panel de alertas existente -->
-<div class="sb-card" id="panel-predictor">
-  <div class="sb-title">PREDICTOR XGBoost</div>
-
-  <!-- Gauge de probabilidad -->
-  <div style="text-align:center; margin:12px 0">
-    <span id="pred-valor" style="font-size:2em; font-weight:700">—%</span>
-    <div id="pred-barra" style="height:8px; border-radius:4px;
-         background:#2a2a2a; margin:6px 0">
-      <div id="pred-fill" style="height:100%; border-radius:4px;
-           width:0%; background:var(--green); transition:width .5s"></div>
-    </div>
-    <span id="pred-nivel" class="mono" style="font-size:.85em">OK</span>
-    <span id="pred-ts" class="mono" style="font-size:.75em; opacity:.6"> —</span>
-  </div>
-
-  <!-- Historial -->
-  <div style="font-size:.8em; opacity:.7; margin-bottom:4px">Últimas alertas</div>
-  <div id="pred-historial" style="font-size:.78em; font-family:monospace"></div>
-</div>
-```
-
-**3. Handler SSE en JavaScript**
-```javascript
-// Dentro de la función que procesa eventos SSE existente
-case 'predictor':
-  const p = Math.round(ev.p * 100);
-  document.getElementById('pred-valor').textContent = p + '%';
-  document.getElementById('pred-ts').textContent = ' ' + ev.ts;
-  document.getElementById('pred-nivel').textContent = ev.nivel;
-
-  const fill = document.getElementById('pred-fill');
-  fill.style.width = p + '%';
-  fill.style.background = p >= 70 ? 'var(--red)'
-                        : p >= 40 ? 'var(--yellow)'
-                        : 'var(--green)';
-
-  // Agregar al historial
-  const hist = document.getElementById('pred-historial');
-  const color = p >= 70 ? 'var(--red)' : p >= 40 ? 'var(--yellow)' : 'var(--green)';
-  hist.innerHTML = `<div><span style="color:${color}">${ev.ts} ${p}% ${ev.nivel}</span></div>`
-                 + hist.innerHTML.split('<div>').slice(0,6).join('<div>');
-  break;
-```
-
-### Aspecto final del panel en el browser
-```
-┌──────────────────────────────┐
-│  PREDICTOR XGBoost           │
-│                              │
-│         83%                  │
-│  ████████████████░░░░  🔴    │
-│         ALERTA  14:34        │
-│                              │
-│  Últimas alertas             │
-│  14:34  83%  ALERTA          │
-│  14:33  55%  RIESGO-MEDIO    │
-│  14:32  21%  OK              │
-│  14:20  76%  ALERTA          │
-│  14:19  18%  OK              │
-└──────────────────────────────┘
-```
-
----
-
-## Fase 6 — Corridas de validación del predictor
-**Tiempo: 2–3 horas | Archivos: ninguno nuevo — mide sobre los existentes**
-
-### 10 corridas adicionales (no reemplazan las F6)
-
-| Corridas | Escenario | Qué se mide |
+| Error | Plan anterior (incorrecto) | Plan corregido |
 |---|---|---|
-| 5 con ataque | SYN Flood o HTTP Abuse desde Kali | Lead time: Δt(ALERTA predictor) − Δt(BLOCK del IF) |
-| 5 sin ataque | Solo tráfico normal desde Desktop | Falsos despertares: ¿el predictor alerta sin ataque? |
+| **E1 — Señal temporal** | Δanomalías cada 60s | Intervalo de tiempo entre stats (gap) |
+| **E2 — Tamaño dataset** | ~3,455 ventanas | ~11,000 observaciones (una por línea stats) |
+| **E3 — Feature principal** | `anom_lag1`, `Δhttp_abuse` | `gap_segundos`, `gap_lag1`, `gap_delta` |
+| **E4 — Formatos del log** | 1 regex | 3 regex distintos (3 formatos reales en el log) |
+| **E5 — Paquetes** | shap y statsmodels asumidos instalados | Faltan — instalar antes |
 
-### Métrica clave: lead time predictivo
+---
+
+## Por qué el GAP es la señal correcta
+
+Las líneas de estadísticas aparecen **cada 500 flows procesados**, no cada N segundos.
+El tiempo entre dos stats consecutivas = 500 flows / tasa_de_tráfico:
+
 ```
-lead_time = t(WARNING predictor.log) - t(WARNING motor_decision.log)
-
-Si lead_time > 0  → el predictor anticipó al IF  ← resultado esperado
-Si lead_time < 0  → el predictor fue más lento que el IF ← resultado malo
-Si lead_time = 0  → predictor y motor detectaron al mismo tiempo
+Tráfico normal  → gap ≈ 174 segundos   (500 flows en 3 min)
+Inicio ataque   → gap ≈  90 segundos   (tráfico acelerando)
+Ataque pleno    → gap ≈  17 segundos   (500 flows en 17s = 29 flows/s)
 ```
 
-Anotar en bitácora igual que las corridas F6.
+El predictor detecta que el gap **está encogiendo** antes de que el IF acumule
+suficientes flows para disparar el primer BLOCK (~62s de lead time).
+
+Línea de tiempo durante SYN Flood:
+```
+t=0s    gap=174s  → normal
+t=30s   gap=90s   → tráfico acelerando  ← predictor puede detectar aquí
+t=60s   gap=45s   → aceleración clara   ← predictor alerta aquí
+t=90s   gap=17s   → BLOCK del IF        ← motor reactivo actúa aquí
+        ────────────────────────────────
+        lead time predictivo ≈ 30–60s
+```
 
 ---
 
-## Fase 7 — Actualización del informe PDF
-**Tiempo: 1–2 horas | Archivos: `scripts/generar_informe_pdf.py`**
+## 3 formatos reales del log (todos deben parsearse)
 
-### Sección nueva en el PDF
-Agregar entre §9 Experimento Comparativo y §10 F6 Corridas:
+```python
+# Formato 1 — sesiones tempranas (02-jun inicio)
+# flows=500 anomalías=500 bloqueados=500
+RE_F1 = re.compile(
+    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
+    r'flows=(\d+) anomal[íi]as?=(\d+) bloqueados=(\d+)$'
+)
 
-**§9b — Módulo de Predicción Temporal**
-- Justificación: Tipo 1 clasificación binaria temporal
-- Comparación ARIMA vs RF vs XGBoost (tabla + `roc_comparacion.png`)
-- Modelo de producción seleccionado + SHAP (`shap_predictor.png`)
-- Arquitectura integrada (texto + diagrama)
-- Métricas de validación: AUC, precision, recall, lead time
-- `timeline_prediccion.png`
+# Formato 2 — sesiones intermedias (02-jun tarde)
+# flows=500 anomalías=97 bloqueados=0 limitados=1
+RE_F2 = re.compile(
+    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
+    r'flows=(\d+) anomal[íi]as?=(\d+) bloqueados=(\d+) limitados=(\d+)$'
+)
+
+# Formato 3 — sesiones finales (04-jun en adelante) ← el más completo
+# flows=500 anomalías=409 bf=0 http_abuse=404 bloqueados=1 limitados=0 latencia_media=34.57ms
+RE_F3 = re.compile(
+    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
+    r'flows=(\d+) anomal[íi]as?=(\d+) bf=(\d+) http_abuse=(\d+) '
+    r'bloqueados=(\d+) limitados=(\d+) latencia_media=([\d.]+)ms'
+)
+
+def parsear_stats(linea):
+    """Retorna (timestamp, flows, bloqueados) o None."""
+    for re_pat, idx_ts, idx_flows, idx_bloq in [
+        (RE_F3, 1, 2, 6),
+        (RE_F2, 1, 2, 4),
+        (RE_F1, 1, 2, 4),
+    ]:
+        m = re_pat.search(linea)
+        if m:
+            return (
+                pd.to_datetime(m.group(idx_ts)),
+                int(m.group(idx_flows)),
+                int(m.group(idx_bloq)),
+            )
+    return None
+```
 
 ---
 
-## Resumen ejecutivo
+## Detección de reinicios de sesión (96 en total)
 
-| Fase | Qué produce | Tiempo |
-|---|---|---|
-| 0 — Dataset | `series_temporal_60s.csv` | 1–2h |
-| 1 — Comparación | `comparacion_predictores.txt` + `roc_comparacion.png` | 2–3h |
-| 2 — Decisión | `predictor_modelo.pkl` + `metricas_predictor.txt` + SHAP | 30min |
-| 3 — Predictor vivo | `predictor.py` + `predictor.log` | 2–3h |
-| 4 — Servicio | `ppi-predictor.service` activo | 30min |
-| 5 — Dashboard | Panel gauge + historial en :8080 | 2–3h |
-| 6 — Validación | Lead time medido en 10 corridas | 2–3h |
-| 7 — PDF | Sección §9b con métricas y gráficas | 1–2h |
-| **TOTAL** | | **11–16h** |
+El motor se reinició 96 veces. Cada reinicio resetea `flows` a 0.
+El parser detecta el reset comparando el flows actual con el anterior:
+
+```python
+def es_reinicio(flows_actual, flows_anterior):
+    """True si el motor se reinició entre estas dos líneas de stats."""
+    return flows_actual <= flows_anterior
+    # El motor sube en pasos de 500: 500→1000→1500...
+    # Un valor igual o menor significa reset.
+```
+
+Cuando hay reinicio: NO computar gap (sería artificialmente largo).
+Iniciar una nueva sesión y esperar al menos 3 stats para tener lags válidos.
 
 ---
 
-*Ruta: `docs/ppi_documentacion/prediccion_futura/PLAN_IMPLEMENTACION.md`*  
-*Relacionado: `TIPOS_PREDICCION.md` — justificación Tipo 1 | `ANALISIS_PREDICCION.md` — arquitectura detallada*
+## Features correctas del modelo
+
+Cada observación = una línea de stats (cada 500 flows procesados):
+
+```python
+FEATURES = [
+    'gap',          # segundos entre esta stats y la anterior (señal principal)
+    'gap_lag1',     # gap anterior
+    'gap_lag2',     # gap hace 2 stats
+    'gap_lag3',     # gap hace 3 stats
+    'gap_delta',    # gap - gap_lag1  (¿acelerando? valor negativo = sí)
+    'gap_mean5',    # media de últimos 5 gaps (rolling)
+    'gap_std5',     # desviación estándar de últimos 5 gaps
+    'bloq_activos', # bloqueados en esta stats (IPs actualmente bloqueadas)
+    'hora_sin',     # sin(2π·hora/24)  codificación cíclica
+    'hora_cos',     # cos(2π·hora/24)
+]
+```
+
+**Target:** `¿el gap de la SIGUIENTE stats es < 50% del gap actual?`
+
+```python
+# Target: el gap siguiente cae a menos de la mitad → tráfico acelerando
+df['target'] = (df['gap'].shift(-1) < df['gap'] * 0.5).astype(int)
+
+# Alternativa (más directa): ¿hay un BLOCK nuevo en los próximos 60s reales?
+df['target'] = df.apply(
+    lambda row: int(any(
+        (block_ts > row['ts']) and
+        (block_ts <= row['ts'] + pd.Timedelta(seconds=60))
+        for block_ts in block_timestamps
+    )), axis=1
+)
+```
+
+Usar **alternativa** (BLOCK en próximos 60s) — más directamente accionable.
+`block_timestamps` se extrae del log parseando las líneas `WARNING.*BLOCK → BLOCKED`.
+
+---
+
+## Tamaño real del dataset
+
+```
+Stats lines totales   : 11,516
+Menos arranques (×3)  : 96 × 3 = 288  (primeras 3 de cada sesión: sin lags)
+Observaciones válidas : ~11,228
+Positivos esperados   : ~500–1,500  (stats durante/previas a ataque)
+Negativos esperados   : ~9,700–10,700
+Ratio desbalance      : ~1:7 a 1:20  (usar scale_pos_weight)
+```
+
+Mucho mejor que los 3,455 del plan anterior.
+
+---
+
+## Feature de predicción en TIEMPO REAL (predictor.py)
+
+En producción, el predictor NO espera la siguiente stats. Calcula:
+
+```python
+# En predictor.py, cada 60s:
+tiempo_desde_ultima_stats = (datetime.now() - ultima_stats_ts).total_seconds()
+
+# Si este valor es PEQUEÑO, el motor está procesando flows muy rápido → ataque probable
+# Si es GRANDE, tráfico lento → normal
+
+feat_realtime = {
+    'gap': tiempo_desde_ultima_stats,   # ← gap parcial actual
+    'gap_lag1': gap_lag1,
+    'gap_lag2': gap_lag2,
+    'gap_lag3': gap_lag3,
+    'gap_delta': tiempo_desde_ultima_stats - gap_lag1,
+    'gap_mean5': np.mean([gap_lag1, gap_lag2, gap_lag3, gap_lag4, gap_lag5]),
+    'gap_std5':  np.std([gap_lag1, gap_lag2, gap_lag3, gap_lag4, gap_lag5]),
+    'bloq_activos': bloqueados_ultima_stats,
+    'hora_sin': np.sin(2*np.pi*datetime.now().hour/24),
+    'hora_cos': np.cos(2*np.pi*datetime.now().hour/24),
+}
+p = clf.predict_proba([list(feat_realtime.values())])[0, 1]
+```
+
+Esta es la clave: el predictor mide cuánto tiempo lleva sin aparecer una nueva stats.
+Si llevan 30s sin stats pero antes tardaban 174s → el tráfico explotó → alerta.
+
+---
+
+## Estructura de archivos (sin cambios respecto al plan anterior)
+
+```
+scripts/
+  entrenar_predictor.py   ← NUEVO (Fases 0-2)
+  predictor.py            ← NUEVO (Fase 3)
+  dashboard_web.py        ← EXTENDER (Fase 5)
+
+models/
+  predictor_modelo.pkl    ← ganador entre XGBoost y RF
+  predictor_tipo.txt      ← "XGBoost" o "RandomForest"
+  features_predictor.txt  ← lista FEATURES en orden
+
+data/
+  series_gap_sesiones.csv ← dataset (renombrado: gap-based, no 60s-based)
+
+results/
+  predictor.log
+  comparacion_predictores.txt
+  metricas_predictor.txt
+  graficas_predictor/
+    roc_comparacion.png
+    shap_predictor.png
+    timeline_gaps_vs_blocks.png   ← renombrado: muestra gaps + BLOCKs
+
+config/systemd/
+  ppi-predictor.service
+```
+
+---
+
+## Requisitos previos a implementar (checklist)
+
+```bash
+# 1. Instalar paquetes faltantes
+/home/m4rk/ppi-sensor/venv/bin/pip install shap statsmodels
+
+# 2. Verificar instalación
+/home/m4rk/ppi-sensor/venv/bin/python3 -c "
+import shap, statsmodels, xgboost, joblib
+print('shap:', shap.__version__)
+print('statsmodels:', statsmodels.__version__)
+print('xgboost:', xgboost.__version__)
+print('OK — todos listos')
+"
+
+# 3. Verificar acceso al log
+wc -l /home/m4rk/ppi-surikata-producto/results/motor_decision.log
+# Debe mostrar ~1,177,820
+```
+
+---
+
+## Fases de implementación (corregidas)
+
+### Fase 0 — Dataset con gaps (1–2h)
+- Parsear log con los 3 regex
+- Detectar 96 reinicios de sesión
+- Extraer timestamps de BLOCK (de WARNING lines)
+- Computar gap por observación
+- Construir features y target
+- Guardar `data/series_gap_sesiones.csv`
+- **Criterio OK:** ≥10,000 obs, ≥300 positivos, sin NaN
+
+### Fase 1 — Comparación ARIMA vs RF vs XGBoost (2–3h)
+- Split temporal: train < 2026-06-15, test ≥ 2026-06-15
+- ARIMA sobre serie univariada de gaps
+- RF con `class_weight='balanced'`
+- XGBoost con `scale_pos_weight=ratio`
+- Guardar `comparacion_predictores.txt` + `roc_comparacion.png`
+
+### Fase 2 — Decisión y serialización (30min)
+- Criterio: XGBoost si AUC > RF + 2pp, sino RF
+- Guardar `predictor_modelo.pkl`, `predictor_tipo.txt`, `features_predictor.txt`
+- Guardar `metricas_predictor.txt`, `shap_predictor.png`, `timeline_gaps_vs_blocks.png`
+
+### Fase 3 — predictor.py con gap en tiempo real (2–3h)
+- Leer log cada 60s
+- Calcular `tiempo_desde_ultima_stats` como feature principal
+- Mantener historial de gaps en memoria
+- Escribir `predictor.log`, llamar `enforce.sh` si P ≥ 0.70
+
+### Fase 4 — Servicio systemd (30min)
+- Crear e instalar `ppi-predictor.service`
+- Verificar que arranca con el motor
+
+### Fase 5 — Dashboard (2–3h)
+- Segundo lector de `predictor.log` en `dashboard_web.py`
+- Panel gauge P(ataque) + historial + gráfica de gaps en tiempo real
+- SSE push al browser igual que las alertas existentes
+
+### Fase 6 — 10 corridas de validación (2–3h)
+- 5 con ataque (SYN Flood, HTTP Abuse)
+- 5 sin ataque (solo Desktop)
+- Medir lead time: Δt(alerta predictor) vs Δt(BLOCK motor)
+- Anotar en bitácora
+
+### Fase 7 — Sección PDF (1–2h)
+- Agregar §9b al informe con métricas, gráficas y arquitectura
+- Regenerar PDF y pushear
+
+**Total: 11–16 horas (2 días a full)**
+
+---
+
+*Relacionado: `TIPOS_PREDICCION.md` · `ANALISIS_PREDICCION.md`*  
+*Última actualización: 2026-06-21 — reemplaza plan anterior*
