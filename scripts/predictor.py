@@ -4,7 +4,7 @@ predictor.py — Módulo de predicción temporal (Fase 3).
 Proceso paralelo al motor. Lee motor_decision.log cada 60s,
 calcula P(ataque en próximos 60s) y actúa si P >= umbral.
 """
-import re, time, logging, subprocess, joblib
+import re, time, logging, joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -16,7 +16,6 @@ LOG     = BASE / 'results' / 'motor_decision.log'
 PRED_LOG= BASE / 'results' / 'predictor.log'
 MODEL   = BASE / 'models'  / 'predictor_modelo.pkl'
 FEATS_F = BASE / 'models'  / 'features_predictor.txt'
-ENFORCE = BASE / 'scripts' / 'enforce.sh'
 
 THETA_ALTA = 0.70
 THETA_MEDIA= 0.40
@@ -32,28 +31,22 @@ logging.basicConfig(
 log = logging.getLogger('predictor')
 
 # ── Parseo del log ────────────────────────────────────────────────────────────
-RE_F3 = re.compile(
+RE_STATS = re.compile(
     r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
     r'flows=(\d+) anomal[íi]as?=\d+ bf=\d+ http_abuse=\d+ '
     r'bloqueados=(\d+)'
-)
-RE_F2 = re.compile(
-    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
-    r'flows=(\d+) anomal[íi]as?=\d+ bloqueados=(\d+) limitados=\d+\s*$'
-)
-RE_F1 = re.compile(
-    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
-    r'flows=(\d+) anomal[íi]as?=\d+ bloqueados=(\d+)\s*$'
 )
 
 def parsear_historial_stats(n=20):
     """Lee las últimas n stats lines para calcular historial de gaps."""
     try:
-        resultado = subprocess.run(
-            ['tail', '-n', '5000', str(LOG)],
-            capture_output=True, text=True
-        )
-        lineas = resultado.stdout.splitlines()
+        with open(LOG, 'r', errors='ignore') as _f:
+            _f.seek(0, 2)
+            size = _f.tell()
+            _f.seek(max(0, size - 512 * 1024))  # últimos 512 KB
+            if size > 512 * 1024:
+                _f.readline()  # descartar línea parcial
+            lineas = _f.read().splitlines()
     except Exception:
         return []
 
@@ -62,9 +55,8 @@ def parsear_historial_stats(n=20):
     for linea in lineas:
         if 'Estadísticas' not in linea and 'Estad' not in linea:
             continue
-        for pat in (RE_F3, RE_F2, RE_F1):
-            m = pat.search(linea)
-            if m:
+        m = RE_STATS.search(linea)
+        if m:
                 flows = int(m.group(2))
                 # Detectar reinicio de sesión
                 if prev_flows is not None and flows <= prev_flows:
@@ -75,7 +67,6 @@ def parsear_historial_stats(n=20):
                     'flows': flows,
                     'bloqueados': int(m.group(3)),
                 })
-                break
 
     return rows[-n:] if len(rows) >= 2 else []
 

@@ -563,8 +563,7 @@ def main():
                 )
             else:
                 log.debug(
-                    f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
-                    f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | BLOCK (ya bloqueado)"
+                    f"BLOCK | src={src_ip} score={score:.4f} tipo={tipo} | ya en ipset — skip enforcement"
                 )
 
         elif accion == 'LIMIT':
@@ -589,8 +588,7 @@ def main():
                 )
             else:
                 log.debug(
-                    f"SOSPECHOSO | src={src_ip} dst={dest_ip}:{dest_port} "
-                    f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} | LIMIT (ya limitado)"
+                    f"LIMIT | src={src_ip} score={score:.4f} tipo={tipo} | ya en ipset — skip enforcement"
                 )
 
         else:  # PERMIT
@@ -608,6 +606,7 @@ def main():
         # Purgar _score_hist cada 10,000 flows para evitar memory leak
         if total_flows % 10_000 == 0 and _score_hist:
             _score_hist.clear()
+            _last_tg_alert.clear()
 
         if total_flows % 500 == 0:
             lat_med = sum(latencias_ms) / len(latencias_ms) if latencias_ms else 0
