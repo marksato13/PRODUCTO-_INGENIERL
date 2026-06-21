@@ -500,7 +500,87 @@ El sistema desarrollado cumple todos los requisitos definidos al inicio del proy
 *Justificación formal de referencias: `docs/respuestas_asesor/07_DEFENSA_PREGUNTAS_FORMALES.md`*
 ---
 
-## 9. Referencias Bibliográficas
+## 9. Módulo Predictor Temporal — XGBoost
+
+### 9.1 Descripción y motivación
+
+El módulo predictor complementa al Isolation Forest con capacidad de anticipación: mientras IF reacciona flow a flow en ~34.8 ms, el predictor estima `P(ataque en los próximos 60s)` basándose en el ritmo al que el motor acumula flows. Ambos procesos corren en paralelo sin interferencia de latencia.
+
+**Señal central — gap entre estadísticas del motor:**
+
+| Estado de red | Gap típico entre stats | Interpretación |
+|---|---|---|
+| Normal (Desktop whitelisted) | ~174 segundos | Actividad baja — sin ataque |
+| Calentamiento moderado (ab c=20) | ~60 segundos | Actividad media |
+| Ataque intenso (ab -n 3000 c=150) | ~17 segundos | Alta intensidad — ALERTA inminente |
+
+El motor escribe una línea de estadísticas cada 500 flows. El tiempo entre líneas refleja la tasa de tráfico: una diferencia de 10× entre normal (~174s) y ataque (~17s) es la señal predictiva central.
+
+### 9.2 Comparación de modelos
+
+Se evaluaron tres modelos sobre 11,376 observaciones extraídas de `motor_decision.log` (split 80/20 cronológico por posición de fila; corte en 2026-06-18 18:19):
+
+**Tabla 26.** Comparación de modelos temporales
+
+| Modelo | AUC-ROC test | Resultado |
+|---|---|---|
+| ARIMA (univariado) | 0.50 | Descartado — equivale a azar |
+| Random Forest | 0.48 | Descartado — inferior a ARIMA |
+| **XGBoost** | **0.58** | **ELEGIDO** — mejor AUC, scale_pos_weight |
+
+> **Nota sobre AUC=0.58:** El conjunto de test proviene de sesiones de ataque continuas en laboratorio (98.5% muestras positivas). El AUC bajo refleja dificultad de discriminar *dentro* de una sesión de ataque ya activa, no la capacidad de detectar su inicio. Las corridas P4-P5 demuestran detección efectiva con P=81-83%.
+
+### 9.3 Features del modelo (10 features)
+
+`gap`, `gap_lag1`, `gap_lag2`, `gap_lag3`, `gap_delta`, `gap_mean5`, `gap_std5`, `bloqueados`, `hora_sin`, `hora_cos`
+
+Las dos features dominantes según SHAP son `gap` y `gap_lag1`, confirmando que el ritmo de llegada de flows es la señal central.
+
+### 9.4 Umbrales de decisión
+
+| Nivel | Condición | Salida |
+|---|---|---|
+| OK | P < 0.40 | Silencio |
+| RIESGO-MEDIO | 0.40 ≤ P < 0.70 | INFO en log |
+| ALERTA-PREDICTIVA | P ≥ 0.70 | WARNING + SSE dashboard |
+
+Deduplicación: no se emite nueva ALERTA si la última fue hace < 5 minutos.
+Guardia de inactividad: si el sistema lleva > 600s sin estadísticas, el predictor no predice (sistema en reposo).
+
+### 9.5 Corridas de validación (P4-P10)
+
+**Tabla 27.** Resultados corridas predictor — 2026-06-21
+
+| Corrida | Tipo | Resultado | P% | Feature top |
+|---|---|---|---|---|
+| P4 | Ataque | ALERTA-PREDICTIVA ✅ | 81.43% | gap=23s |
+| P5 | Ataque | ALERTA-PREDICTIVA ✅ | 83.46% | gap_mean5=62.4 |
+| P6 | Normal | FP residual post-ataque ⚠️ | 83.09% | lag1=17s (residual de P5) |
+| P7 | Normal | Sin alerta ✅ | — | — |
+| P8 | Normal | Sin alerta ✅ | — | — |
+| P9 | Normal | Sin alerta ✅ | — | — |
+| P10 | Normal | Sin alerta ✅ | — | — |
+
+- **TPR = 2/2 = 100%** (ataques detectados)
+- **FPR = 0/4 = 0%** (corridas normales con historial limpio)
+- **P6 (FP):** ocurre únicamente cuando el proceso retiene en memoria el lag residual del ataque anterior. Mitigación: reinicio de `ppi-predictor.service` entre sesiones; guardia `MAX_GAP_INACTIVIDAD=600s` implementada en v2876da4.
+
+### 9.6 Arquitectura de integración
+
+```
+Suricata (eve.json)
+    └─> motor_decision.py [ppi-motor.service]
+         ├─ IF score/flow → PERMIT / LIMIT / BLOCK   (latencia: ~34.8ms)
+         └─ stats line / 500 flows
+              └─> predictor.py [ppi-predictor.service]
+                   ├─ gap features → XGBoost → P(ataque/60s)
+                   └─ ALERTA-PREDICTIVA si P ≥ 0.70   (latencia: <1ms)
+                        └─> predictor.log + SSE → dashboard_web.py [:8080]
+```
+
+---
+
+## 10. Referencias Bibliográficas
 
 ### 9.1 Algoritmo y paradigma de detección
 

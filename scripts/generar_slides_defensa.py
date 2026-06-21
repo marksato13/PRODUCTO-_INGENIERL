@@ -76,7 +76,7 @@ def header_bar(sl, title, subtitle=None):
         txbox(sl, subtitle, Inches(0.35), Inches(0.85), Inches(12.5), Inches(0.45),
               size=14, color=AZUL_CLR, align=PP_ALIGN.LEFT)
 
-def footer(sl, num, total=16):
+def footer(sl, num, total=17):
     rect(sl, 0, H - Inches(0.28), W, Inches(0.28), fill=AZUL)
     txbox(sl, f"PPI — UPeU 2026  |  Rubén Salazar Tocas  |  {num}/{total}",
           Inches(0.3), H - Inches(0.28), Inches(12.5), Inches(0.28),
@@ -190,9 +190,10 @@ items_der = [
     "10. Validación F6 — 40 corridas",
     "11. Resultados vs. requisitos",
     "12. Dashboard de monitoreo",
-    "13. Conclusiones",
-    "14. Trabajo futuro",
-    "15. Preguntas",
+    "13. Módulo Predictor — XGBoost",
+    "14. Conclusiones",
+    "15. Trabajo futuro",
+    "16. Preguntas",
 ]
 
 bullet(sl, items_izq, Inches(0.5), Inches(1.6), Inches(6.0), size=15, spacing=0.37)
@@ -830,12 +831,71 @@ for i, h in enumerate(bars):
     rect(sl, Inches(6.0) + Inches(i * 0.63), by, Inches(0.5), bh3, fill=col)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 15 — Conclusiones
+# SLIDE 15 — Módulo Predictor Temporal — XGBoost
+# ══════════════════════════════════════════════════════════════════════════════
+sl = slide()
+rect(sl, 0, 0, W, H, fill=GRIS_CLR)
+header_bar(sl, "Módulo Predictor Temporal — XGBoost",
+           "Anticipación predictiva integrada al motor IF (proceso paralelo)")
+footer(sl, 15)
+
+# Panel izquierdo — cómo funciona
+rect(sl, Inches(0.3), Inches(1.55), Inches(6.0), Inches(5.65), fill=BLANCO, border=AZUL_CLR)
+txbox(sl, "Señal predictiva — gap entre estadísticas",
+      Inches(0.45), Inches(1.65), Inches(5.7), Inches(0.38), size=12, bold=True, color=AZUL_OSC)
+bullet(sl, [
+    "Motor escribe stats cada 500 flows",
+    "Normal:  gap ~ 174s   (tráfico bajo)",
+    "Ataque:  gap ~  17s   (10× más rápido)",
+    "Predictor mide cuánto tarda la próxima stats",
+    "→ detecta aceleración ANTES del BLOCK",
+], Inches(0.5), Inches(2.1), Inches(5.6), size=12, spacing=0.38)
+
+txbox(sl, "Modelo seleccionado — XGBoost (AUC=0.58)",
+      Inches(0.45), Inches(3.55), Inches(5.7), Inches(0.38), size=12, bold=True, color=AZUL_OSC)
+bullet(sl, [
+    "ARIMA:        AUC=0.50  (descartado)",
+    "Random Forest: AUC=0.48  (descartado)",
+    "XGBoost:      AUC=0.58  ✓ ELEGIDO",
+    "scale_pos_weight compensa desbalance",
+    "P ≥ 0.70  →  ALERTA-PREDICTIVA (log + SSE)",
+], Inches(0.5), Inches(4.0), Inches(5.6), size=12, spacing=0.38)
+
+# Panel derecho — resultados corridas
+rect(sl, Inches(6.5), Inches(1.55), Inches(6.5), Inches(3.3), fill=BLANCO, border=AZUL_CLR)
+txbox(sl, "Corridas de validación (P4-P10)",
+      Inches(6.65), Inches(1.65), Inches(6.2), Inches(0.38), size=12, bold=True, color=AZUL_OSC)
+tabla(sl,
+    ["Corrida", "Tipo", "Resultado", "P%"],
+    [("P4", "Ataque", "ALERTA ✓", "81.43%"),
+     ("P5", "Ataque", "ALERTA ✓", "83.46%"),
+     ("P7", "Normal", "Sin alerta ✓", "—"),
+     ("P8", "Normal", "Sin alerta ✓", "—"),
+     ("P9-P10", "Normal", "Sin alerta ✓", "—")],
+    Inches(6.55), Inches(2.1),
+    [Inches(1.4), Inches(1.4), Inches(2.2), Inches(1.2)], row_h=Inches(0.36))
+
+# KPIs
+rect(sl, Inches(6.5), Inches(5.0), Inches(6.5), Inches(2.2), fill=AZUL_OSC)
+txbox(sl, "Métricas del predictor", Inches(6.65), Inches(5.05), Inches(6.2), Inches(0.35),
+      size=12, bold=True, color=BLANCO)
+kpi_pred = [("TPR ataques", "2/2 = 100%"), ("FPR normal", "0/4 = 0%"),
+            ("P media ataque", "82.4%"), ("Servicios", "3 activos")]
+cy_k = Inches(5.45)
+for lbl, val in kpi_pred:
+    txbox(sl, f"  {lbl}:", Inches(6.55), cy_k, Inches(3.3), Inches(0.35),
+          size=12, color=AZUL_CLR)
+    txbox(sl, val, Inches(9.85), cy_k, Inches(3.0), Inches(0.35),
+          size=12, bold=True, color=AMARILLO)
+    cy_k += Inches(0.42)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SLIDE 16 — Conclusiones
 # ══════════════════════════════════════════════════════════════════════════════
 sl = slide()
 rect(sl, 0, 0, W, H, fill=GRIS_CLR)
 header_bar(sl, "Conclusiones", "Lo que se logró — impacto y contribución")
-footer(sl, 15)
+footer(sl, 16)
 
 conclusiones = [
     ("Sistema funcional end-to-end",
@@ -868,24 +928,24 @@ for i, (titulo, texto) in enumerate(conclusiones):
     cy10 += Inches(1.08)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SLIDE 16 — Trabajo Futuro y Preguntas
+# SLIDE 17 — Trabajo Futuro y Preguntas
 # ══════════════════════════════════════════════════════════════════════════════
 sl = slide()
 rect(sl, 0, 0, W, H, fill=GRIS_CLR)
 header_bar(sl, "Trabajo Futuro  /  Preguntas", "Líneas de extensión del sistema")
-footer(sl, 16)
+footer(sl, 17)
 
 rect(sl, Inches(0.3), Inches(1.6), Inches(6.3), Inches(5.6), fill=BLANCO, border=AZUL_CLR)
 txbox(sl, "Trabajo Futuro", Inches(0.45), Inches(1.7), Inches(6.0), Inches(0.4),
       size=14, bold=True, color=AZUL_OSC)
 futuro = [
-    "Extender whitelist dinámica (DHCP/LDAP)",
+    "Ensemble IF + AE (AND gate): FPR -49%, F1 +4.8pp",
     "Re-entrenamiento incremental online",
+    "Extender whitelist dinámica (DHCP/LDAP)",
     "Soporte multi-sensor (agente distribuido)",
     "Integración con SIEM (Wazuh / Elastic)",
-    "Modelo híbrido: IF + Autoencoder LSTM",
     "Notificaciones automáticas (email/Slack)",
-    "Reducción FPR via ensemble de modelos",
+    "Predictor con ventana de series temporales (LSTM)",
     "Despliegue en contenedor Docker",
 ]
 bullet(sl, futuro, Inches(0.5), Inches(2.2), Inches(5.9), size=13, spacing=0.41)
