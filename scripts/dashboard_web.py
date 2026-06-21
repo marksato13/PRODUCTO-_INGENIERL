@@ -29,8 +29,8 @@ RE_EVENTO = re.compile(
     r".*?\| (BLOCK|LIMIT)"
 )
 RE_STATS  = re.compile(
-    r"flows=(\d+).*anomalías=(\d+).*bf=(\d+).*http_abuse=(\d+)"
-    r".*bloqueados=(\d+).*limitados=(\d+).*latencia_media=([\d.]+)"
+    r"flows=(\d+).*anomal[íi]as?=(\d+).*bf=(\d+).*http_abuse=(\d+)"
+    r".*bloqueados=(\d+)(?:.*limitados=(\d+))?(?:.*latencia_media=([\d.]+))?"
 )
 RE_INICIO = re.compile(
     r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*Motor de decisión PPI — iniciando"
@@ -46,6 +46,8 @@ state = {
     "flows_total":0,"anom_total":0,"bf_total":0,"http_total":0,
     "latencia":0.0,"motor_inicio":"—","inicio_app":datetime.now(),
     "block_counter":0,
+    "last_stats_ts": None,
+    "gaps_hist": deque(maxlen=30),
 }
 
 pred_state = {
@@ -90,12 +92,33 @@ def procesar_linea(linea: str, push=True):
 
     m2 = RE_STATS.search(linea)
     if m2:
+        now_ts = datetime.now()
+        flows_v, anom_v = int(m2.group(1)), int(m2.group(2))
+        lat_v = float(m2.group(7)) if m2.group(7) else None
         with lock:
-            state["flows_total"] = int(m2.group(1))
-            state["anom_total"]  = int(m2.group(2))
+            last_ts = state["last_stats_ts"]
+            gap_val = round((now_ts - last_ts).total_seconds(), 1) if last_ts else None
+            state["flows_total"] = flows_v
+            state["anom_total"]  = anom_v
             state["bf_total"]    = int(m2.group(3))
             state["http_total"]  = int(m2.group(4))
-            state["latencia"]    = float(m2.group(7))
+            if lat_v is not None: state["latencia"] = lat_v
+            state["last_stats_ts"] = now_ts
+            if gap_val and 0 < gap_val < 3600:
+                state["gaps_hist"].append({
+                    "ts": now_ts.strftime("%H:%M:%S"),
+                    "gap": gap_val,
+                    "flows": flows_v,
+                    "anom_rate": round(anom_v / flows_v * 100, 1) if flows_v else 0,
+                })
+        if push and gap_val and 0 < gap_val < 3600:
+            push_sse({
+                "type": "stats_gap",
+                "ts": now_ts.strftime("%H:%M:%S"),
+                "gap": gap_val,
+                "flows": flows_v,
+                "anom_rate": round(anom_v / flows_v * 100, 1) if flows_v else 0,
+            })
         return
 
     m3 = RE_INICIO.search(linea)
@@ -103,9 +126,12 @@ def procesar_linea(linea: str, push=True):
         with lock: state["motor_inicio"] = m3.group(1)[11:19]
 
 def log_reader():
-    # Cargar historial (sin push SSE)
+    # Cargar solo los últimos 2MB del log (evitar leer 107MB completo)
     if os.path.exists(LOG_PATH):
         with open(LOG_PATH,"r",errors="ignore") as f:
+            f.seek(0, 2); size = f.tell()
+            f.seek(max(0, size - 2*1024*1024))
+            if size > 2*1024*1024: f.readline()  # descartar línea parcial
             for ln in f: procesar_linea(ln, push=False)
     # Tail en tiempo real (con push SSE)
     while True:
@@ -125,6 +151,26 @@ def log_reader():
 
 def predictor_reader():
     """Tailea predictor.log y empuja eventos SSE tipo predictor."""
+    # Cargar historial reciente al arrancar (no esperar nuevos eventos)
+    if os.path.exists(PRED_LOG):
+        try:
+            with open(PRED_LOG, "r", errors="ignore") as f:
+                last_lines = f.readlines()[-80:]
+            hist = []
+            for ln in reversed(last_lines):
+                m = RE_PRED.search(ln)
+                if m:
+                    ts, niv, p = m.group(1), m.group(2), float(m.group(3)) / 100.0
+                    hist.append({"ts": ts, "nivel": niv, "p": p})
+                    if len(hist) >= 20: break
+            if hist:
+                hist.reverse()
+                with lock:
+                    pred_state["historial"] = hist
+                    pred_state["p"]     = hist[-1]["p"]
+                    pred_state["nivel"] = hist[-1]["nivel"]
+                    pred_state["ts"]    = hist[-1]["ts"]
+        except: pass
     while True:
         if not os.path.exists(PRED_LOG): time.sleep(5); continue
         try:
@@ -308,6 +354,21 @@ def api_block():
     ssh_run(f"sudo ipset add ppi_blocked {ip} timeout 3600 -exist")
     return jsonify({"ok":True,"msg":f"{ip} bloqueada manualmente"})
 
+@app.route("/api/predictor")
+def api_predictor():
+    with lock:
+        return jsonify({
+            "p": pred_state["p"],
+            "nivel": pred_state["nivel"],
+            "ts": pred_state["ts"],
+            "historial": list(pred_state["historial"]),
+        })
+
+@app.route("/api/gaps")
+def api_gaps():
+    with lock:
+        return jsonify(list(state["gaps_hist"]))
+
 @app.route("/")
 def index(): return render_template_string(HTML)
 
@@ -320,6 +381,7 @@ HTML = r"""<!DOCTYPE html>
 <title>PPI-Surikata | Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
 :root{
   --sb:56px;                          /* sidebar width */
@@ -614,6 +676,11 @@ tbody td{padding:6px 10px;vertical-align:middle}
       <i class="bi bi-graph-up sb-icon cb"></i>
       <span class="sb-label">Análisis</span>
     </div>
+    <div class="sb-item" onclick="goView('predictor',this)">
+      <i class="bi bi-lightning-charge-fill sb-icon" style="color:var(--yellow)"></i>
+      <span class="sb-label">Predictor</span>
+      <span class="sb-badge" id="sb-pred-badge"></span>
+    </div>
     <div class="sb-item" onclick="goView('control',this)">
       <i class="bi bi-shield-fill sb-icon cy"></i>
       <span class="sb-label">Control ipset</span>
@@ -683,7 +750,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
           <div style="font-size:.8rem;font-weight:700;letter-spacing:.1em" id="risk-lbl" style="color:var(--green)">—</div>
           <div class="bar-bg"><div class="bar-fill" id="risk-bar" style="width:0%"></div></div>
           <div style="margin-top:8px;font-size:.72rem;color:var(--muted)">
-            F/min: <b id="s-fmin">—</b> &nbsp;|&nbsp; Lat: <b class="cg">34.8ms</b>
+            F/min: <b id="s-fmin">—</b> &nbsp;|&nbsp; Lat: <b id="s-lat2" class="cg">—</b>
           </div>
         </div>
       </div>
@@ -846,6 +913,94 @@ tbody td{padding:6px 10px;vertical-align:middle}
       </div>
     </div><!-- /analisis -->
 
+    <!-- ═══ VISTA: PREDICTOR ═══ -->
+    <div class="view" id="view-predictor">
+      <div class="sh"><i class="bi bi-lightning-charge-fill" style="color:var(--yellow)"></i>Módulo Predictor XGBoost — Tiempo Real</div>
+
+      <!-- KPIs superiores -->
+      <div class="g4 gap">
+        <div class="card" style="text-align:center;grid-column:span 1">
+          <div class="ct" style="justify-content:center"><i class="bi bi-graph-up-arrow cy"></i>P(ataque/60s)</div>
+          <div id="pg-valor" style="font-size:3.2rem;font-weight:800;color:var(--green);transition:color .4s;line-height:1">—%</div>
+          <div style="margin:10px 6px 4px">
+            <div style="height:12px;border-radius:6px;background:var(--card2);position:relative">
+              <div id="pg-barra" style="height:100%;border-radius:6px;width:0%;background:var(--green);transition:width .6s,background .4s"></div>
+              <div style="position:absolute;left:40%;top:0;height:100%;width:1px;background:rgba(227,179,65,.5)"></div>
+              <div style="position:absolute;left:70%;top:0;height:100%;width:1px;background:rgba(248,81,73,.5)"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:.62rem;color:var(--muted);margin-top:3px">
+              <span>0%</span><span class="cy">40%</span><span class="cr">70%</span><span>100%</span>
+            </div>
+          </div>
+          <div id="pg-nivel" style="font-weight:700;font-size:.9rem;color:var(--green);margin-top:4px">OK</div>
+          <div style="font-size:.68rem;color:var(--muted);margin-top:6px">
+            θ<sub>alta</sub>=70% · θ<sub>media</sub>=40% · ciclo=60s
+          </div>
+        </div>
+        <div class="card" style="grid-column:span 1">
+          <div class="ct"><i class="bi bi-cpu cb"></i>Estado del modelo</div>
+          <div style="font-size:.82rem;line-height:2">
+            <div><span class="cm">Algoritmo:</span> <b>XGBoost (temporal)</b></div>
+            <div><span class="cm">AUC-ROC:</span> <b class="cy">0.58</b> <span class="cm" style="font-size:.72rem">(test set 98.5% positivo)</span></div>
+            <div><span class="cm">Features:</span> <b>10</b> (gap, lag1-3, mean5, std5…)</div>
+            <div><span class="cm">Training:</span> <b>11,376 obs</b> · split 80/20</div>
+            <div><span class="cm">Servicio:</span> <b class="cg">ppi-predictor.service</b></div>
+          </div>
+        </div>
+        <div class="card" style="grid-column:span 2">
+          <div class="ct"><i class="bi bi-info-circle"></i>Señal predictiva — cómo funciona</div>
+          <div style="font-size:.8rem;line-height:1.8;color:var(--muted)">
+            El motor escribe estadísticas cada <b style="color:var(--txt)">500 flows</b>.
+            El tiempo entre dos líneas consecutivas (<b style="color:var(--yellow)">gap</b>) refleja la tasa de tráfico.
+            Un gap corto = tráfico intenso = posible ataque.
+          </div>
+          <div style="display:flex;gap:12px;margin-top:10px">
+            <div style="flex:1;text-align:center;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:8px">
+              <div style="font-size:1.3rem;font-weight:700;color:var(--green)">~174s</div>
+              <div style="font-size:.7rem;color:var(--muted)">Gap normal</div>
+            </div>
+            <div style="flex:1;text-align:center;background:rgba(227,179,65,.1);border:1px solid rgba(227,179,65,.3);border-radius:8px;padding:8px">
+              <div style="font-size:1.3rem;font-weight:700;color:var(--yellow)">~60s</div>
+              <div style="font-size:.7rem;color:var(--muted)">Moderado</div>
+            </div>
+            <div style="flex:1;text-align:center;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:8px;padding:8px">
+              <div style="font-size:1.3rem;font-weight:700;color:var(--red)">~17s</div>
+              <div style="font-size:.7rem;color:var(--muted)">Ataque (10×)</div>
+            </div>
+            <div style="flex:1;text-align:center;background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);border-radius:8px;padding:8px">
+              <div style="font-size:1.3rem;font-weight:700;color:var(--blue)">MAX_GAP</div>
+              <div style="font-size:.7rem;color:var(--muted)">&gt;600s → sin pred.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gráficas -->
+      <div class="g2 gap">
+        <div class="card">
+          <div class="ct"><i class="bi bi-graph-up-arrow cy"></i>P(ataque) en tiempo real — últimas 20 predicciones</div>
+          <div class="ch-wrap-lg"><canvas id="chartPred"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="ct"><i class="bi bi-activity cb"></i>Gap entre estadísticas (seg) — tasa de tráfico</div>
+          <div class="ch-wrap-lg"><canvas id="chartGap"></canvas></div>
+          <div style="display:flex;gap:16px;margin-top:6px;font-size:.68rem">
+            <span style="color:var(--red)">━ 60s umbral</span>
+            <span style="color:var(--green)">━ 174s normal</span>
+            <span style="color:var(--muted)">gap bajo → tráfico intenso</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feed predicciones -->
+      <div class="sh"><i class="bi bi-clock-history"></i>Historial de predicciones</div>
+      <div class="card">
+        <div id="pred-feed" style="font-family:monospace;font-size:.8rem;line-height:2;max-height:220px;overflow-y:auto">
+          <span class="cm">Esperando predicciones...</span>
+        </div>
+      </div>
+    </div><!-- /predictor -->
+
     <!-- ═══ VISTA: CONTROL IPSET ═══ -->
     <div class="view" id="view-control">
       <div class="sh"><i class="bi bi-shield-fill"></i>Control Inline — ipset</div>
@@ -990,13 +1145,17 @@ function goView(name, el){
   if(name==='analisis') refreshCharts2();
   if(name==='detecciones') renderTbl();
   if(name==='control') refreshControl();
+  if(name==='predictor'){ initPredictorCharts(); loadPredictorData(); }
 }
 
 // ═══════════════════════════════════════════════
 function actualizarPredictor(ev) {
   const p   = Math.round(ev.p * 100);
   const col = p>=70?"var(--red)":p>=40?"var(--yellow)":"var(--green)";
-  const lbl = ev.nivel||(p>=70?"ALERTA":p>=40?"RIESGO-MEDIO":"OK");
+  const lbl = (ev.nivel||"").replace(/[-_]/g,' ').trim() || (p>=70?"ALERTA":p>=40?"RIESGO MEDIO":"OK");
+  const ts  = ev.ts||"—";
+
+  // Panel dashboard principal
   const ve=document.getElementById("pred-valor");
   const be=document.getElementById("pred-barra");
   const ne=document.getElementById("pred-nivel");
@@ -1005,11 +1164,65 @@ function actualizarPredictor(ev) {
   if(ve){ve.textContent=p+"%";ve.style.color=col;}
   if(be){be.style.width=p+"%";be.style.background=col;}
   if(ne){ne.textContent=lbl;ne.style.color=col;}
-  if(te){te.textContent=ev.ts||"—";}
+  if(te){te.textContent=ts;}
   if(he){
-    const row=`<div style="color:${col}">${ev.ts||""} &nbsp; ${p}% &nbsp; ${lbl}</div>`;
+    const row=`<div style="color:${col}">${ts} &nbsp; ${p}% &nbsp; ${lbl}</div>`;
     he.innerHTML=row+he.innerHTML.split("<div").slice(0,7).join("<div");
   }
+
+  // Gauge vista Predictor
+  const pg=document.getElementById("pg-valor");
+  const pb=document.getElementById("pg-barra");
+  const pn=document.getElementById("pg-nivel");
+  if(pg){pg.textContent=p+"%";pg.style.color=col;}
+  if(pb){pb.style.width=p+"%";pb.style.background=col;}
+  if(pn){pn.textContent=lbl;pn.style.color=col;}
+
+  // Chart P% (vista predictor)
+  if(chartPred){
+    chartPred.data.labels.push(ts);
+    chartPred.data.datasets[0].data.push(p);
+    if(chartPred.data.labels.length>20){
+      chartPred.data.labels.shift();
+      chartPred.data.datasets[0].data.shift();
+    }
+    chartPred.update('none');
+  }
+
+  // Feed predicciones
+  const feed=document.getElementById("pred-feed");
+  if(feed){
+    if(feed.querySelector('.cm')) feed.innerHTML='';
+    const row=document.createElement('div');
+    row.style.cssText=`color:${col};border-bottom:1px solid var(--border);padding:2px 0`;
+    row.textContent=`${ts}  P=${p}%  ${lbl}`;
+    feed.insertBefore(row, feed.firstChild);
+    while(feed.children.length>15) feed.removeChild(feed.lastChild);
+  }
+
+  // Badge sidebar predictor si está en alerta
+  const badge=document.getElementById("sb-pred-badge");
+  if(badge){
+    if(p>=70){badge.textContent="!";badge.classList.add("show");}
+    else badge.classList.remove("show");
+  }
+}
+
+function actualizarGap(ev){
+  if(!chartGap) return;
+  const col = ev.gap<60?"var(--red)":ev.gap<120?"var(--yellow)":"var(--green)";
+  chartGap.data.labels.push(ev.ts);
+  chartGap.data.datasets[0].data.push(ev.gap);
+  chartGap.data.datasets[0].pointBackgroundColor = chartGap.data.datasets[0].pointBackgroundColor||[];
+  if(Array.isArray(chartGap.data.datasets[0].pointBackgroundColor))
+    chartGap.data.datasets[0].pointBackgroundColor.push(col);
+  if(chartGap.data.labels.length>20){
+    chartGap.data.labels.shift();
+    chartGap.data.datasets[0].data.shift();
+    if(Array.isArray(chartGap.data.datasets[0].pointBackgroundColor))
+      chartGap.data.datasets[0].pointBackgroundColor.shift();
+  }
+  chartGap.update('none');
 }
 
 // SSE — RECEPCIÓN INSTANTÁNEA
@@ -1027,6 +1240,7 @@ function initSSE(){
   es.onmessage = (e)=>{
     const ev = JSON.parse(e.data);
     if(ev.type==='predictor'){actualizarPredictor(ev);return;}
+    if(ev.type==='stats_gap'){actualizarGap(ev);return;}
 
     // 1. Guardar en allEvents
     allEvents.unshift(ev);
@@ -1393,6 +1607,7 @@ async function fetchStats(){
     document.getElementById('s-bf').textContent    = s.bf_total;
     document.getElementById('s-http').textContent  = s.http_total;
     document.getElementById('s-lat').textContent   = s.latencia.toFixed(1)+'ms';
+    document.getElementById('s-lat2').textContent  = s.latencia.toFixed(1)+'ms';
     document.getElementById('s-fmin').textContent  = s.flujos_min;
     document.getElementById('uptime-chip').textContent = s.uptime;
 
@@ -1441,6 +1656,104 @@ const chartDona = new Chart(document.getElementById('chartDona').getContext('2d'
     legend:{position:'bottom',labels:{color:'#8b949e',font:{size:9},boxWidth:10}}}}
 });
 
+// Gráficos vista predictor
+let chartPred = null, chartGap = null;
+
+function initPredictorCharts(){
+  if(chartPred) return;
+  const threshOpts = (yMax)=>({
+    annotation:{annotations:{
+      l1:{type:'line',yMin:70,yMax:70,borderColor:'rgba(248,81,73,.5)',borderWidth:1,borderDash:[4,4]},
+      l2:{type:'line',yMin:40,yMax:40,borderColor:'rgba(227,179,65,.5)',borderWidth:1,borderDash:[4,4]},
+    }}
+  });
+  chartPred = new Chart(document.getElementById('chartPred').getContext('2d'),{
+    type:'line',
+    data:{labels:[],datasets:[{
+      label:'P(ataque) %',
+      data:[],
+      borderColor:'rgba(227,179,65,.9)',
+      backgroundColor:'rgba(227,179,65,.12)',
+      pointBackgroundColor:'rgba(248,81,73,.9)',
+      pointRadius:4,fill:true,tension:0.3,
+    }]},
+    options:{...BASE,
+      scales:{
+        x:{ticks:{color:'#8b949e',font:{size:9},maxRotation:45},grid:{color:'#21262d'}},
+        y:{min:0,max:100,ticks:{color:'#8b949e',font:{size:9},callback:v=>v+'%'},grid:{color:'#21262d'}},
+      },
+      plugins:{...BASE.plugins,
+        annotation:{annotations:{
+          alta:{type:'line',yMin:70,yMax:70,borderColor:'rgba(248,81,73,.6)',borderWidth:1,borderDash:[5,3],
+            label:{content:'ALERTA 70%',display:true,position:'end',color:'rgba(248,81,73,.8)',font:{size:9}}},
+          media:{type:'line',yMin:40,yMax:40,borderColor:'rgba(227,179,65,.6)',borderWidth:1,borderDash:[5,3],
+            label:{content:'RIESGO 40%',display:true,position:'end',color:'rgba(227,179,65,.8)',font:{size:9}}},
+        }}
+      }
+    }
+  });
+  chartGap = new Chart(document.getElementById('chartGap').getContext('2d'),{
+    type:'line',
+    data:{labels:[],datasets:[{
+      label:'Gap (seg)',
+      data:[],
+      borderColor:'rgba(88,166,255,.9)',
+      backgroundColor:'rgba(88,166,255,.1)',
+      pointRadius:4,fill:true,tension:0.3,
+    }]},
+    options:{...BASE,
+      scales:{
+        x:{ticks:{color:'#8b949e',font:{size:9},maxRotation:45},grid:{color:'#21262d'}},
+        y:{min:0,ticks:{color:'#8b949e',font:{size:9},callback:v=>v+'s'},grid:{color:'#21262d'}},
+      },
+      plugins:{...BASE.plugins,
+        annotation:{annotations:{
+          ataque:{type:'line',yMin:60,yMax:60,borderColor:'rgba(248,81,73,.6)',borderWidth:1,borderDash:[5,3],
+            label:{content:'60s umbral',display:true,position:'end',color:'rgba(248,81,73,.8)',font:{size:9}}},
+          normal:{type:'line',yMin:174,yMax:174,borderColor:'rgba(63,185,80,.5)',borderWidth:1,borderDash:[5,3],
+            label:{content:'174s normal',display:true,position:'end',color:'rgba(63,185,80,.7)',font:{size:9}}},
+        }}
+      }
+    }
+  });
+}
+
+async function loadPredictorData(){
+  try{
+    const [pr,gp]=await Promise.all([
+      fetch('/api/predictor').then(r=>r.json()),
+      fetch('/api/gaps').then(r=>r.json()),
+    ]);
+    // Poblar gauge con el último valor
+    if(pr.p!==undefined) actualizarPredictor({p:pr.p,nivel:pr.nivel,ts:pr.ts});
+    // Poblar chart P% con historial
+    if(pr.historial && pr.historial.length && chartPred){
+      chartPred.data.labels=pr.historial.map(h=>h.ts);
+      chartPred.data.datasets[0].data=pr.historial.map(h=>Math.round(h.p*100));
+      chartPred.update('none');
+    }
+    // Poblar chart gap con historial
+    if(gp.length && chartGap){
+      chartGap.data.labels=gp.map(g=>g.ts);
+      chartGap.data.datasets[0].data=gp.map(g=>g.gap);
+      chartGap.update('none');
+    }
+    // Feed predicciones
+    const feed=document.getElementById('pred-feed');
+    if(feed && pr.historial && pr.historial.length){
+      feed.innerHTML='';
+      [...pr.historial].reverse().forEach(h=>{
+        const p=Math.round(h.p*100);
+        const col=p>=70?"var(--red)":p>=40?"var(--yellow)":"var(--green)";
+        const row=document.createElement('div');
+        row.style.cssText=`color:${col};border-bottom:1px solid var(--border);padding:2px 0`;
+        row.textContent=`${h.ts}  P=${p}%  ${h.nivel||''}`;
+        feed.appendChild(row);
+      });
+    }
+  }catch(e){}
+}
+
 // Gráficos vista análisis
 let chartLine2,chartDona2;
 function initAnalysisCharts(){
@@ -1483,6 +1796,14 @@ async function refreshCharts(){
       c.data.datasets[0].data=tp.data;
       c.update('none');
     });
+    // Top IPs
+    const topMap={};
+    allEvents.forEach(e=>{topMap[e.src]=(topMap[e.src]||0)+1;});
+    const topSorted=Object.entries(topMap).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    const tipEl=document.getElementById('top-ips-list');
+    if(tipEl) tipEl.innerHTML=topSorted.length
+      ? topSorted.map(([ip,cnt])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span class="mono cr">${ip}</span><span class="bdg bdg-BLOCK">${cnt} eventos</span></div>`).join('')
+      : '<span class="cm">Sin datos aún</span>';
   }catch(e){}
 }
 
