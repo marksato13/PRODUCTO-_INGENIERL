@@ -11,7 +11,8 @@ from threading import Thread, Lock
 from queue import Queue, Empty
 from flask import Flask, jsonify, render_template_string, request, Response
 
-LOG_PATH = "/home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+LOG_PATH  = "/home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+PRED_LOG  = "/home/m4rk/ppi-surikata-producto/results/predictor.log"
 SERVIDOR = "192.168.0.120"
 HOST, PORT = "0.0.0.0", 8080
 MAX_EVT = 3000
@@ -34,6 +35,9 @@ RE_STATS  = re.compile(
 RE_INICIO = re.compile(
     r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*Motor de decisión PPI — iniciando"
 )
+RE_PRED = re.compile(
+    r"(\d{2}:\d{2}:\d{2}) \| \w+\s*\| ([\w-]+)\s*\| P=([\d.]+)%"
+)
 
 # ── Estado global ─────────────────────────────────────────────────────────────
 lock = Lock()
@@ -42,6 +46,10 @@ state = {
     "flows_total":0,"anom_total":0,"bf_total":0,"http_total":0,
     "latencia":0.0,"motor_inicio":"—","inicio_app":datetime.now(),
     "block_counter":0,
+}
+
+pred_state = {
+    "p": 0.0, "nivel": "OK", "ts": "—", "historial": [],
 }
 
 # ── SSE — lista de colas por cliente conectado ────────────────────────────────
@@ -113,6 +121,37 @@ def log_reader():
                             if os.path.getsize(LOG_PATH) < f.tell(): break
                         except: pass
                         time.sleep(0.1)
+        except: time.sleep(2)
+
+def predictor_reader():
+    """Tailea predictor.log y empuja eventos SSE tipo predictor."""
+    while True:
+        if not os.path.exists(PRED_LOG): time.sleep(5); continue
+        try:
+            with open(PRED_LOG, "r", errors="ignore") as f:
+                f.seek(0, 2)
+                while True:
+                    ln = f.readline()
+                    if ln:
+                        m2 = RE_PRED.search(ln)
+                        if m2:
+                            ts  = m2.group(1)
+                            niv = m2.group(2)
+                            p   = float(m2.group(3)) / 100.0
+                            ev  = {"type":"predictor","ts":ts,"nivel":niv,"p":p}
+                            with lock:
+                                pred_state["p"]     = p
+                                pred_state["nivel"] = niv
+                                pred_state["ts"]    = ts
+                                pred_state["historial"] = \
+                                    ([{"ts":ts,"nivel":niv,"p":p}]
+                                     + pred_state["historial"])[:8]
+                            push_sse(ev)
+                    else:
+                        try:
+                            if os.path.getsize(PRED_LOG) < f.tell(): break
+                        except: pass
+                        time.sleep(0.5)
         except: time.sleep(2)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -668,6 +707,26 @@ tbody td{padding:6px 10px;vertical-align:middle}
         </div>
       </div>
 
+
+      <div class="sh" style="margin-top:20px"><i class="bi bi-lightning-charge-fill" style="color:var(--yellow)"></i>&nbsp;Predictor XGBoost — Probabilidad de Ataque (próximos 60s)</div>
+      <div class="g2 gap">
+        <div class="card" style="text-align:center">
+          <div class="ct" style="justify-content:center;margin-bottom:10px"><i class="bi bi-graph-up-arrow" style="color:var(--yellow)"></i>&nbsp;P(ataque en 60s)</div>
+          <div id="pred-valor" style="font-size:2.8rem;font-weight:700;color:var(--green);transition:color .4s">—%</div>
+          <div style="margin:10px 4px 4px"><div style="height:10px;border-radius:5px;background:var(--card2)"><div id="pred-barra" style="height:100%;border-radius:5px;width:0%;background:var(--green);transition:width .6s,background .4s"></div></div></div>
+          <div style="display:flex;justify-content:center;gap:24px;margin-top:8px;font-size:.82rem">
+            <span id="pred-nivel" style="font-weight:700;color:var(--green)">OK</span>
+            <span id="pred-ts" style="color:var(--muted)">—</span>
+          </div>
+          <div style="margin-top:10px;font-size:.7rem;color:var(--muted)">θ<sub>alta</sub>=70% &nbsp;·&nbsp; θ<sub>media</sub>=40% &nbsp;·&nbsp; ciclo=60s</div>
+        </div>
+        <div class="card">
+          <div class="ct" style="margin-bottom:8px"><i class="bi bi-clock-history" style="color:var(--yellow)"></i>&nbsp;Historial de predicciones</div>
+          <div id="pred-historial" style="font-family:monospace;font-size:.78rem;line-height:1.9"></div>
+          <div style="margin-top:10px;font-size:.68rem;color:var(--muted)">AUC-ROC=0.58 &nbsp;·&nbsp; 11,376 obs &nbsp;·&nbsp; split 80/20 temporal</div>
+        </div>
+      </div>
+
       <div class="g2 gap">
         <div class="card">
           <div class="ct"><i class="bi bi-bar-chart-fill"></i>Eventos por hora — últimas 24h</div>
@@ -934,6 +993,25 @@ function goView(name, el){
 }
 
 // ═══════════════════════════════════════════════
+function actualizarPredictor(ev) {
+  const p   = Math.round(ev.p * 100);
+  const col = p>=70?"var(--red)":p>=40?"var(--yellow)":"var(--green)";
+  const lbl = ev.nivel||(p>=70?"ALERTA":p>=40?"RIESGO-MEDIO":"OK");
+  const ve=document.getElementById("pred-valor");
+  const be=document.getElementById("pred-barra");
+  const ne=document.getElementById("pred-nivel");
+  const te=document.getElementById("pred-ts");
+  const he=document.getElementById("pred-historial");
+  if(ve){ve.textContent=p+"%";ve.style.color=col;}
+  if(be){be.style.width=p+"%";be.style.background=col;}
+  if(ne){ne.textContent=lbl;ne.style.color=col;}
+  if(te){te.textContent=ev.ts||"—";}
+  if(he){
+    const row=`<div style="color:${col}">${ev.ts||""} &nbsp; ${p}% &nbsp; ${lbl}</div>`;
+    he.innerHTML=row+he.innerHTML.split("<div").slice(0,7).join("<div");
+  }
+}
+
 // SSE — RECEPCIÓN INSTANTÁNEA
 // ═══════════════════════════════════════════════
 function initSSE(){
@@ -948,6 +1026,7 @@ function initSSE(){
 
   es.onmessage = (e)=>{
     const ev = JSON.parse(e.data);
+    if(ev.type==='predictor'){actualizarPredictor(ev);return;}
 
     // 1. Guardar en allEvents
     allEvents.unshift(ev);
@@ -1466,7 +1545,8 @@ setInterval(refreshCharts,12000);
 </html>"""
 
 if __name__ == "__main__":
-    Thread(target=log_reader, daemon=True).start()
+    Thread(target=log_reader,       daemon=True).start()
+    Thread(target=predictor_reader, daemon=True).start()
     print(f"Dashboard → http://192.168.0.110:{PORT}")
     print(f"SSE en tiempo real activo | Log: {LOG_PATH}")
     app.run(host=HOST, port=PORT, debug=False, threaded=True)
