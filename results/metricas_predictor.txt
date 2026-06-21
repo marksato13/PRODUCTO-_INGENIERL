@@ -1,0 +1,8 @@
+Modelo: XGBoost
+AUC-ROC:     0.5816
+Precision@τ: 0.9850
+Recall@τ:    0.9978
+F1@τ:        0.9914
+Umbral τ:    0.1000
+Features:    gap, gap_lag1, gap_lag2, gap_lag3, gap_delta, gap_mean5, gap_std5, bloqueados, hora_sin, hora_cos
+Generado:    2026-06-21 01:32
