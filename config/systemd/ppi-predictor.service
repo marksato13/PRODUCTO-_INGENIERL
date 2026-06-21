@@ -1,0 +1,15 @@
+[Unit]
+Description=PPI Predictor — XGBoost clasificacion binaria temporal
+After=ppi-motor.service
+Requires=ppi-motor.service
+
+[Service]
+Type=simple
+User=m4rk
+WorkingDirectory=/home/m4rk/ppi-surikata-producto
+ExecStart=/home/m4rk/ppi-sensor/venv/bin/python3 scripts/predictor.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
