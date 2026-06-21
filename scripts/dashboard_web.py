@@ -261,20 +261,33 @@ def api_stream():
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
+# Cache ipset — se actualiza cada 30s para no lanzar subprocess en cada request
+_ipset_cache = {"blocked": [], "limited": [], "ts": 0}
+_IPSET_TTL = 30
+
+def ipset_cached():
+    ahora = time.time()
+    if ahora - _ipset_cache["ts"] > _IPSET_TTL:
+        _ipset_cache["blocked"] = ipset_list("ppi_blocked")
+        _ipset_cache["limited"] = ipset_list("ppi_limited")
+        _ipset_cache["ts"] = ahora
+    return _ipset_cache["blocked"], _ipset_cache["limited"]
+
 @app.route("/api/stats")
 def api_stats():
     with lock:
         evs = list(state["eventos"])
-        ft  = state["flows_total"]; bf = state["bf_total"]
-        ht  = state["http_total"]; lat = state["latencia"]
-        mi  = state["motor_inicio"]; ia = state["inicio_app"]
-        bc  = state["block_counter"]
+        ft  = state["flows_total"]; at = state["anom_total"]
+        bf  = state["bf_total"];    ht = state["http_total"]
+        lat = state["latencia"];    mi = state["motor_inicio"]
+        ia  = state["inicio_app"]; bc = state["block_counter"]
     ahora = datetime.now()
     c = Counter(e["accion"] for _,e in evs)
     blk=c.get("BLOCK",0); lim=c.get("LIMIT",0)
-    permit=max(ft-blk-lim,0)
+    # permit = flows no anómalos según el motor (anom_total del stats line)
+    permit = max(ft - at, 0)
     rate=sum(1 for ts,_ in evs if (ahora-ts).total_seconds()<60)
-    ibl=ipset_list("ppi_blocked"); ili=ipset_list("ppi_limited")
+    ibl, ili = ipset_cached()
     rv,rl,rc=riesgo(len(ibl),len(ili),rate)
     up=int((ahora-ia).total_seconds())
     h,r=divmod(up,3600); m,s=divmod(r,60)

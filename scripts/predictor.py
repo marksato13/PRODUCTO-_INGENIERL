@@ -27,10 +27,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)-7s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.FileHandler(PRED_LOG),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler(PRED_LOG)],
 )
 log = logging.getLogger('predictor')
 
@@ -48,30 +45,6 @@ RE_F1 = re.compile(
     r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
     r'flows=(\d+) anomal[íi]as?=\d+ bloqueados=(\d+)\s*$'
 )
-
-def parsear_ultima_stats():
-    """Lee las últimas N líneas del log y retorna la stats más reciente."""
-    try:
-        resultado = subprocess.run(
-            ['tail', '-n', '2000', str(LOG)],
-            capture_output=True, text=True
-        )
-        lineas = resultado.stdout.splitlines()
-    except Exception:
-        return None
-
-    for linea in reversed(lineas):
-        if 'Estadísticas' not in linea and 'Estad' not in linea:
-            continue
-        for pat in (RE_F3, RE_F2, RE_F1):
-            m = pat.search(linea)
-            if m:
-                return {
-                    'ts': pd.to_datetime(m.group(1)),
-                    'flows': int(m.group(2)),
-                    'bloqueados': int(m.group(3)),
-                }
-    return None
 
 def parsear_historial_stats(n=20):
     """Lee las últimas n stats lines para calcular historial de gaps."""
@@ -184,7 +157,12 @@ def main():
             # 3. Construir vector de features
             feat = construir_features(historial, tiempo_desde)
             if feat is None:
-                log.info(f"Historial insuficiente ({len(historial)} stats) — esperando más datos")
+                if len(historial) < 2:
+                    log.info(f"Historial insuficiente ({len(historial)} stats) — esperando más datos")
+                elif tiempo_desde > MAX_GAP_INACTIVIDAD:
+                    log.info(f"Sistema inactivo (gap={tiempo_desde:.0f}s > {MAX_GAP_INACTIVIDAD}s) — sin prediccion")
+                else:
+                    log.info("Sin gaps válidos en historial — esperando")
                 time.sleep(INTERVALO)
                 continue
 
