@@ -40,6 +40,14 @@ Red de datos
 
 ---
 
+## Documentos de apoyo
+
+| Documento | Contenido |
+|---|---|
+| [LIMITACIONES.md](LIMITACIONES.md) | Métricas reales, 10 limitaciones clasificadas, mapa de mitigaciones |
+| [docs/informe_resultados/limitaciones_detalladas.md](../informe_resultados/limitaciones_detalladas.md) | Análisis técnico profundo de cada limitación |
+| [docs/informe_resultados/puntos_debiles_defensa.md](../informe_resultados/puntos_debiles_defensa.md) | Q&A preparado para preguntas del jurado |
+
 ## Estado de fases
 
 | Fase | Nombre | Estado | Archivo |
