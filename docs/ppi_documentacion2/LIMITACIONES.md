@@ -96,9 +96,9 @@ El historial se persiste en `results/block_counts.json` y se recarga en cada rei
 
 | Corrida | Timestamp | Evento detector | Resultado | ipset verificado |
 |---|---|---|---|---|
-| 1ª | 04:56:23 | HTTP-ABUSE 100 req/30s | `bloqueo#1 timeout=300s` | ✅ |
-| 2ª | 05:03:57 | ANOMALÍA score=−0.6141 grado=ALTA | `bloqueo#2 timeout=1800s` | ipset: timeout=1696 ✅ |
-| 3ª | 05:32:49 | ANOMALÍA score=−0.6169 grado=ALTA | `bloqueo#3 PERMANENTE` | ipset: timeout=0 ✅ |
+| 1ª | 05:44:13 | ANOMALÍA score=−0.6066 grado=ALTA | `bloqueo#1 timeout=300s` | ✅ |
+| 2ª | 06:05:03 | ANOMALÍA score=−0.7696 grado=ALTA | `bloqueo#2 timeout=1800s` | ipset: timeout=1768 ✅ |
+| 3ª | 06:39:42 | HTTP-ABUSE 100 req/30s | `bloqueo#3 PERMANENTE` | ipset: timeout=0 ✅ |
 
 `results/block_counts.json` final: `{"192.168.0.100": 3}` — historial persistido entre reinicios.
 
