@@ -195,11 +195,14 @@ Usa Flask + SSE (Server-Sent Events). El dashboard lee `motor_decision.log` en e
 
 ## Telegram — notificaciones al operador
 
-- **Cuándo:** al primer BLOCK de una IP nueva (dedup 5 min por IP)
+- **Cuándo:** al primer BLOCK de una IP nueva (dedup `TG_DEDUP_SEG=300s` por IP)
 - **Qué incluye:** IP atacante, tipo de ataque, score, puerto, timestamp
-- **Configuración:** `config/telegram.conf` (bot token + chat_id — fuera de git)
-- **Relay:** HTTP POST a `http://192.168.0.20:8889/telegram` → bot envía al chat
-- **No bloqueante:** si el relay no responde, el motor continúa sin esperar
+- **Configuración:** `config/telegram.conf` → `TG_TOKEN` y `TG_CHAT_ID` (fuera de git)
+- **Implementación:** llamada HTTP **directa** a `https://api.telegram.org/bot{TOKEN}/sendMessage`
+- **Cola no bloqueante:** `threading.Queue(maxsize=100)` — hilo daemon independiente. Si falla, la alerta se descarta sin bloquear el motor
+- **Dedup por IP:** si la misma IP generó alerta en los últimos 300s, la siguiente se suprime
+
+> ⚠️ El relay `http://192.168.0.20:8889/telegram` fue una versión anterior (`motor_universal.py`, ahora inactivo). El motor activo (`motor_decision.py`) llama la API de Telegram directamente.
 
 Evidencia real: `🚨 PPI ALERTA — BRUTE_FORCE_SSH | BLOCK | IP: 192.168.0.100 | Puerto: 22 | 08:31:37`
 

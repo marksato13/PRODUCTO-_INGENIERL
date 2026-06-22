@@ -80,6 +80,7 @@ Estas 14 features se extraen de cada flujo `event_type=flow` de eve.json:
 data/raw/*_normal_*.gz (Grupo A)
     │
     ▼ parse_flows() — filtro src_ip ∈ {192.168.0.20, 192.168.0.120}
+    │   (Desktop Y Servidor — ambos son fuentes de tráfico normal)
     │
     ▼ extract_features() — 14 features por flujo
     │

@@ -31,14 +31,44 @@ Demostrar empíricamente que el sistema completo (F1→F5) opera correctamente e
 
 ## Diseño de las 40 corridas
 
-Las 40 corridas fueron ejecutadas el **2026-06-16** (09:17 → 13:22) en cuatro grupos de 10:
+Las 40 corridas fueron ejecutadas el **2026-06-16** (09:17 → 13:22) con `python3 scripts/f6_corridas.py`.
 
-| Grupo | Corridas | Tipo de tráfico | Propósito |
+**Parámetros reales del script:**
+```python
+DURACION_NORMAL = 300   # segundos por corrida (5 min)
+DURACION_MIXTO  = 300   # misma duración para mixtas
+PAUSA_ENTRE     = 60    # pausa entre corridas (1 min)
+N_NORMAL        = 10    # corridas grupo normal
+N_MIXTO         = 10    # corridas grupo mixto
+N_REEVAL        = 10    # corridas re-evaluación
+N_FINAL         = 10    # corridas finales
+```
+
+**Secuencia dentro de cada corrida mixta:**
+1. T+0s — se lanza tráfico normal desde el sensor (curl + SSH → servidor, whitelisted)
+2. T+15s — se lanza el ataque desde Kali
+3. T+150s — verificación de disponibilidad (curl al servidor)
+4. T+300s — fin de corrida, se recolectan métricas del log
+
+**Nota sobre tráfico normal en f6_corridas.py:** el script genera tráfico desde el **sensor (192.168.0.110)**, que está en la whitelist. El propósito es tener flujos normales activos que el sistema debe ignorar mientras detecta a Kali. Las corridas manuales A1–A4 se ejecutan desde el Desktop (192.168.0.20).
+
+**Ataques usados en el script automatizado** (4 tipos):
+
+| ID | Herramienta | Comando en Kali |
+|---|---|---|
+| synflood | hping3 | `hping3 -S -p 80 -i u5000 192.168.0.120` |
+| portscan | nmap | `nmap -sS -p 1-1024 192.168.0.120` |
+| udpflood | hping3 | `hping3 --udp -p 53 -i u5000 192.168.0.120` |
+| httpabuse | curl loop | `while true; do curl -s http://192.168.0.120/; done` |
+
+> B4 (icmpflood) y B6 (bruteforce) no están en el script automatizado — se validaron en corridas manuales y en las validaciones en vivo del 2026-06-22.
+
+| Grupo | Corridas | Tipo | Propósito |
 |---|---|---|---|
-| **Normal** (1–10) | A1–A4 repetido | Solo Desktop legítimo | Verificar ITL = 0%: ¿el sistema ignora tráfico normal? |
-| **Mixto** (11–20) | C1–C3 repetido | Desktop + Kali simultáneo | Primera detección y bloqueo de Kali sin afectar Desktop |
-| **Reevaluación** (21–30) | B1–B6 con Kali ya bloqueada | IP ya en ipset | Confirmar persistencia: Kali permanece bloqueada |
-| **Final** (31–40) | Mixto consolidado | Bloqueo acumulado | Disponibilidad sostenida bajo ataque prolongado |
+| **Normal** (1–10) | solo_normal | Sensor whitelisted | ITL = 0%: motor ignora tráfico whitelisted |
+| **Mixto** (11–20) | synflood/portscan/udpflood/httpabuse | Sensor + Kali | Primera detección y bloqueo |
+| **Reevaluación** (21–30) | mismos ataques, IP ya bloqueada | Kali en ipset | Persistencia del bloqueo |
+| **Final** (31–40) | mismos ataques | Bloqueo acumulado | Disponibilidad sostenida |
 
 > **Por qué flujos_anom=0 en corridas 11–40 es correcto:** una vez que Kali entra en `ppi_blocked`, sus paquetes son descartados en el kernel (iptables DROP) antes de llegar a Suricata. Suricata no genera flujos de esos paquetes → motor no ve eventos anómalos. Esto demuestra que el bloqueo funciona, no que el sistema dejó de detectar.
 
@@ -47,9 +77,13 @@ Las 40 corridas fueron ejecutadas el **2026-06-16** (09:17 → 13:22) en cuatro 
 ## Scripts de validación F6
 
 ```bash
-# Batch de 40 corridas
+# Batch de 40 corridas (tarda ~40 min incluyendo pausas)
 python3 scripts/f6_corridas.py
-# → results/resultados_f6_completo.csv
+# → results/resultados_f6_completo.csv   (40 filas)
+# → results/resultados_normal.csv        (10 filas)
+# → results/resultados_mixto.csv         (10 filas)
+# → results/resultados_reeval.csv        (10 filas)
+# → results/resultados_final.csv         (10 filas)
 
 # AUC por escenario
 python3 scripts/auc_por_escenario.py
