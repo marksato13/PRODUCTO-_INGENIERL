@@ -36,7 +36,16 @@ THETA_MEDIA = 0.40
 INTERVALO   = 10        # segundos entre ciclos
 DEDUP_SEG   = 300       # segundos entre alertas por la misma IP
 
-TG_RELAY    = "http://192.168.0.20:8889/telegram"
+# ── Credenciales Telegram (misma fuente que motor) ──────────────────────────
+_TG_CONF   = "/home/m4rk/ppi-surikata-producto/config/telegram.conf"
+TG_TOKEN   = ""
+TG_CHAT_ID = ""
+if __import__("os").path.exists(_TG_CONF):
+    for _ln in open(_TG_CONF).read().splitlines():
+        if _ln.startswith("TG_TOKEN="):    TG_TOKEN   = _ln.split("=",1)[1].strip()
+        elif _ln.startswith("TG_CHAT_ID="): TG_CHAT_ID = _ln.split("=",1)[1].strip()
+TG_ENABLED = bool(TG_TOKEN and TG_CHAT_ID)
+
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -77,10 +86,15 @@ FEATURES   = []
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
 def telegram_alerta(ip: str, p: float, action: str):
+    if not TG_ENABLED:
+        return
     try:
-        msg = f"[PREDICTOR] Ataque sostenido | IP={ip} | P={p:.0%} | ultimo={action}"
-        data = urllib.parse.urlencode({'message': msg}).encode()
-        req  = urllib.request.Request(TG_RELAY, data=data, method='POST')
+        msg  = f"[PREDICTOR] Ataque sostenido | IP={ip} | P={p:.0%} | ultimo={action}"
+        url  = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+        import json as _json
+        data = _json.dumps({"chat_id": TG_CHAT_ID, "text": msg}).encode()
+        req  = urllib.request.Request(url, data=data,
+                   headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=5)
     except Exception:
         pass   # no bloquear el ciclo si Telegram falla
@@ -229,6 +243,16 @@ def main():
                 lc  = len(state.limits)
                 bc  = len(state.blocks)
                 tag = f"src={ip} P={p:.2%} score={state.last_score:.4f} limits_15s={lc} blocks_60s={bc}"
+
+                # Regla determinista CA-F4-02: ataque gradual con >= 5 LIMITs
+                _dedup_det = (
+                    state.last_alert_ts is None or
+                    (ahora - state.last_alert_ts).total_seconds() > DEDUP_SEG
+                )
+                if lc >= 5 and _dedup_det and p < THETA_ALTA:
+                    log.warning(f"AVISO-DETERMINISTA | limit_count={lc}>=5 | {tag}")
+                    state.last_alert_ts = ahora
+                    telegram_alerta(ip, p, "LIMIT-ACUM")
 
                 if p >= THETA_ALTA:
                     # Deduplicar por IP

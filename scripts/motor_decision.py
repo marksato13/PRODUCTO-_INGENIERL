@@ -29,7 +29,6 @@ import queue as _queue
 _TG_CONF   = "/home/m4rk/ppi-surikata-producto/config/telegram.conf"
 TG_TOKEN   = ""
 TG_CHAT_ID = ""
-TG_RELAY   = "http://192.168.0.20:8889/telegram"
 if os.path.exists(_TG_CONF):
     for _ln in open(_TG_CONF).read().splitlines():
         if _ln.startswith("TG_TOKEN="):   TG_TOKEN   = _ln.split("=",1)[1].strip()
@@ -100,8 +99,9 @@ def _tg_worker():
         msg = _tg_queue.get()
         if TG_ENABLED:
             try:
-                data = json.dumps({"text": msg}).encode()
-                req  = urllib.request.Request(TG_RELAY, data=data,
+                url  = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+                data = json.dumps({"chat_id": TG_CHAT_ID, "text": msg}).encode()
+                req  = urllib.request.Request(url, data=data,
                            headers={"Content-Type": "application/json"})
                 urllib.request.urlopen(req, timeout=10)
             except Exception as ex:
@@ -391,6 +391,9 @@ def main():
     total_bf      = 0
     total_http_ab = 0
     latencias_ms  = []                  # para calcular latencia media
+    _kdrops_prev  = None                # kernel_drops última lectura stats
+    _kdrops_ts    = time.time()         # timestamp de esa lectura
+    _kdrops_alert_ts = 0.0             # cooldown alertas kernel_drops (600s)
 
     log.info(f"Monitoreando {EVE_PATH} ...")
     log.info(f"Brute Force SSH : ventana={BF_VENTANA_SEG}s "
@@ -404,6 +407,23 @@ def main():
         except Exception:
             continue
 
+        if e.get('event_type') == 'stats':
+            _kd = e.get('stats', {}).get('capture', {}).get('kernel_drops', None)
+            if _kd is not None and _kdrops_prev is not None:
+                ahora = time.time()
+                dt    = max(ahora - _kdrops_ts, 1)
+                tasa  = (_kd - _kdrops_prev) / dt * 60  # drops/min
+                if tasa > 100_000 and ahora - _kdrops_alert_ts > 600:
+                    msg = (f'[MOTOR] ALERTA saturacion Suricata '
+                           f'kernel_drops={_kd:,} tasa={tasa:,.0f}/min '
+                           f'— motor podria quedar ciego')
+                    log.warning(msg)
+                    telegram_alerta(msg)
+                    _kdrops_alert_ts = ahora
+            if _kd is not None:
+                _kdrops_prev = _kd
+                _kdrops_ts   = time.time()
+            continue
         if e.get('event_type') != 'flow':
             continue
 
