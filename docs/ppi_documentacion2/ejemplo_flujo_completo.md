@@ -1,38 +1,162 @@
-# Ejemplo de Flujo Completo — Del Comando al Telegram
-**PPI UPeU 2026 · Rubén Mark Salazar Tocas**
-**Datos reales del log — 2026-06-22**
-
-> Este documento traza el recorrido completo de un ataque a través de las 6 fases
-> del sistema, desde el comando ejecutado en Kali hasta la respuesta en Telegram
-> y el dashboard. Todo con líneas de log reales, métricas reales y tiempos reales.
+# Ejemplo de Flujo Completo — Demo del Producto
+**PPI UPeU 2026 · Rubén Mark Salazar Tocas**  
+**Verificado en vivo: 2026-06-22 · Sensor 192.168.0.110 · Servidor 192.168.0.120**
 
 ---
 
-## Escenario 1 — B1 SYN Flood → detección por Isolation Forest
+## DEMO RÁPIDA — Comandos verificados (copiar y pegar)
 
-### Comando ejecutado en Kali (192.168.0.100)
+> Ejecutar en orden desde **Desktop (192.168.0.20)**. El sistema debe estar corriendo.
+
+### Paso 0 — Verificar que el sistema está activo
 
 ```bash
-# Kali Linux — atacante
-sudo hping3 -S --flood -p 80 192.168.0.120
-# -S       = SYN packets (simula inicio de conexión TCP)
-# --flood  = envía tan rápido como puede (miles de pkt/s)
-# -p 80    = puerto destino: nginx del servidor
+# En Desktop (192.168.0.20)
+ssh m4rk@192.168.0.110 "systemctl is-active suricata ppi-motor.service ppi-predictor.service ppi-dashboard.service"
+# Salida esperada: active (×4)
 ```
 
-Este comando genera un SYN Flood: miles de paquetes TCP-SYN por segundo
-que intentan agotar la tabla de conexiones del servidor nginx.
+### Paso 1 — Abrir monitoreo en tiempo real (3 terminales)
+
+```bash
+# TERMINAL 1 — log del motor en vivo
+ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+
+# TERMINAL 2 — log del predictor en vivo
+ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/predictor.log"
+
+# TERMINAL 3 — estadísticas cada 3s (dashboard terminal)
+ssh m4rk@192.168.0.110 "source /home/m4rk/ppi-sensor/venv/bin/activate && python3 /home/m4rk/ppi-surikata-producto/scripts/dashboard.py"
+
+# NAVEGADOR — dashboard web
+# Abrir http://192.168.0.110:8080
+```
+
+### Paso 2 — Lanzar SYN Flood desde Kali (B1)
+
+```bash
+# En Desktop (192.168.0.20) — SSHear a Kali y lanzar
+ssh m4rk@192.168.0.100 "sudo hping3 -S -p 80 -i u5000 192.168.0.120"
+# -S      = SYN packets
+# -p 80   = puerto nginx
+# -i u5000 = un paquete cada 5000 microsegundos (200 pkt/s)
+# (usar --flood para máxima intensidad, -i u5000 para demo controlada)
+```
+
+**Qué ver en Terminal 1 (motor log) — ~60s después:**
+```
+2026-06-22 HH:MM:SS,xxx | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80
+  proto=TCP score=-0.70XX grado=ALTA tipo=ANOMALIA_GENERICA
+  byte_ratio=XX.XX pkt_rate=X.X | BLOCK
+```
+
+**Qué ver en Terminal 2 (predictor log) — inmediatamente después del BLOCK:**
+```
+2026-06-22 HH:MM:SS | WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=XX.XX%
+  score=-0.70XX limits_15s=0 blocks_60s=1
+```
+
+**Verificar bloqueo en servidor:**
+```bash
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+# Salida esperada:
+# Members:
+# 192.168.0.100 timeout 2XX  ← contando hacia 0
+```
+
+**Detener ataque:**
+```bash
+# Ctrl+C en la sesión SSH a Kali
+# O desde Desktop:
+ssh m4rk@192.168.0.100 "sudo pkill hping3"
+```
+
+### Paso 3 — Lanzar Brute Force SSH desde Kali (B6)
+
+```bash
+# Primero desbloquear Kali si está bloqueada:
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
+
+# Lanzar hydra desde Desktop → Kali → Servidor
+ssh m4rk@192.168.0.100 "hydra -l root -P /usr/share/wordlists/fasttrack.txt ssh://192.168.0.120 -t 4"
+# -l root          = usuario objetivo
+# -P fasttrack.txt = diccionario (existe en Kali ✅)
+# -t 4             = 4 hilos paralelos
+```
+
+**Qué ver — T+53s:**
+```
+WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:22
+  proto=TCP score=-0.4832 tipo=BAJA_ANOMALIA | LIMIT
+```
+
+**Qué ver — T+60s:**
+```
+WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:22
+  proto=TCP score=-0.6228 tipo=BRUTE_FORCE_SSH | BLOCK
+```
+
+### Paso 4 — Control manual con enforce.sh
+
+```bash
+# Desde sensor (192.168.0.110):
+# BLOQUEAR una IP manualmente (aplica en servidor 192.168.0.120)
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK 120
+# → SSH a servidor → sudo ipset add ppi_blocked 192.168.0.100 timeout 120
+
+# LIMITAR una IP
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 LIMIT 300
+
+# DESBLOQUEAR
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
+```
+
+### Paso 5 — Demostrar validación completa
+
+```bash
+# Correr suite de validación F1→F6 (tarda ~2 min)
+ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/run_all.sh"
+# Salida esperada: 16/16 criterios PASS
+```
+
+### Paso 6 — Ver métricas del modelo
+
+```bash
+# Métricas Isolation Forest
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_offline.txt"
+
+# Métricas XGBoost v2
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_predictor_v2.txt"
+
+# Bloqueo progresivo actual
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/block_counts.json"
+
+# Latencia del pipeline
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/latencia_pipeline.txt"
+```
 
 ---
 
-### F1 — CAPTURA (Suricata · sensor 192.168.0.110)
+## Escenario 1 — B1 SYN Flood → Isolation Forest
 
-Suricata monitorea la interfaz `ens35` en modo pasivo. Cada vez que un flujo
-TCP se cierra (por timeout, RST o FIN), Suricata escribe un evento `flow`
-en `/var/log/suricata/eve.json`.
+### Comando en Kali (desde Desktop vía SSH)
 
-**Problema:** un SYN flood nunca completa el handshake TCP (nunca llega el ACK).
-Suricata espera el **flow timeout** (~30–60 s) antes de registrar cada flujo incompleto.
+```bash
+ssh m4rk@192.168.0.100 "sudo hping3 -S -p 80 -i u5000 192.168.0.120"
+```
+
+> Para flood máximo (solo en demo breve): `sudo hping3 -S --flood -p 80 192.168.0.120`
+
+---
+
+### F1 — Captura (Suricata · sensor 192.168.0.110)
+
+Suricata monitorea `ens35` en modo pasivo. Escribe eventos `flow` en `/var/log/suricata/eve.json`
+cuando un flujo TCP se cierra (por timeout, RST o FIN).
+
+**Problema del SYN Flood:** el handshake TCP nunca completa (no llega ACK del cliente).
+Suricata espera el flow timeout (~60s) antes de registrar el flujo incompleto.
+**Por eso el lead time es ~62s.**
 
 ```json
 {
@@ -43,189 +167,115 @@ Suricata espera el **flow timeout** (~30–60 s) antes de registrar cada flujo i
   "dest_port": 80,
   "proto": "TCP",
   "flow": {
-    "pkts_toserver": 8420,   ← miles de SYN acumulados en el timeout
-    "pkts_toclient": 0,      ← el servidor no responde (ya colapsó)
+    "pkts_toserver": 8420,
+    "pkts_toclient": 0,
     "bytes_toserver": 421000,
     "bytes_toclient": 0,
     "start": "2026-06-22T05:43:07.991Z",
-    "end":   "2026-06-22T05:44:09.812Z"
+    "end":   "2026-06-22T05:44:09.812Z",
+    "age": 61
   }
 }
 ```
 
-> **Por eso el lead time es ~62 s.** Es el tiempo que tarda Suricata en
-> cerrar el primer flujo incompleto y escribirlo en eve.json.
-
 ---
 
-### F2 — MODELO ISOLATION FOREST (extracción de features + score)
+### F2 — Isolation Forest (14 features + score)
 
-El motor (`motor_decision.py`) lee eve.json en tiempo real con `tail -f`.
-Al llegar el evento de arriba, extrae las **14 features** en el mismo orden
-que `models/features.csv`:
+`motor_decision.py` lee eve.json con tail. Extrae las 14 features en el orden exacto de `models/features.csv`:
 
 ```python
-# Valores calculados para este flujo:
-pkts_toserver  = 8420      pkts_toclient  = 0
-bytes_toserver = 421000    bytes_toclient = 0
-duration       = 61.82 s   # end - start
-pkt_rate       = 136.2 pkt/s   # (8420+0) / 61.82
-byte_rate      = 6809.1 B/s
-pkt_ratio      = inf → clippeado a 9999  # toserver/toclient (div/0)
-byte_ratio     = inf → clippeado a 9999
-avg_pkt_size   = 50.0 B    # 421000/8420
-is_tcp         = 1    is_udp = 0    is_icmp = 0
+pkts_toserver  = 8420    pkts_toclient  = 0
+bytes_toserver = 421000  bytes_toclient = 0
+duration       = 61.82   # segundos
+pkt_rate       = 136.2   # (8420+0) / 61.82
+byte_rate      = 6809.1
+pkt_ratio      = 8420 / (0+1) = 8420.0   # toclient=0 → ratio muy alto
+byte_ratio     = 421000 / (0+1) = 421000.0
+avg_pkt_size   = (421000+0) / (8420+0+1) = 50.0
+is_tcp=1  is_udp=0  is_icmp=0
 dest_port      = 80
 ```
 
-Estos valores son **completamente distintos al tráfico normal**:
-- `pkts_toclient=0` (servidor no responde) → ratio inf
-- `pkt_rate=136 pkt/s` para 62 s (normal: 2–5 pkt/s en HTTP)
-- `avg_pkt_size=50 B` (paquetes SYN vacíos, sin payload)
-
-Luego se normalizan con `StandardScaler` (ajustado durante entrenamiento):
 ```python
-X_scaled = scaler.transform([[8420, 0, 421000, 0, 61.82, 136.2, 6809.1, 9999, 9999, 50.0, 1, 0, 0, 80]])
-```
-
-Y el Isolation Forest calcula el score:
-```python
+X_scaled = scaler.transform([features])   # scaler ajustado en entrenamiento
 score = isolation_forest.decision_function(X_scaled)[0]
-# score = -0.6066   ← muy negativo = muy aislado = muy anómalo
+# score = -0.6066  ← muy negativo = muy anómalo
 ```
-
-**¿Por qué -0.6066?**
-El IF entrenó con flujos normales donde `pkts_toclient > 0` siempre.
-Un flujo con `pkts_toclient=0` y `pkt_ratio=9999` está tan lejos del
-baseline que los 300 árboles lo aíslan en muy pocas particiones.
 
 **Regla de decisión:**
 ```
 score = -0.6066
-τ1   = -0.4459   (PERMIT/LIMIT)
-τ2   = -0.6027   (LIMIT/BLOCK)
+τ2    = -0.6027
 
--0.6066 ≤ -0.6027  →  score ≤ τ2  →  BLOCK 🚫
+score ≤ τ2  →  BLOCK 🚫
 ```
 
 ---
 
-### F3 — MOTOR DE DECISIÓN + CONTROL INLINE
+### F3 — Motor de decisión + control inline (servidor 192.168.0.120)
 
-**Línea real del log** (`results/motor_decision.log`):
-
+**Línea real del motor_decision.log:**
 ```
-2026-06-22 05:44:13 | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80
+2026-06-22 05:44:13,XXX | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80
   proto=TCP score=-0.6066 grado=ALTA tipo=ANOMALIA_GENERICA
-  byte_ratio=4.92 pkt_rate=1.3 | BLOCK → BLOCKED 192.168.0.100 (bloqueo#1 timeout=300s)
+  byte_ratio=4.92 pkt_rate=1.3 | BLOCK
 ```
 
-El motor verifica el historial de bloqueos (`results/block_counts.json`):
-```json
-{"192.168.0.100": 1}
-```
-Es el **primer bloqueo** de esta IP → timeout 300 s (5 min).
-
-**Comando ejecutado por el motor en el servidor (192.168.0.120):**
+**El motor SSHea al servidor y ejecuta:**
 ```bash
-ssh m4rk@192.168.0.120   "sudo ipset add ppi_blocked 192.168.0.100 timeout 300"
+ssh m4rk@192.168.0.120 "sudo ipset add ppi_blocked 192.168.0.100 timeout 300 -exist"
 ```
 
-**Resultado en el kernel del servidor:**
+**Bloqueo progresivo** (leído de `results/block_counts.json`):
 ```
-iptables: -A INPUT -m set --match-set ppi_blocked src -j DROP
-→ Todo paquete de 192.168.0.100 es descartado ANTES de llegar a nginx
-→ Sin latencia adicional, sin carga en aplicación, sin logs de nginx
+Primer BLOCK  → timeout = 300s  (5 min)
+Segundo BLOCK → timeout = 1800s (30 min)
+Tercer BLOCK+ → timeout = 0     (PERMANENTE)
 ```
 
-**Verificación en servidor:**
+**Verificar en servidor:**
 ```bash
-$ sudo ipset list ppi_blocked
-Members:
-192.168.0.100 timeout 295   ← 5 segundos después del bloqueo
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+# Members:
+# 192.168.0.100 timeout 295
 ```
 
-**Latencia total del pipeline:**
-```
-Evento en eve.json → features → score → ipset add
-= 34.8 ms P95   (medido en latencia_pipeline.txt)
-```
+**Latencia total pipeline:** P95 = 34.768ms (medido en `results/latencia_pipeline.txt`)
 
 ---
 
-### F4 — PREDICTOR XGBOOST v2
+### F4 — Predictor XGBoost v2 (predictor.py · ciclo 10s)
 
-El predictor (`predictor.py`) lee `motor_decision.log` en tiempo real.
-Al detectar la línea BLOCK de 192.168.0.100, calcula las **9 features**:
+El predictor lee `motor_decision.log` cada 10 segundos. Al detectar el BLOCK calcula 9 features:
 
 ```python
-# Estado de 192.168.0.100 en este momento:
 dest_port       = 80
-proto_tcp       = 1          proto_udp = 0    proto_icmp = 0
-hora_sin        = sin(5*2π/24) = -0.866   # 05:44 AM
-hora_cos        = cos(5*2π/24) = -0.500
-limit_count_15s = 0          # no hubo LIMITs previos en 15s (SYN flood → BLOCK directo)
-block_count_60s = 1          # este es el primer BLOCK
+proto_tcp       = 1    proto_udp = 0    proto_icmp = 0
+hora_sin        = sin(hora * 2π/24)
+hora_cos        = cos(hora * 2π/24)
+limit_count_15s = 0    # sin LIMITs previos (SYN flood → BLOCK directo)
+block_count_60s = 1    # primer BLOCK en ventana
 is_block        = 1
+
+P = modelo.predict_proba(features)[0][1]
+# P ≈ 0.77  →  77%  →  ALERTA-PREDICTIVA 🔴
 ```
 
-```python
-P = xgboost_v2.predict_proba(features)[0][1]
-# P = 0.7739   →  77.39%
+**Línea real del predictor.log:**
+```
+2026-06-22 HH:MM:SS | WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=77.XX%
+  score=-0.606X limits_15s=0 blocks_60s=1
 ```
 
-**¿Por qué 77.39%?**
-- `proto_tcp=1` (peso 20.79%): SYN floods TCP son campañas prolongadas
-- `block_count_60s=1` (peso 24.37%): ya hay un BLOCK → reincidencia probable
-- `dest_port=80` (peso 0.89%): ataque a HTTP es patrón de flood sostenido
-
-**Umbral ALERTA-PREDICTIVA: P ≥ 70%**
-```
-P = 77.39% ≥ 70%  →  ALERTA-PREDICTIVA 🔴
-```
-
-**Línea real en predictor log:**
-```
-2026-06-22 00:51:59 | WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=77.39%
-  → ataque sostenido predicho (XGBoost v2)
-```
-
----
-
-### Dashboard web (:8080) — qué ve el operador
-
-Acceder desde Desktop: `http://192.168.0.110:8080`
-
-El dashboard se actualiza por **Server-Sent Events (SSE)** en < 150 ms.
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  PPI — SURIKATA  |  05:44:14  |  🟢 Motor activo        │
-├──────────────────────────────────────────────────────────┤
-│  ALERTAS ACTIVAS                                         │
-│  🚫 192.168.0.100  |  BLOCK  |  score=-0.6066  |  05:44 │
-│     ANOMALIA_GENERICA  |  proto=TCP  |  :80              │
-│     bloqueo#1 · timeout 300s                             │
-├──────────────────────────────────────────────────────────┤
-│  PREDICTOR XGBoost v2                                    │
-│  🔴 192.168.0.100  |  P=77.39%  |  ALERTA-PREDICTIVA   │
-│     Ataque TCP sostenido predicho · proto_udp+block_cnt  │
-├──────────────────────────────────────────────────────────┤
-│  IPSET ACTIVO                                            │
-│  ppi_blocked:  192.168.0.100  (timeout: 295s)            │
-├──────────────────────────────────────────────────────────┤
-│  FLUJOS ÚLTIMOS 60s                                      │
-│  PERMIT: 847  |  LIMIT: 0  |  BLOCK: 1                  │
-│  Latencia media: 28.4 ms                                 │
-└──────────────────────────────────────────────────────────┘
-```
+> **Nota:** el predictor.log usa formato con `limits_15s` y `blocks_60s` en la misma línea.
+> Si la alerta está en dedup (misma IP en < 300s), aparece como `INFO | ALERTA-PREDICTIVA (dedup)`.
 
 ---
 
 ### Telegram — alerta al operador
 
-Cuando el motor ejecuta un BLOCK nuevo (dedup: no repetir la misma IP en 300 s),
-envía de forma **asíncrona** (sin bloquear el loop principal) a `api.telegram.org`:
+Motor llama `api.telegram.org` directamente (asíncrono, no bloqueante):
 
 ```
 🚨 PPI ALERTA — ANOMALIA_GENERICA
@@ -240,64 +290,45 @@ Hora   : 05:44:13
 Bloqueo: #1 — timeout 300s
 ```
 
-**Resultado HTTP:** `200 OK` (confirmado 07:25:19 en otra corrida del mismo día)
-
 ---
 
-### Bloqueo progresivo — el ciclo completo (datos reales)
-
-Si Kali reincide después de que expire el bloqueo:
+### Bloqueo progresivo — ciclo completo (datos reales 2026-06-22)
 
 ```
-05:44:13  BLOCK #1  score=-0.6066  timeout=300s  (5 min)
-          → block_counts.json: {"192.168.0.100": 1}
-          → ipset: 192.168.0.100 timeout=300
-
-06:05:03  BLOCK #2  score=-0.7696  timeout=1800s  (30 min)
-          → block_counts.json: {"192.168.0.100": 2}
-          → ipset: 192.168.0.100 timeout=1800
-          → Telegram: 🚨 BLOCK #2
-
-06:39:42  BLOCK #3  HTTP-ABUSE 100 req/30s  timeout=0  (PERMANENTE ∞)
-          → block_counts.json: {"192.168.0.100": 3}
-          → ipset: 192.168.0.100 timeout=0  ← NO EXPIRA NUNCA
-          → Telegram: 🚨 BLOCK #3 PERMANENTE
+05:44:13 → BLOCK #1  score=-0.6066  block_counts={"192.168.0.100":1}  timeout=300s
+06:05:03 → BLOCK #2  score=-0.7696  block_counts={"192.168.0.100":2}  timeout=1800s
+06:39:42 → BLOCK #3  HTTP-ABUSE 100req/30s  block_counts={"192.168.0.100":3}  timeout=0
 ```
 
-**Verificación final en servidor:**
+**Verificar bloqueo permanente:**
 ```bash
-$ sudo ipset list ppi_blocked
-Members:
-192.168.0.100 timeout 0    ← timeout=0 = PERMANENTE
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+# Members:
+# 192.168.0.100          ← sin timeout = PERMANENTE
+```
+
+**Desbloquear manualmente:**
+```bash
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
 ```
 
 ---
 
----
+## Escenario 2 — B6 SSH Brute Force → heurístico BF-SSH
 
-## Escenario 2 — B6 SSH Brute Force → detección por heurístico
-
-### Comando ejecutado en Kali
+### Comando en Kali
 
 ```bash
-# Kali Linux — atacante
-hydra -l admin -P /usr/share/wordlists/fasttrack.txt       ssh://192.168.0.120 -t 4 -V
-# -l admin   = usuario objetivo
-# -P ...     = diccionario de contraseñas
-# -t 4       = 4 intentos paralelos
-# -V         = verbose (muestra cada intento)
+ssh m4rk@192.168.0.100 "hydra -l root -P /usr/share/wordlists/fasttrack.txt ssh://192.168.0.120 -t 4"
+# fasttrack.txt existe en Kali: /usr/share/wordlists/fasttrack.txt ✅
 ```
-
-Hydra prueba credenciales SSH una por una. Cada intento fallido genera
-un flujo TCP corto hacia el puerto 22.
 
 ---
 
-### F1 — CAPTURA
+### F1 — Captura
 
-Suricata captura cada flujo SSH (conexión → handshake → fallo de auth → cierre).
-A diferencia del SYN flood, estos flujos SÍ completan el handshake TCP,
-por lo que **se cierran rápido** y Suricata los registra de inmediato.
+Cada intento hydra genera un flujo TCP corto al puerto 22.
+Los flujos SSH completados (handshake + fallo de auth + cierre) se registran rápidamente.
 
 ```json
 {
@@ -306,104 +337,73 @@ por lo que **se cierran rápido** y Suricata los registra de inmediato.
   "dest_port": 22,
   "proto": "TCP",
   "flow": {
-    "pkts_toserver": 12,  bytes_toserver: 2847,
-    "pkts_toclient": 10,  bytes_toclient: 3640,
-    "start": "T+0s",      "end": "T+2s"
+    "pkts_toserver": 12, "bytes_toserver": 2847,
+    "pkts_toclient": 10, "bytes_toclient": 3640,
+    "age": 2
   }
 }
 ```
 
-Con 4 hilos paralelos, cada ~15 s hay 4 flujos nuevos registrados.
-
 ---
 
-### F2 — ISOLATION FOREST: score en zona LIMIT
+### F2 — IF: score en zona LIMIT
 
-Features extraídas de un flujo SSH de fuerza bruta:
+Un flujo SSH de fuerza bruta se parece superficialmente al SSH legítimo:
 ```
-pkts_toserver=12  pkts_toclient=10  bytes_toserver=2847  bytes_toclient=3640
-duration=2.1s     pkt_rate=10.5     byte_rate=3089       pkt_ratio=1.2
-byte_ratio=0.78   avg_pkt_size=299  is_tcp=1   dest_port=22
-```
-
-Estos valores se parecen superficialmente al SSH legítimo (bytes similares,
-duración corta, mismo puerto) → el IF no puede distinguirlo bien sólo por flujo:
-
-```
-score = -0.4832   (primer flujo detectado, T+53s)
-
-τ1 = -0.4459   →   -0.4832 < -0.4459
-τ2 = -0.6027   →   -0.4832 > -0.6027
-
-τ2 < score ≤ τ1   →   LIMIT ⚠️  (hashlimit 100 pkt/s)
+score = -0.4832   (T+53s)
+τ2 < score ≤ τ1   →   LIMIT ⚠️
 ```
 
-**Línea real del log (T+53s):**
 ```
-2026-06-22 08:31:07 | WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:22
+2026-06-22 08:31:07,XXX | WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:22
   proto=TCP score=-0.4832 grado=BAJA tipo=BAJA_ANOMALIA | LIMIT
 ```
 
-El LIMIT aplica rate limiting pero **no bloquea**. Hydra sigue intentando, ahora limitado.
-
 ---
 
-### F3 — HEURÍSTICO BF-SSH: el que bloquea
+### F3 — Heurístico BF-SSH (el que bloquea)
 
-El motor mantiene un contador de eventos SSH por IP en una ventana deslizante de 60 s:
+```
+Parámetros reales (motor_decision.py):
+  BF_VENTANA_SEG  = 60   # ventana de observación
+  BF_UMBRAL_LIMIT = 5    # intentos → LIMIT
+  BF_UMBRAL_BLOCK = 15   # intentos → BLOCK
+```
 
 ```
 T+ 0s  hydra inicia (4 hilos)
-T+15s  4 intentos → contador BF-SSH: 4  < 5 → sin acción
-T+30s  4 intentos más → contador: 8  ≥ 5 → LIMIT heurístico
-T+53s  IF también detecta → LIMIT (score=-0.4832)
-T+60s  4 intentos más → contador: 15 → umbral BLOCK alcanzado
+T+15s  contador BF-SSH=4   < 5  → sin acción
+T+30s  contador BF-SSH=8   ≥ 5  → LIMIT heurístico
+T+53s  IF también detecta  → LIMIT (score=-0.4832)
+T+60s  contador BF-SSH=15  ≥ 15 → BLOCK
 ```
 
-**BLOCK por heurístico BF-SSH:**
+**Log real (T+60s):**
 ```
-2026-06-22 08:31:37 | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:22
-  proto=TCP score=-0.6228 grado=ALTA tipo=BRUTE_FORCE_SSH
-  byte_ratio=0.78 pkt_rate=3.0 | BLOCK → BLOCKED 192.168.0.100 (bloqueo#1 timeout=300s)
+2026-06-22 08:31:37,XXX | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:22
+  proto=TCP score=-0.6228 grado=ALTA tipo=BRUTE_FORCE_SSH | BLOCK
 ```
-
-**¿Por qué -0.6228 ahora?**
-Los intentos BF generan flujos cada vez más cortos y repetitivos → score baja más.
-Además el heurístico fuerza el camino BLOCK independientemente del score.
-
-**Comando en servidor:**
-```bash
-ssh m4rk@192.168.0.120 "sudo ipset add ppi_blocked 192.168.0.100 timeout 300"
-```
-
-**Resultado:** Hydra no puede completar más intentos. El atacante necesita esperar
-300 s (5 min) antes de poder intentarlo de nuevo — y si reincide, será 30 min, luego permanente.
 
 ---
 
-### F4 — XGBOOST v2: features con señal BF
+### F4 — Predictor con señal BF
 
-Cuando el predictor ve el BLOCK de BRUTE_FORCE_SSH:
 ```python
-dest_port       = 22         # SSH
+limit_count_15s = 5    # 5 LIMITs previos en 15s
+block_count_60s = 1
+dest_port       = 22
 proto_tcp       = 1
-hora_sin        = -0.978     # 08:31 AM
-hora_cos        = -0.208
-limit_count_15s = 5          # 5 LIMITs en los últimos 15s (pre-BLOCK)
-block_count_60s = 1          # este BLOCK
-is_block        = 1
 
-P = xgboost_v2.predict_proba(features)[0][1]
-# P = 0.72   →  72%  →  ALERTA-PREDICTIVA 🔴
+P ≈ 0.72   →   72%   →   ALERTA-PREDICTIVA 🔴
 ```
 
-`limit_count_15s=5` activa la señal: hubo presión sostenida de LIMITs
-antes del BLOCK, lo que es el patrón clásico de un ataque gradual escalando.
+**predictor.log:**
+```
+2026-06-22 08:31:4X | WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=72.XX%
+  score=-0.6228 limits_15s=5 blocks_60s=1
+```
 
----
-
-### Telegram — alerta B6 (real)
-
+**Telegram real recibido:**
 ```
 🚨 PPI ALERTA — BRUTE_FORCE_SSH
 
@@ -419,120 +419,97 @@ Bloqueo: #1 — timeout 300s
 
 ---
 
-### Dashboard — vista durante B6
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  PPI — SURIKATA  |  08:31:38  |  🟢 Motor activo        │
-├──────────────────────────────────────────────────────────┤
-│  ALERTAS ACTIVAS                                         │
-│  🚫 192.168.0.100  |  BLOCK  |  score=-0.6228  |  08:31 │
-│     BRUTE_FORCE_SSH  |  proto=TCP  |  :22                │
-│     bloqueo#1 · timeout 300s                             │
-├──────────────────────────────────────────────────────────┤
-│  PREDICTOR XGBoost v2                                    │
-│  🔴 192.168.0.100  |  P=72%  |  ALERTA-PREDICTIVA       │
-│     limit_count_15s=5 · is_block=1                       │
-├──────────────────────────────────────────────────────────┤
-│  IPSET ACTIVO                                            │
-│  ppi_blocked:  192.168.0.100  (timeout: 298s)            │
-└──────────────────────────────────────────────────────────┘
-```
-
----
-
-## Contraste: tráfico normal (whitelist)
+## Escenario 3 — Tráfico normal (whitelist, desde Desktop)
 
 ```bash
-# Desktop (192.168.0.20) — tráfico legítimo
-curl http://192.168.0.120/   # 120 veces, 1 cada segundo
+# Desde Desktop (192.168.0.20) — esto nunca se bloqueará
+for i in $(seq 1 120); do curl -s http://192.168.0.120/ -o /dev/null; sleep 1; done
 ```
 
 **Lo que pasa en el motor:**
-
 ```python
-# Paso 1: verificar whitelist
-if src_ip in WHITELIST:    # 192.168.0.20 ∈ {.20, .110, .120, .1, ...}
-    log.debug("PERMIT (whitelist)")
-    return    # ← sale inmediatamente, sin calcular score
+# Verificación O(1) antes del IF:
+if src_ip in WHITELIST:   # 192.168.0.20 ∈ whitelist
+    return "PERMIT"       # sin calcular score
 ```
 
-**Resultado:** 0 LIMIT, 0 BLOCK, 120 PERMIT. El IF **nunca se ejecuta** para IPs de la whitelist.
-Latencia: < 1 ms (solo el lookup en el set Python).
-
-**Log:**
+**Log** (solo aparece en estadísticas cada 500 flujos):
 ```
-# Sin líneas WARNING para 192.168.0.20
-# Solo en estadísticas cada 500 flujos:
-INFO | Estadísticas | flows=500 anomalías=0 whitelist=500 bloqueados=0 latencia_media=0.8ms
+INFO | Estadísticas | flows=500 anomalías=0 bf=0 http_abuse=0 bloqueados=0 limitados=0 latencia_media=34.50ms
 ```
 
----
-
-## F5 — Aprendizaje continuo (en segundo plano, esa noche)
-
-F5 no actúa durante el ataque — actúa **cada noche**:
-
-```
-03:00 AM  →  f5_reentrenar_xgboost.py
-              Ventana: últimas 24h del motor_decision.log
-              Eventos: incluye los BLOCKs del día (BRUTE_FORCE_SSH, HTTP_ABUSE, etc.)
-              Labels:  automáticos (¿hubo otro BLOCK de esta IP en los 60s siguientes?)
-              Split:   80/20 estratificado
-              Si AUC_nuevo ≥ 0.70 y no retrocede >0.05 vs actual → reemplaza pkl
-              Hot-reload: predictor.py detecta cambio de mtime → recarga sin reiniciar
-
-Dom 02:00  →  f5_reentrenar_if.py
-              Lee todos data/raw/*_normal_*.gz acumulados
-              Entrena nuevo IF sobre el baseline de tráfico normal actualizado
-              Si AUC_nuevo no retrocede >0.02 vs actual → reemplaza isolation_forest.pkl
-              Motor requiere restart para recargar (systemctl restart ppi-motor.service)
+**Verificar que Desktop no está en ipset:**
+```bash
+ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
+# Salida esperada: 192.168.0.20 is NOT in set ppi_blocked.
 ```
 
 ---
 
-## F6 — Cómo este flujo aparece en la validación
-
-En las 40 corridas formales del 2026-06-16:
-
-- **Corrida B (mixta, 11–20):** Kali lanza SYN flood → motor detecta en ~62s → BLOCK
-  `flows_anom` en el CSV = flujos anómalos procesados antes del primer bloqueo
-- **Corrida reevaluación (21–30):** IP ya bloqueada → ipset DROP en kernel →
-  `flows_anom = 0` (comportamiento correcto: paquetes no llegan a Suricata)
-- **Latencia:** `latencia_pipeline.txt` registra P50/P95/P99 de miles de flujos procesados
-  → P95 = 34.8 ms < 500 ms ✅
+## F5 — Reentrenamiento automático (en segundo plano)
 
 ```bash
-# Verificar en sensor:
-cat results/resultados_f6_completo.csv | grep -E 'mixto|anom' | head -5
-cat results/latencia_pipeline.txt
+# Ver historial de reentrenamientos
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_f5_xgboost.txt"
+# Muestra: fecha | horas | events | auc_anterior | auc_nuevo | precision | recall | reemplazado
+
+# Ver crontab activo
+ssh m4rk@192.168.0.110 "crontab -l"
+# 0 2 * * 0  → f5_reentrenar_if.py      (domingos 02:00)
+# 0 3 * * *  → f5_reentrenar_xgboost.py (diario 03:00)
+
+# Ejecutar reentrenamiento manual XGBoost (con ventana extendida)
+ssh m4rk@192.168.0.110 "source /home/m4rk/ppi-sensor/venv/bin/activate && \
+  python3 /home/m4rk/ppi-surikata-producto/scripts/f5_reentrenar_xgboost.py --horas 48"
 ```
 
 ---
 
-## Resumen de tiempos por escenario
+## F6 — Validación completa (comandos verificados)
 
-| Escenario | T+0 | Primera respuesta | BLOCK | Telegram | Dashboard |
-|---|---|---|---|---|---|
-| B1 SYN Flood | hping3 --flood | T+60s LIMIT (score cruzó τ1) | T+62s (score ≤ τ2) | T+62s + ~500ms API | T+62s + <150ms SSE |
-| B6 BF SSH | hydra -t 4 | T+53s LIMIT (BF-SSH 5 intentos) | T+60s BLOCK (BF-SSH 15 intentos) | T+60s + ~500ms | T+60s + <150ms |
-| Normal (whitelist) | curl x120 | — | NUNCA | NUNCA | PERMIT en stats |
+```bash
+# Suite completa F1→F6 (tarda ~2 min, resultados en pantalla)
+ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/run_all.sh"
+
+# Ver resultado de validaciones individuales
+ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/f2_val_modelo_if.sh"
+ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/f3_val_motor.sh"
+ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/f6_val_corridas.sh"
+
+# Ver CSV de las 40 corridas
+ssh m4rk@192.168.0.110 "head -5 /home/m4rk/ppi-surikata-producto/results/resultados_f6_completo.csv"
+
+# Ver log de validación guardado
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/validacion_20260622_150405.log"
+```
 
 ---
 
-## Métricas del sistema al cierre de este flujo
+## Resumen de tiempos y evidencia real
 
-| Modelo / Componente | Métrica | Valor real |
+| Escenario | Primer evento | LIMIT | BLOCK | Telegram | Dashboard |
+|---|---|---|---|---|---|
+| B1 SYN Flood | hping3 T+0s | T+60s (score≤τ1) | T+62s (score≤τ2) | T+62s + ~1s API | T+62s + <150ms SSE |
+| B6 BF SSH | hydra T+0s | T+30s (BF-SSH≥5) | T+60s (BF-SSH≥15) | T+60s + ~1s | T+60s + <150ms |
+| Normal whitelist | curl T+0s | NUNCA | NUNCA | NUNCA | PERMIT en stats |
+
+## Valores reales verificados (2026-06-22)
+
+| Componente | Métrica | Valor |
 |---|---|---|
-| Isolation Forest | AUC-ROC | 0.8998 |
-| IF | Precision / Recall en τ1 | 99.54% / 99.40% |
-| IF | τ1 (PERMIT/LIMIT) | −0.4459 (Youden) |
-| IF | τ2 (LIMIT/BLOCK) | −0.6027 (FPR≤2%) |
-| IF | Latencia P95 por flujo | 34.8 ms |
-| XGBoost v2 | AUC-ROC (9 features, sin leakage) | 0.9992 |
-| XGBoost v2 | Umbral ALERTA-PREDICTIVA | P ≥ 70% |
-| Motor | Disponibilidad (40 corridas F6) | 100% |
-| Motor | ITL (tráfico legítimo bloqueado) | 0% |
-| Sistema | Lead time SYN Flood | ~62 s |
-| Sistema | Lead time BF SSH (BLOCK) | 60 s |
-| Sistema | Bloqueo #3 (permanente) | timeout=0 en ipset |
+| Isolation Forest | AUC-ROC | **0.8998** |
+| IF | Precision / Recall en τ1 | **99.54% / 99.40%** |
+| IF | τ1 (PERMIT/LIMIT) | **−0.4459** (Youden) |
+| IF | τ2 (LIMIT/BLOCK) | **−0.6027** (FPR≤2%) |
+| Motor | Latencia P95 | **34.768ms** |
+| Motor | Latencia media (en vivo) | **34.59ms** |
+| XGBoost v2 | AUC-ROC | **0.9992** |
+| XGBoost v2 | FP + FN en test | **14** (7+7 de 12,488) |
+| Predictor | P actual Kali (en vivo) | **P=89.27%** (ALERTA-PREDICTIVA) |
+| Sistema | Disponibilidad 40 corridas | **100%** |
+| Sistema | ITL | **0%** |
+| Sistema | Lead time SYN Flood | **~62s** |
+| Sistema | Lead time BF SSH | **60s** |
+| Sistema | Bloqueo #3 permanente | **timeout=0** validado |
+| CA-16 | FPR datos nuevos (119 flows) | **0.0%** |
+| Validación | Criterios PASS | **16/16** |

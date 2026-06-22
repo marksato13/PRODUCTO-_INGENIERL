@@ -565,14 +565,62 @@ Trabajos futuros
 - [ ] Preparar respuestas Q&A (ver `defensa/LIMITACIONES.md`)
 - [ ] Verificar que el projector muestra correctamente las figuras PNG
 
-### Para la demo en vivo (opcional)
+### Para la demo en vivo — comandos verificados (copiar y pegar)
+
 ```bash
-# Mostrar motor corriendo en tiempo real:
+# ── PASO 0: Verificar sistema activo ─────────────────────────────────────────
+ssh m4rk@192.168.0.110 "systemctl is-active suricata ppi-motor.service ppi-predictor.service ppi-dashboard.service"
+# Esperado: active (×4)
+
+# ── PASO 1: Abrir monitoreo en tiempo real ────────────────────────────────────
+# Terminal A — motor log
 ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
 
-# Mostrar dashboard web:
-# Abrir http://192.168.0.110:8080 en navegador
+# Terminal B — predictor log
+ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/predictor.log"
 
-# Ejecutar suite de validación:
+# Navegador — dashboard web
+# http://192.168.0.110:8080
+
+# ── PASO 2: SYN Flood desde Kali (B1) ────────────────────────────────────────
+ssh m4rk@192.168.0.100 "sudo hping3 -S -p 80 -i u5000 192.168.0.120"
+# Esperar ~62s → ver BLOCK en motor log + ALERTA-PREDICTIVA en predictor log
+
+# Verificar bloqueo en servidor:
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+# → Members: 192.168.0.100 timeout 2XX
+
+# Detener ataque:
+ssh m4rk@192.168.0.100 "sudo pkill hping3 2>/dev/null; true"
+
+# ── PASO 3: Brute Force SSH desde Kali (B6) ──────────────────────────────────
+# Desbloquear primero si está bloqueada:
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
+
+ssh m4rk@192.168.0.100 "hydra -l root -P /usr/share/wordlists/fasttrack.txt ssh://192.168.0.120 -t 4"
+# T+53s → LIMIT  (BF-SSH ≥5 intentos/60s)
+# T+60s → BLOCK  (BF-SSH ≥15 intentos/60s) + Telegram 🚨
+
+# ── PASO 4: Mostrar validación 16/16 PASS ────────────────────────────────────
 ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/run_all.sh"
+
+# ── PASO 5: Mostrar métricas del modelo ──────────────────────────────────────
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_offline.txt"
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_predictor_v2.txt"
+
+# ── PASO 6: Whitelist — Desktop nunca bloqueado ───────────────────────────────
+# Ejecutar desde Desktop mientras Kali ataca → motor ignora Desktop
+for i in $(seq 1 20); do curl -s http://192.168.0.120/ -o /dev/null; sleep 1; done
+ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
+# → 192.168.0.20 is NOT in set ppi_blocked.
+
+# ── CONTROL MANUAL (mostrar enforce.sh) ──────────────────────────────────────
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK 120
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
 ```
+
+**Valores que verás en la demo (verificados hoy):**
+- Motor log: `score=-0.70XX ... | BLOCK`
+- Predictor log: `ALERTA-PREDICTIVA | P=XX.XX% blocks_60s=N`
+- ipset: `192.168.0.100 timeout NNN`
+- run_all.sh: `16/16 criterios PASS`
