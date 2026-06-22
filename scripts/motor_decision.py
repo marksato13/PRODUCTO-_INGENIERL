@@ -567,9 +567,16 @@ def main():
                     f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                 )
             else:
-                log.debug(
-                    f"BLOCK | src={src_ip} score={score:.4f} tipo={tipo} | ya en ipset — skip enforcement"
-                )
+                # IP ya en ipset: loguear decisión con rate-limit 5s por IP
+                import time as _time
+                _ahora = _time.time()
+                if _block_repeat_ts.get(src_ip, 0) + 5.0 <= _ahora:
+                    _block_repeat_ts[src_ip] = _ahora
+                    log.warning(
+                        f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
+                        f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} "
+                        f"byte_ratio={byte_ratio:.2f} pkt_rate={pkt_rate:.1f} | BLOCK"
+                    )
 
         elif accion == 'LIMIT':
             _flow_anomaly = True
