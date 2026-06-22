@@ -15,8 +15,8 @@ Aplicar la decisión del IF sobre cada flujo nuevo en la red de forma automátic
 |---|---|
 | `scripts/motor_decision.py` | tail eve.json → extrae features → IF score → decide PERMIT/LIMIT/BLOCK |
 | `scripts/enforce.sh` | control manual ipset (BLOCK/LIMIT/UNBLOCK + timeout) |
-| ipset `ppi_blocked` | IPs en DROP permanente vía iptables |
-| ipset `ppi_limited` | IPs con hashlimit 100pkt/s vía iptables |
+| ipset `ppi_blocked` | IPs en DROP con timeout 300s (5 min) vía iptables |
+| ipset `ppi_limited` | IPs con hashlimit 100pkt/s vía iptables, timeout 300s |
 | `scripts/dashboard_web.py` | Servidor Flask+SSE en :8080 → dashboard en navegador |
 | `scripts/dashboard.py` | Dashboard terminal (estadísticas cada 3s) |
 | `config/systemd/ppi-motor.service` | Servicio systemd activo y habilitado |
