@@ -1,0 +1,52 @@
+============================================================
+MÉTRICAS PREDICTOR v2 — XGBoost LIMIT+BLOCK
+Generado: 2026-06-22 00:22
+============================================================
+
+DATASET
+  total_eventos     : 61,921
+  BLOCK             : 11,924
+  LIMIT             : 49,997
+  label_1_sostenido : 5,302  (8.6%)
+  label_0_puntual   : 56,619  (91.4%)
+  split_train       : 49,536
+  split_test        : 12,385
+
+MODELO
+  algoritmo         : XGBoost (n=300, depth=4, lr=0.05)
+  scale_pos_weight  : 10.68
+  features          : 10
+
+MÉTRICAS (umbral=0.50)
+  AUC-ROC           : 1.0000
+
+              precision    recall  f1-score   support
+
+           0     0.9996    0.9993    0.9994     11325
+           1     0.9925    0.9953    0.9939      1060
+
+    accuracy                         0.9990     12385
+   macro avg     0.9960    0.9973    0.9967     12385
+weighted avg     0.9990    0.9990    0.9990     12385
+
+MATRIZ CONFUSIÓN
+  TN=11,317  FP=8
+  FN=5  TP=1,055
+
+FEATURE IMPORTANCE
+score              0.646673
+proto_udp          0.262884
+block_count_60s    0.057811
+dest_port          0.011292
+limit_count_15s    0.008246
+hora_cos           0.007518
+hora_sin           0.003900
+is_block           0.001095
+proto_tcp          0.000582
+proto_icmp         0.000000
+
+UMBRALES DE ALERTA
+  P < 0.40          → SILENCIO
+  0.40 <= P < 0.70  → AVISO (dashboard amarillo)
+  P >= 0.70         → ALERTA-PREDICTIVA (rojo + Telegram)
+============================================================
