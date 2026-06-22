@@ -30,6 +30,48 @@ Complementar al IF añadiendo memoria temporal: predecir si un evento LIMIT o BL
 
 ---
 
+## Entradas → Proceso → Salidas
+
+```
+ENTRADAS  [f4_entrenar_predictor_v2.py — entrenamiento, una vez]
+  results/motor_decision.log              (eventos LIMIT+BLOCK históricos)
+
+ENTRADAS  [predictor.py — operación continua]
+  results/motor_decision.log              (lectura cada INTERVALO=10s)
+  models/predictor_modelo_v2.pkl         (XGBoost cargado, hot-reload)
+  models/features_predictor_v2.txt       (9 features en orden)
+
+PROCESO  [f4_entrenar_predictor_v2.py]
+  Parsear log → extraer eventos LIMIT+BLOCK
+  Por cada evento: calcular ventanas deslizantes por IP
+    limit_count_15s = nº LIMITs de esta IP en [t-15s, t]
+    block_count_60s = nº BLOCKs de esta IP en [t-60s, t]
+  Label automático: ¿BLOCK de esta IP en [t, t+60s]? → 1=sostenido, 0=puntual
+  Split estratificado 80/20 (random_state=42)
+  XGBoostClassifier(n_estimators=300, max_depth=4, lr=0.05, scale_pos_weight=spw)
+  Evaluar: AUC, Precision, Recall, F1, matriz confusión
+
+PROCESO  [predictor.py — cada 10s]
+  Leer nuevas líneas de motor_decision.log
+  Por cada IP con eventos recientes: calcular 9 features
+  clf.predict_proba(X)[:,1] → P ∈ [0,1]
+  P < 0.40      → SILENCIO
+  0.40 ≤ P < 0.70 → AVISO (dashboard amarillo)
+  P ≥ 0.70      → ALERTA-PREDICTIVA (dashboard rojo + Telegram)
+  Verificar mtime del .pkl → hot-reload si cambió (F5)
+
+SALIDAS
+  models/predictor_modelo_v2.pkl         (XGBoost serializado, AUC=0.9992)
+  models/features_predictor_v2.txt       (9 features)
+  results/metricas_predictor_v2.txt      (AUC, Precision, Recall, matriz confusión)
+  results/predictor.log                  (AVISO / ALERTA-PREDICTIVA por IP)
+  Telegram mensajes                       (ALERTA-PREDICTIVA P≥0.70, dedup 300s)
+  Dashboard web :8080                    (panel predictor en tiempo real)
+```
+
+
+---
+
 ## ¿Por qué complementa al IF?
 
 El IF responde: **¿este flujo es anómalo ahora?**  

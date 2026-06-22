@@ -74,6 +74,52 @@ N_FINAL         = 10    # corridas finales
 
 ---
 
+## Entradas → Proceso → Salidas
+
+```
+ENTRADAS
+  Sistema completo F1–F5 activo y funcionando:
+    suricata.service          (capturando en ens35)
+    ppi-motor.service         (motor_decision.py corriendo)
+    ppi-predictor.service     (predictor.py corriendo)
+    ppi-dashboard.service     (dashboard_web.py en :8080)
+  Acceso SSH a Kali (192.168.0.100) para lanzar ataques
+  results/motor_decision.log  (fuente de métricas de cada corrida)
+
+PROCESO  [f6_corridas.py — 40 corridas, ~40 minutos]
+  Para cada corrida (300s = 5 min):
+    T+0s   → trafico_normal_bg(): curl + SSH desde sensor → servidor
+    T+15s  → trafico_anom_bg(): ataque desde Kali (synflood/portscan/udpflood/httpabuse)
+    T+150s → verificar_disponibilidad(): curl al servidor → disp=1 ó 0
+    T+300s → leer_log_ventana() → calcular_metricas()
+    Guardar fila CSV → continuar
+    Pausa 60s entre corridas
+
+  4 grupos × 10 corridas:
+    Normal (1-10)    → solo tráfico normal (sensor, whitelisted)
+    Mixto (11-20)    → normal + ataque Kali → primera detección
+    Reeval (21-30)   → Kali ya bloqueada → confirmar persistencia
+    Final (31-40)    → bloqueo consolidado → disponibilidad sostenida
+
+SALIDAS
+  results/resultados_f6_completo.csv   (40 filas, 14 columnas)
+  results/resultados_normal.csv        (10 filas)
+  results/resultados_mixto.csv         (10 filas)
+  results/resultados_reeval.csv        (10 filas)
+  results/resultados_final.csv         (10 filas)
+  results/graficas_f6/*.png            (7 figuras 300 DPI)
+  results/reports/auc_por_escenario.txt
+  docs/bitacora/bitacora_escenarios.txt (64 entradas)
+
+MÉTRICAS EN EL CSV (14 columnas):
+  corrida, grupo, escenario, fecha, hora_inicio, hora_fin, duracion_s,
+  disponibilidad, flows_normal, flows_anom, bloqueados, limitados,
+  latencia_ms, lead_time_s, mtta_s, mttc_s, tie_pct, itl_pct
+```
+
+
+---
+
 ## Scripts de validación F6
 
 ```bash

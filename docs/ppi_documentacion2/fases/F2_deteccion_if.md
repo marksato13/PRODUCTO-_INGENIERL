@@ -32,6 +32,41 @@ Entrenar un modelo no supervisado que aprenda el comportamiento normal de la red
 
 ---
 
+## Entradas → Proceso → Salidas
+
+```
+ENTRADAS
+  data/raw/*_normal_*.gz          (capturas Grupo A — fase3_entrenar.py)
+  data/raw/*_anom_*.gz            (capturas Grupo B — fase3_evaluar.py)
+  data/normal_holdout.csv         (20% split — entrada de fase3_evaluar.py)
+
+PROCESO  [fase3_entrenar.py]
+  Lee *_normal_*.gz → filtra src ∈ {192.168.0.20, 192.168.0.120}
+  Extrae 14 features por flujo
+  Split 80/20 aleatorio (shuffle=True, random_state=42)
+  StandardScaler.fit_transform(X_train)
+  IsolationForest(n_estimators=300, contamination=0.05).fit(X_scaled)
+  Guarda modelos + holdout
+
+PROCESO  [fase3_evaluar.py]
+  Carga modelos + normal_holdout.csv + *_anom_*.gz
+  Calcula scores sobre normal (FP) y anómalos (TP)
+  Construye curva ROC → AUC-ROC
+  Deriva τ1 por índice de Youden, τ2 por FPR≤2%
+  Guarda métricas + curva PNG
+
+SALIDAS
+  models/isolation_forest.pkl     (modelo serializado)
+  models/scaler.pkl               (StandardScaler μ/σ)
+  models/features.csv             (14 features en orden exacto)
+  data/normal_holdout.csv         (13,427 flujos — 20% reservado)
+  results/metricas_offline.txt    (AUC=0.8998, τ1=-0.4459, τ2=-0.6027, TPR, FPR, P, R, F1)
+  results/auc_roc.png             (curva ROC 300 DPI)
+```
+
+
+---
+
 ## ¿Por qué Isolation Forest y no otro modelo?
 
 | Criterio | Isolation Forest | SVM one-class | Autoencoder |

@@ -10,6 +10,30 @@ Registrar tráfico de red real bajo escenarios controlados (normal y anómalo) e
 
 ---
 
+## Entradas → Proceso → Salidas
+
+```
+ENTRADAS
+  Red física: tráfico real entre Desktop↔Servidor y Kali↔Servidor
+  Herramientas: hping3, nmap, hydra, curl, wget, scp (según escenario)
+  Configuración: Suricata 7.0.3 en ens35 modo promiscuo
+
+PROCESO
+  Suricata captura todos los paquetes del segmento → genera eve.json (JSON/línea)
+  Al fin de cada corrida:
+    exportar_eve_por_escenario.sh → gzip -c eve.json → archivo .gz
+    sudo truncate -s 0 eve.json   → vaciar para siguiente corrida
+    suricatasc reopen-log-files   → Suricata rota el fd sin reiniciarse
+    registrar_bitacora.sh         → escribe línea en bitácora
+
+SALIDAS
+  data/raw/YYYYMMDD_grupo_escenario_NN_eve.json.gz  (47 archivos)
+  docs/bitacora/bitacora_escenarios.txt             (64 entradas)
+```
+
+
+---
+
 ## Terminología clave
 
 | Término | Definición |

@@ -29,6 +29,48 @@ Que el sistema mejore con el tiempo sin intervención manual: cuando el tráfico
 
 ---
 
+## Entradas → Proceso → Salidas
+
+```
+ENTRADAS  [f5_reentrenar_if.py — domingos 02:00]
+  data/raw/*_normal_*.gz              (todas las capturas normales acumuladas)
+  data/normal_holdout.csv             (evaluación AUC)
+  data/raw/*_anom_*.gz               (hasta 3 archivos para comparación AUC)
+  models/isolation_forest.pkl         (modelo actual — para comparar AUC)
+
+ENTRADAS  [f5_reentrenar_xgboost.py — diario 03:00]
+  results/motor_decision.log          (últimas N horas — default 24h)
+  models/predictor_modelo_v2.pkl     (modelo actual — para comparar AUC)
+
+PROCESO  [f5_reentrenar_if.py]
+  Cargar *_normal_*.gz → extraer features → split 80/20
+  Entrenar nuevo IF (mismos params que F2)
+  Calcular AUC_nuevo sobre holdout + anomalías
+  AUC_nuevo >= AUC_actual - 0.02  → reemplazar isolation_forest.pkl + scaler.pkl
+  AUC_nuevo <  AUC_actual - 0.02  → NO reemplazar (protección anti-regresión)
+  Registrar resultado en metricas_f5_if.txt
+
+PROCESO  [f5_reentrenar_xgboost.py]
+  Parsear log de N horas → dataset con labels automáticos (mismo que F4)
+  Si eventos < 100 o positivos < 10 → abortar (datos insuficientes)
+  Entrenar nuevo XGBoost
+  AUC_nuevo >= 0.70 Y AUC_nuevo >= AUC_actual - 0.05 → reemplazar .pkl
+  predictor.py detecta cambio de mtime → hot-reload en ≤10s (sin reiniciar)
+  Registrar resultado en metricas_f5_xgboost.txt
+
+SALIDAS
+  models/isolation_forest.pkl         (actualizado si AUC mejoró/estable)
+  models/scaler.pkl                   (actualizado junto al IF)
+  models/predictor_modelo_v2.pkl     (actualizado si AUC válido)
+  results/metricas_f5_if.txt          (historial: fecha|flows|AUC_ant|AUC_new|reemplazado)
+  results/metricas_f5_xgboost.txt     (historial: fecha|horas|events|AUC_ant|AUC_new|P|R)
+  results/cron_f5_if.log              (stdout/stderr del cron IF)
+  results/cron_f5_xgb.log            (stdout/stderr del cron XGBoost)
+```
+
+
+---
+
 ## ¿Por qué es necesario F5?
 
 Un modelo entrenado una sola vez se desactualiza:

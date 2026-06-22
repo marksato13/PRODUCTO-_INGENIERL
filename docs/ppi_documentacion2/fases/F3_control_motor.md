@@ -10,6 +10,44 @@ Aplicar la decisión del IF sobre cada flujo nuevo en la red de forma automátic
 
 ---
 
+## Entradas → Proceso → Salidas
+
+```
+ENTRADAS
+  /var/log/suricata/eve.json              (tail en tiempo real)
+  models/isolation_forest.pkl             (IF cargado al arrancar)
+  models/scaler.pkl                       (StandardScaler)
+  models/features.csv                     (orden exacto de features)
+  results/metricas_offline.txt            (τ1=-0.4459, τ2=-0.6027)
+  config/whitelist.conf                   (IPs nunca bloqueadas)
+  config/telegram.conf                    (TG_TOKEN, TG_CHAT_ID)
+  results/block_counts.json               (historial bloqueos por IP)
+
+PROCESO  [motor_decision.py — continuo como servicio systemd]
+  tail eve.json → evento type=flow → extraer 14 features
+  ¿src_ip en whitelist? → PERMIT inmediato (sin IF)
+  score = IF.decision_function(scaler.transform(features))
+  score > τ1           → PERMIT (log INFO)
+  τ2 < score ≤ τ1      → LIMIT  → SSH→192.168.0.120 ipset add ppi_limited
+  score ≤ τ2           → BLOCK  → SSH→192.168.0.120 ipset add ppi_blocked
+  score_medio < -0.35 (últimos 10 flows PERMIT) → Telegram 👀 TENDENCIA
+  Heurístico BF-SSH:   ≥5/60s→LIMIT | ≥15/60s→BLOCK
+  Heurístico HTTP:     ≥50/30s→LIMIT | ≥100/30s→BLOCK
+  BLOCK → bloqueo progresivo: #1=300s, #2=1800s, #3+=timeout=0
+  BLOCK → Telegram 🚨 alerta (dedup 300s por IP)
+
+SALIDAS
+  results/motor_decision.log              (PERMIT/LIMIT/BLOCK por flujo — entrada de F4)
+  results/block_counts.json              (conteo de bloqueos por IP, persistente)
+  192.168.0.120 ipset ppi_blocked        (IPs con DROP en kernel del servidor)
+  192.168.0.120 ipset ppi_limited        (IPs con hashlimit 100pkt/s en servidor)
+  Telegram mensajes                       (alertas al operador)
+  Dashboard web :8080                    (SSE — tiempo real en navegador)
+```
+
+
+---
+
 ## Terminología clave
 
 | Término | Definición |
