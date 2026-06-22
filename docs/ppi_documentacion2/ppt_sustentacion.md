@@ -371,24 +371,24 @@ eve.json → motor_decision.py → Isolation Forest → PERMIT/LIMIT/BLOCK
 **Título:** Validación en vivo — SYN Flood B1 (2026-06-22)
 
 ```
-Escenario: hping3 SYN flood desde Kali (192.168.0.100) → Servidor (192.168.0.120)
+Escenarios ejecutados el 2026-06-22 desde Kali (192.168.0.100) → Servidor (192.168.0.120)
 
-┌─────────────────────────────────────────────────────────────────────┐
-│  Corrida  │  Timestamp  │  Score IF   │  Resultado      │  ipset    │
-├─────────────────────────────────────────────────────────────────────┤
-│    1ª     │  05:44:13   │  −0.6066    │  BLOCK #1 ✅    │  300s     │
-│    2ª     │  06:05:03   │  −0.7696    │  BLOCK #2 ✅    │  1 800s   │
-│    3ª     │  ~06:36     │  pendiente  │  BLOCK #3 ✅    │  ∞ perm.  │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Corrida │  Timestamp  │  Trigger / Score IF      │  Resultado    │  ipset   │
+├──────────────────────────────────────────────────────────────────────────────┤
+│    1ª    │  05:44:13   │  IF  score=−0.6066       │  BLOCK #1 ✅  │  300s    │
+│    2ª    │  06:05:03   │  IF  score=−0.7696       │  BLOCK #2 ✅  │  1 800s  │
+│    3ª    │  06:39:42   │  HTTP-ABUSE 100 req/30s  │  BLOCK #3 ✅  │  ∞ perm  │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-block_counts.json: {"192.168.0.100": 2}  →  {"192.168.0.100": 3}
+block_counts.json: {"192.168.0.100": 3}
 ```
 
-**Evidencia ipset en vivo:**
+**Evidencia ipset — bloqueo#3 permanente:**
 ```
-$ sudo ipset list ppi_blocked
+$ sudo ipset list ppi_blocked          (en servidor 192.168.0.120)
 Members:
-192.168.0.100 timeout 1768     ← bloqueo#2 activo
+192.168.0.100 timeout 0               ← timeout=0 = PERMANENTE
 ```
 
 ### Visual
@@ -400,13 +400,53 @@ Members:
 ### Oralidad
 > "Esto es validación real, no simulada. Esta mañana ejecutamos tres corridas de SYN Flood desde Kali Linux contra nuestro servidor. El sistema detectó cada una automáticamente."
 >
-> "Primera corrida: el modelo dio un score de −0.6066, por debajo de τ2. Bloqueo número 1: 5 minutos. Segunda corrida —después de que el bloqueo expiró— score de −0.7696. Bloqueo número 2: 30 minutos. La tercera corrida dará bloqueo permanente."
+> "Primera corrida: SYN flood, score de −0.6066, por debajo de τ2. Bloqueo número 1: 5 minutos. Segunda corrida —después de que expiró— score de −0.7696. Bloqueo número 2: 30 minutos. Tercera corrida: el detector HTTP-Abuse registró 100 solicitudes en 30 segundos. Bloqueo número 3: permanente."
 >
-> "Aquí está el ipset del servidor en este momento: la IP de Kali con 1768 segundos de timeout restantes. No es un log de hace un mes. Es de esta mañana."
+> "Aquí está el ipset del servidor en este momento: la IP de Kali con timeout=0. Eso significa que ese bloqueo no expira. No es un log de hace un mes. Es de esta mañana."
 >
 > *(Pausa. Dejar que el jurado lo absorba.)*
 
 ---
+
+---
+
+---
+
+---
+
+## SLIDE 11b — Demo: SSH Brute Force y Telegram
+**Expositor:** E2 | **Tiempo:** 1 min (integrar en slide 11 si hay tiempo, o usar como respaldo)
+
+### Texto en pantalla
+**Título:** Validación adicional — B6 SSH Brute Force (2026-06-22 08:31)
+
+```
+Escenario: hydra -l admin -P fasttrack.txt ssh://192.168.0.120 -t 4 -V
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  Evento    │  T desde inicio  │  Score IF   │  Tipo                 │
+├─────────────────────────────────────────────────────────────────────┤
+│  1ª detec. │  T + 53s         │  −0.4832    │  LIMIT → SOSPECHOSO   │
+│  BLOCK     │  T + 60s         │  −0.6228    │  BRUTE_FORCE_SSH ✅   │
+└─────────────────────────────────────────────────────────────────────┘
+
+Alerta Telegram recibida: 🚨 PPI ALERTA — BRUTE_FORCE_SSH
+                           Accion : BLOCK (DROP)   IP: 192.168.0.100
+                           Puerto : 22   Score: −0.6228   Hora: 08:31:37
+```
+
+**Conclusión:** el detector heurístico BF-SSH actúa antes de que el atacante
+               logre suficientes intentos para un acceso exitoso.
+
+### Visual
+- Captura del teléfono/Telegram Web con la alerta recibida
+- Tabla de lead time centrada
+- Línea de tiempo: [T+0 hydra] → [T+53s LIMIT] → [T+60s BLOCK]
+
+### Oralidad
+> "Para los ataques de brute force en SSH también hay evidencia real. Lanzamos Hydra con 4 hilos paralelos. En 53 segundos el sistema levantó la primera alerta de LIMIT. En 60 segundos exactos, BLOCK. El detector cuenta los intentos de autenticación en una ventana de 60 segundos — cuando supera 15, bloquea."
+>
+> "Y aquí está la alerta que llegó al teléfono en tiempo real. 'Brute Force SSH, BLOCK, Puerto 22, 08:31:37'. El administrador sabe lo que pasa antes de llegar a la oficina."
 
 ---
 
@@ -544,13 +584,13 @@ Gracias.
 
 ## Capturas de pantalla que necesitas tomar
 
-| # | Qué capturar | Cuándo | Dónde |
+| # | Qué capturar | Estado | Dónde obtener |
 |---|---|---|---|
-| 1 | `motor_decision.log` mostrando bloqueo#1, #2, #3 | Después de bloqueo#3 | Sensor terminal |
-| 2 | `sudo ipset list ppi_blocked` con `timeout 0` | Inmediatamente después bloqueo#3 | Servidor terminal |
-| 3 | Dashboard web con alertas activas | Durante o después de una corrida B1 | Navegador → http://192.168.0.110:8080 |
-| 4 | Telegram con alerta de BLOCK recibida | Durante corrida B1 | Teléfono o Telegram Web |
-| 5 | `block_counts.json` = `{"192.168.0.100": 3}` | Después de bloqueo#3 | Sensor: `cat results/block_counts.json` |
+| 1 | `motor_decision.log` — líneas bloqueo#1, #2, #3 | ⚠️ pendiente captura | `grep "bloqueo#" results/motor_decision.log` |
+| 2 | `sudo ipset list ppi_blocked` con `timeout 0` | ⚠️ pendiente captura | En servidor 192.168.0.120 |
+| 3 | Dashboard web — vista Alertas o Predictor activo | ✅ capturado hoy (09:05) | http://192.168.0.110:8080 |
+| 4 | Telegram — alerta BRUTE_FORCE_SSH o BLOCK | ✅ recibida 07:25 | Teléfono / Telegram Web |
+| 5 | `block_counts.json` = `{"192.168.0.100": 3}` | ⚠️ pendiente captura | `cat results/block_counts.json` (reset motor entre sesiones) |
 
 ## Figuras de graficas_f6/ para el PPT
 
@@ -574,11 +614,15 @@ Gracias.
 
 ## Checklist de preparación
 
-- [ ] Confirmar bloqueo#3 y tomar capturas (hoy)
+- [x] Bloqueo#3 confirmado — 06:39:42, timeout=0, HTTP-ABUSE 100 req/30s
+- [x] B6 SSH BF validado — LIMIT T+53s, BLOCK T+60s (08:31:37)
+- [x] Telegram alerta recibida — HTTP 200, 07:25
+- [x] Whitelist Desktop validada — 120 req → 0 BLOCK/LIMIT
+- [x] Dashboard web verificado — predictor activo P=55% AVISO, AUC=0.9992
 - [ ] Exportar figuras de graficas_f6/ a la PC de presentación
-- [ ] Tomar screenshot del dashboard web con datos activos
-- [ ] Crear diagrama de topología (draw.io recomendado — gratis en browser)
+- [ ] Tomar capturas finales para slides 11/12 (ver tabla abajo)
+- [ ] Crear diagrama de topología (draw.io — gratis en browser)
 - [ ] Crear diagrama de pipeline 6 fases
 - [ ] Construir el PPT (Canva, PowerPoint o Google Slides)
 - [ ] Ensayar con cronómetro: E1 = 7 min, E2 = 11 min
-- [ ] Preparar Q&A (ver `docs/informe_resultados/puntos_debiles_defensa.md`)
+- [ ] Preparar Q&A (ver `LIMITACIONES.md` para respuestas técnicas)
