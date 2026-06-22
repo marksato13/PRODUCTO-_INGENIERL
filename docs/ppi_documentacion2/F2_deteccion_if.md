@@ -5,29 +5,70 @@
 
 ## Objetivo
 
-Entrenar un modelo no supervisado que aprenda el comportamiento normal de la red y clasifique cada flujo nuevo como normal o anómalo, sin necesidad de etiquetas previas.
+Entrenar un modelo no supervisado que aprenda el comportamiento normal de la red y asigne un score de anomalía a cada flujo, derivando umbrales de decisión con base estadística.
 
 ---
 
 ## ¿Por qué Isolation Forest?
 
-- No requiere etiquetas manuales de ataque — aprende solo del tráfico normal
-- Eficiente: O(n log n) en entrenamiento, O(log n) por flujo en inferencia
-- Robusto ante ataques desconocidos (zero-day): cualquier desviación del baseline es detectada
-- Salida continua (score) permite definir zonas PERMIT / LIMIT / BLOCK con umbrales ajustables
+- No requiere etiquetas manuales de ataque — aprende solo del tráfico normal (Grupo A)
+- Salida continua (score) permite tres zonas: PERMIT / LIMIT / BLOCK
+- Eficiente en inferencia: O(log n) por flujo → latencia < 1ms
+- Robusto ante ataques desconocidos: cualquier desviación del baseline es detectada
 
 ---
 
-## Componentes
+## Scripts (en orden de ejecución)
 
-| Script | Función |
-|---|---|
-| `scripts/fase3_isolation_forest.py` | Entrena IF n=300, guarda .pkl |
-| `scripts/auc_roc_umbrales.py` | Deriva τ1/τ2 de curva ROC |
-| `models/isolation_forest.pkl` | Modelo serializado |
-| `models/scaler.pkl` | Normalizador StandardScaler |
-| `models/features.csv` | Lista de 14 features en orden |
-| `results/metricas_offline.txt` | AUC, τ1, τ2 — leídos por el motor al arrancar |
+| Script | Lee | Produce |
+|---|---|---|
+| `scripts/fase3_entrenar.py` | `data/raw/*_normal_*.gz` | `models/isolation_forest.pkl`, `models/scaler.pkl`, `models/features.csv`, `data/normal_holdout.csv` |
+| `scripts/fase3_evaluar.py` | modelos + `normal_holdout.csv` + `data/raw/*_anom_*.gz` | `results/metricas_offline.txt`, `results/auc_roc.png` |
+| `scripts/auc_roc_umbrales.py` | (integrado en fase3_evaluar) | deriva τ1/τ2 de la curva ROC |
+
+---
+
+## Lo que hace `fase3_entrenar.py`
+
+```
+[1] Lee data/raw/*_normal_*.gz
+    → filtra src_ip: 192.168.0.20 / 192.168.0.120 (solo tráfico normal)
+[2] Extrae 14 features de cada flujo eve.json
+[3] Split 80/20 aleatorio (shuffle=True, random_state=42)
+    → 80% → entrenamiento
+    → 20% → data/normal_holdout.csv (reservado para evaluación)
+[4] StandardScaler ajustado sobre el 80% de entrenamiento
+[5] IsolationForest(n_estimators=300, contamination=0.05, random_state=42)
+[6] Guarda modelos + holdout
+```
+
+> **Split es aleatorio, no cronológico.** Se usa `shuffle=True` porque el IF aprende distribución, no secuencia temporal.
+
+---
+
+## Lo que hace `fase3_evaluar.py`
+
+```
+[1] Carga modelos entrenados
+[2] Scores sobre normal_holdout.csv → mide FP del modelo
+[3] Scores sobre data/raw/*_anom_*.gz → mide TP (detección de ataques reales)
+[4] Construye curva ROC con los scores combinados
+[5] Deriva τ1 (Youden) y τ2 (FPR≤2%)
+[6] Guarda results/metricas_offline.txt ← leído por motor al arrancar
+```
+
+---
+
+## Features del modelo (14)
+
+```
+pkts_toserver    pkts_toclient    bytes_toserver   bytes_toclient
+duration         pkt_rate         byte_rate        pkt_ratio
+byte_ratio       avg_pkt_size     is_tcp           is_udp
+is_icmp          dest_port
+```
+
+Orden exacto preservado en `models/features.csv` — el motor usa este mismo orden.
 
 ---
 
@@ -39,7 +80,7 @@ Entrenar un modelo no supervisado que aprenda el comportamiento normal de la red
 | τ2 | −0.6027 | τ2 < score ≤ τ1 → LIMIT | FPR≤2% (TPR=18.27%) |
 | — | — | score ≤ τ2 → BLOCK | — |
 
-> FPR=20.47% se mitiga con whitelist. Bajar a FPR=5% haría escapar SYN floods (score≈−0.49).
+> FPR=20.47% en τ1 se mitiga con whitelist. Bajar a 5% haría escapar SYN floods (score≈−0.49).
 
 ---
 
@@ -56,37 +97,30 @@ Entrenar un modelo no supervisado que aprenda el comportamiento normal de la red
 
 ---
 
-## Distribución de scores por origen (datos reales)
+## Archivos de salida (entrada de F3)
 
-| IP origen | Score típico | Zona |
-|---|---|---|
-| 192.168.0.20 (Desktop) | −0.02 a +0.10 | PERMIT |
-| 192.168.0.100 (Kali — SYN flood) | −0.6207 | BLOCK directo |
-| 192.168.0.100 (Kali — HTTP abuse) | −0.49 a −0.55 | LIMIT → BLOCK |
-| 192.168.0.100 (Kali — port scan) | −0.02 | PERMIT (reconocimiento lento) |
+```
+/home/m4rk/ppi-surikata-producto/
+├── models/
+│   ├── isolation_forest.pkl    ← modelo IF serializado
+│   ├── scaler.pkl              ← StandardScaler (μ/σ del tráfico normal)
+│   └── features.csv           ← 14 features en orden exacto
+├── data/
+│   └── normal_holdout.csv     ← 20% flujos normales para evaluación
+└── results/
+    ├── metricas_offline.txt   ← τ1, τ2, AUC, Precision, Recall, F1
+    └── auc_roc.png            ← curva ROC con τ1/τ2 marcados
+```
+
+El motor (`motor_decision.py`) lee `metricas_offline.txt` al arrancar para cargar τ1 y τ2.
 
 ---
 
 ## Criterios de aceptación — CUMPLIDOS ✅
 
-- [x] AUC-ROC ≥ 0.85 en test set
-- [x] Precision ≥ 95%
-- [x] Recall ≥ 95%
-- [x] Modelo serializado y cargable sin mismatch de versiones
+- [x] AUC-ROC ≥ 0.85
+- [x] Precision ≥ 95% | Recall ≥ 95%
 - [x] τ1/τ2 derivados de curva ROC con criterio estadístico
-- [x] metricas_offline.txt sincronizado con umbrales_finales.txt
-
----
-
-## Rutas en el sensor (192.168.0.110)
-
-```
-/home/m4rk/ppi-surikata-producto/
-├── models/
-│   ├── isolation_forest.pkl
-│   ├── scaler.pkl
-│   └── features.csv
-└── results/
-    ├── metricas_offline.txt      ← τ1/τ2 leídos por motor al arrancar
-    └── umbrales_finales.txt      ← copia canónica
-```
+- [x] `metricas_offline.txt` generado y leído correctamente por el motor
+- [x] Sin mismatch de versión sklearn entre entrenamiento y producción (1.9.0)
+- [x] FP sobre holdout normal documentado y aceptable

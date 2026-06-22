@@ -1,26 +1,40 @@
-# F1 — Captura y Preparación de Datos
+# F1 — Captura de Datos
 **Estado: ✅ COMPLETA Y VALIDADA**
 
 ---
 
 ## Objetivo
 
-Convertir el tráfico de red crudo en un dataset estructurado y limpio listo para entrenar el modelo de detección.
+Registrar tráfico de red real bajo escenarios controlados (normal y anómalo) y almacenarlo como capturas brutas listas para el entrenamiento del modelo.
 
 ---
 
-## Componentes
+## Cómo funciona
+
+F1 es trabajo de laboratorio, no de scripts. Suricata captura pasivamente todo el tráfico y lo escribe en `eve.json`. Al finalizar cada corrida, el archivo se comprime y archiva.
+
+```
+Red → Suricata 7.0.3 (ens35, modo pasivo) → eve.json
+                                                │
+                               exportar_eve_por_escenario.sh
+                                                │
+                                    data/raw/YYYYMMDD_grupo_escenario_NN_eve.json.gz
+```
+
+**No hay scripts de parseo en esta fase.** La extracción de features ocurre en F2.
+
+---
+
+## Scripts de soporte de capturas
 
 | Script | Función |
 |---|---|
-| Suricata 7.0.3 en ens35 | Captura flujos → eve.json |
-| `scripts/parser.py` | eve.json.gz → dataset_raw.csv |
-| `scripts/etiquetar_limpiar.py` | dedup, filtros IP, etiquetas normal/anómalo |
-| `scripts/particionar_estadisticos.py` | split cronológico 70/15/15 |
+| `scripts/capture/exportar_eve_por_escenario.sh` | Comprime eve.json → .gz, rota el log con `suricatasc reopen-log-files` |
+| `scripts/evaluation/registrar_bitacora.sh` | Escribe línea en bitácora al finalizar cada corrida |
 
 ---
 
-## Escenarios de tráfico capturados
+## Escenarios capturados
 
 ### Grupo A — Normal (desde Desktop 192.168.0.20)
 | ID | Escenario | Duración | Herramienta |
@@ -37,7 +51,7 @@ Convertir el tráfico de red crudo en un dataset estructurado y limpio listo par
 | B2 | port_scan | nmap -sS |
 | B3 | udp_flood | hping3 --udp --flood → :53 |
 | B4 | icmp_flood | hping3 -1 --flood |
-| B5 | acceso_repetitivo | curl bucle → :80 |
+| B5 | acceso_repetitivo (HTTP Abuse) | curl bucle → :80 |
 | B6 | bruteforce_ssh | hydra → :22 |
 
 ### Grupo C — Mixto (Desktop + Kali simultáneos)
@@ -49,54 +63,31 @@ Convertir el tráfico de red crudo en un dataset estructurado y limpio listo par
 
 ---
 
-## Features del dataset (14)
+## Output real de F1
 
 ```
-pkts_toserver    pkts_toclient    bytes_toserver   bytes_toclient
-duration         pkt_rate         byte_rate        pkt_ratio
-byte_ratio       avg_pkt_size     is_tcp           is_udp
-is_icmp          dest_port
+/home/m4rk/ppi-surikata-producto/data/raw/
+    47 archivos .json.gz
+    Ejemplos:
+      20260602_normal_http_01_eve.json.gz
+      20260602_anom_synflood_01_eve.json.gz
+      20260616_mixto_http_synflood_01_eve.json.gz
 ```
 
----
-
-## Rutas en el sensor (192.168.0.110)
-
-```
-/home/m4rk/ppi-surikata-producto/
-├── data/
-│   ├── raw/          ← capturas YYYYMMDD_grupo_escenario_NN_eve.json.gz
-│   ├── dataset_clean.csv
-│   ├── train.csv     ← 70%
-│   ├── val.csv       ← 15%
-│   └── test.csv      ← 15%
-└── scripts/
-    ├── capture/exportar_eve_por_escenario.sh
-    └── evaluation/registrar_bitacora.sh
-```
-
----
-
-## Métricas y resultados
-
-- Capturas totales: 47 archivos eve.json.gz
-- Split: cronológico (no aleatorio — respeta orden temporal)
-- Balance del dataset: normal vs anómalo representados
-- Nomenclatura: `YYYYMMDD_grupo_escenario_NN_eve.json.gz`
+**Esta es la única salida de F1.** Los archivos .gz son la entrada de F2.
 
 ---
 
 ## Criterios de aceptación — CUMPLIDOS ✅
 
-- [x] eve.json capturado correctamente por Suricata en ens35
-- [x] Dataset limpio sin duplicados ni IPs de whitelist
-- [x] Split cronológico 70/15/15 sin data leakage
-- [x] 14 features extraídas y normalizadas
+- [x] Suricata capturando en ens35 en modo pasivo
+- [x] 47 capturas almacenadas con nomenclatura correcta
+- [x] Grupos A, B y C representados
+- [x] eve.json rotado correctamente al finalizar cada corrida
 - [x] Bitácora de corridas registrada
 
 ---
 
-## Inconsistencias conocidas / resueltas
+## Nota sobre la separación F1/F2
 
-- Suricata TCP timeout: flujos SYN flood medio-abiertos demoran ~60s en cerrar → normal para este protocolo
-- eve.json se rota con `suricatasc reopen-log-files` al final de cada corrida
+F1 termina con los archivos `.gz` en `data/raw/`. F2 comienza leyendo esos archivos para extraer features y entrenar el modelo. No hay archivos CSV intermedios entre F1 y F2.
