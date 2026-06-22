@@ -30,13 +30,12 @@ Lee ambas líneas de `motor_decision.log`:
 
 ---
 
-## Features del modelo (10)
+## Features del modelo (9) — sin score (leakage corregido)
 
 > El log histórico usa formato sin pkt_rate/byte_ratio en la mayoría de líneas.
 > Se usan los 10 features disponibles en ambos formatos del log.
 
 ```
-score            — IF decision_function (intensidad de la anomalía)
 dest_port        — puerto objetivo (80=HTTP, 22=SSH, etc.)
 proto_tcp        — booleano
 proto_udp        — booleano
@@ -47,6 +46,8 @@ limit_count_15s  — LIMITs de esta IP en los últimos 15s
 block_count_60s  — BLOCKs de esta IP en los últimos 60s
 is_block         — 1=BLOCK, 0=LIMIT
 ```
+> `score` fue removido (data leakage: los labels se derivan de los umbrales del mismo score).
+> Ver sección "Corrección de data leakage" en F5_aprendizaje.md.
 
 ---
 
@@ -99,15 +100,19 @@ P ≥ 0.70         → ALERTA-PREDICTIVA (rojo en dashboard)
 | Label=1 (sostenido) | 5,302 (8.6%) |
 | Label=0 (puntual) | 56,619 (91.4%) |
 | Split | Aleatorio estratificado 80/20 |
-| AUC-ROC | **1.0000** |
+| AUC-ROC | **0.9992** (sin leakage) |
 | Precision clase 1 | 99.25% |
 | Recall clase 1 | 99.53% |
 
-**Feature importance:**
-- `score` 64.7% — el IF score es el mejor predictor de persistencia
-- `proto_udp` 26.3% — UDP floods son sostenidos por naturaleza
-- `block_count_60s` 5.8% — historial reciente de BLOCKs
-- `limit_count_15s` 0.8% — acumulación de LIMITs (B5/B6)
+**Feature importance (modelo v2 — 9 features, sin leakage):**
+- `proto_udp` 51.95% — UDP floods son sostenidos por naturaleza
+- `block_count_60s` 24.37% — reincidencia previa predice reincidencia futura
+- `proto_tcp` 20.79% — SYN floods son campañas prolongadas
+- `is_block` 0.92% — acción actual (BLOCK vs LIMIT)
+- `dest_port` 0.89% — puerto objetivo
+- `hora_cos/sin` 0.62% — patrón temporal
+- `limit_count_15s` 0.22% — presión reciente
+- `proto_icmp` 0.00% — ICMP floods (escasos en dataset)
 
 ---
 
@@ -147,7 +152,7 @@ if _block_repeat_ts.get(src_ip, 0) + 5.0 <= _ahora:
 | `scripts/f4_entrenar_predictor_v2.py` | ✅ Script de entrenamiento |
 | `scripts/predictor.py` | ✅ v2 — señal LIMIT+BLOCK, per-IP, hot-reload |
 | `models/predictor_modelo_v2.pkl` | ✅ Modelo entrenado (gitignored) |
-| `models/features_predictor_v2.txt` | ✅ 10 features |
+| `models/features_predictor_v2.txt` | ✅ 9 features (sin score) |
 | `results/metricas_predictor_v2.txt` | ✅ AUC=1.0000, métricas completas |
 | `config/systemd/ppi-predictor.service` | ✅ Activo y habilitado |
 

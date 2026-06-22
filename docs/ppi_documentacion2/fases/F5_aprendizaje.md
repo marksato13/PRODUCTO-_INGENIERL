@@ -99,13 +99,13 @@ El motor IF sí requiere reinicio para recargar (usa `systemctl restart ppi-moto
 # F5 — Reentrenamiento automático PPI
 # IF: domingos 02:00
 0 2 * * 0 /home/m4rk/ppi-sensor/venv/bin/python3 \
-  /home/m4rk/ppi-surikata-produto/scripts/f5_reentrenar_if.py \
-  >> /home/m4rk/ppi-surikata-produto/results/cron_f5_if.log 2>&1
+  /home/m4rk/ppi-surikata-producto/scripts/f5_reentrenar_if.py \
+  >> /home/m4rk/ppi-surikata-producto/results/cron_f5_if.log 2>&1
 
 # XGBoost: diario 03:00
 0 3 * * * /home/m4rk/ppi-sensor/venv/bin/python3 \
-  /home/m4rk/ppi-surikata-produto/scripts/f5_reentrenar_xgboost.py \
-  >> /home/m4rk/ppi-surikata-produto/results/cron_f5_xgb.log 2>&1
+  /home/m4rk/ppi-surikata-producto/scripts/f5_reentrenar_xgboost.py \
+  >> /home/m4rk/ppi-surikata-producto/results/cron_f5_xgb.log 2>&1
 ```
 
 ---
