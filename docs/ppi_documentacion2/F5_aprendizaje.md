@@ -120,16 +120,25 @@ AUC nuevo           : 0.9548
 Resultado           : reemplazado (igual calidad, datos reproducibles con random_state=42)
 ```
 
-### XGBoost
+### XGBoost — corrida 1 (2026-06-22 02:26, CON leakage — invalidada)
 ```
-ventana             : 720h (30 días de log histórico)
+ventana             : 720h
 eventos             : 62,115
-positivos           : 5,304 (8.5%)
-AUC anterior        : 1.0000
-AUC nuevo           : 0.9999
-Precision           : 98.51%
-Recall              : 99.62%
-Resultado           : reemplazado (diferencia dentro del ruido del split)
+AUC anterior        : 1.0000  ← leakage (score en features)
+AUC nuevo           : 0.9999  ← leakage
+Resultado           : INVALIDADO — score causaba data leakage
+```
+
+### XGBoost — corrida 2 (2026-06-22 08:04, SIN leakage — válida)
+```
+ventana             : 24h
+eventos             : 517
+positivos           : 46.1% (ataques recientes)
+AUC anterior        : 0.9762  ← modelo F4 corregido
+AUC nuevo           : 0.9583
+Precision           : 97.96%
+Recall              : 97.96%
+Resultado           : reemplazado — 9 features sin leakage
 ```
 
 ---
@@ -164,11 +173,41 @@ El reentrenamiento por lotes (batch nocturno) con validación de AUC es más rob
 
 ---
 
+---
+
+## Corrección de data leakage (2026-06-22)
+
+Durante la validación pre-defensa se detectó que `f5_reentrenar_xgboost.py` incluía
+`score` (IF decision function) como feature. Los labels se derivan de los umbrales del
+mismo `score`, creando correlación directa (data leakage). AUC=0.9999 era artefactual.
+
+**Fix aplicado (commit `2f60545`):**
+- `score` removido de `FEATURES` en `f5_reentrenar_xgboost.py`
+- `is_block` ahora derivado de `ev['decision'] == 'BLOCK'` (no de `ev['score'] <= TAU2`)
+- Script ahora genera 9 features consistentes con `f4_entrenar_predictor_v2.py`
+
+**Features activas (9):**
+
+| Feature | Importancia F5 | Interpretación |
+|---|---|---|
+| `proto_udp` | 51.95% | UDP floods son sostenidos por naturaleza |
+| `block_count_60s` | 24.37% | Reincidencia previa predice futura |
+| `proto_tcp` | 20.79% | SYN floods son campañas prolongadas |
+| `is_block` | 0.92% | Acción actual (BLOCK vs LIMIT) |
+| `dest_port` | 0.89% | Puerto objetivo |
+| `hora_cos/sin` | 0.62% | Patrón temporal |
+| `limit_count_15s` | 0.22% | Presión reciente de tráfico |
+| `proto_icmp` | 0.00% | ICMP floods (escasos en dataset) |
+
+**AUC post-fix:** F4=0.9992, F5=0.9583 — ambos sin leakage, sobre umbral CA-F4-01 (>0.70).
+
+---
+
 ## Criterios de aceptación
 
 | ID | Criterio | Estado |
 |---|---|---|
-| CA-F5-01 | Scripts de reentrenamiento ejecutan sin error | ✅ Validado 2026-06-22 |
+| CA-F5-01 | Scripts de reentrenamiento ejecutan sin error | ✅ Validado 2026-06-22 (post-fix leakage) |
 | CA-F5-02 | Modelo NO se reemplaza si AUC retrocede > umbral | ✅ Lógica implementada |
 | CA-F5-03 | XGBoost recargado en caliente (sin reiniciar servicio) | ✅ Hot-reload en predictor.py |
 | CA-F5-04 | Crons configurados en sensor | ✅ Instalados |
