@@ -383,6 +383,7 @@ def main():
 
     bloqueados    = set()
     limitados     = set()
+    _block_repeat_ts = {}
     ssh_intentos  = defaultdict(list)   # ip → [timestamps] brute force SSH
     http_requests = defaultdict(list)   # ip → [timestamps] HTTP abuse
     total_flows   = 0
