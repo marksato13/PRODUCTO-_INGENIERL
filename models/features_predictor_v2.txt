@@ -1,4 +1,3 @@
-score
 dest_port
 proto_tcp
 proto_udp

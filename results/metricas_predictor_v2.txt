@@ -1,48 +1,47 @@
 ============================================================
 MÉTRICAS PREDICTOR v2 — XGBoost LIMIT+BLOCK
-Generado: 2026-06-22 00:22
+Generado: 2026-06-22 07:57
 ============================================================
 
 DATASET
-  total_eventos     : 61,921
-  BLOCK             : 11,924
-  LIMIT             : 49,997
-  label_1_sostenido : 5,302  (8.6%)
-  label_0_puntual   : 56,619  (91.4%)
-  split_train       : 49,536
-  split_test        : 12,385
+  total_eventos     : 62,436
+  BLOCK             : 12,425
+  LIMIT             : 50,011
+  label_1_sostenido : 5,790  (9.3%)
+  label_0_puntual   : 56,646  (90.7%)
+  split_train       : 49,948
+  split_test        : 12,488
 
 MODELO
   algoritmo         : XGBoost (n=300, depth=4, lr=0.05)
-  scale_pos_weight  : 10.68
-  features          : 10
+  scale_pos_weight  : 9.78
+  features          : 9
 
 MÉTRICAS (umbral=0.50)
-  AUC-ROC           : 1.0000
+  AUC-ROC           : 0.9992
 
               precision    recall  f1-score   support
 
-           0     0.9996    0.9993    0.9994     11325
-           1     0.9925    0.9953    0.9939      1060
+           0     0.9994    0.9994    0.9994     11330
+           1     0.9940    0.9940    0.9940      1158
 
-    accuracy                         0.9990     12385
-   macro avg     0.9960    0.9973    0.9967     12385
-weighted avg     0.9990    0.9990    0.9990     12385
+    accuracy                         0.9989     12488
+   macro avg     0.9967    0.9967    0.9967     12488
+weighted avg     0.9989    0.9989    0.9989     12488
 
 MATRIZ CONFUSIÓN
-  TN=11,317  FP=8
-  FN=5  TP=1,055
+  TN=11,323  FP=7
+  FN=7  TP=1,151
 
 FEATURE IMPORTANCE
-score              0.646673
-proto_udp          0.262884
-block_count_60s    0.057811
-dest_port          0.011292
-limit_count_15s    0.008246
-hora_cos           0.007518
-hora_sin           0.003900
-is_block           0.001095
-proto_tcp          0.000582
+proto_udp          0.519452
+block_count_60s    0.243667
+proto_tcp          0.207913
+is_block           0.012194
+dest_port          0.008366
+hora_cos           0.003285
+hora_sin           0.002946
+limit_count_15s    0.002177
 proto_icmp         0.000000
 
 UMBRALES DE ALERTA

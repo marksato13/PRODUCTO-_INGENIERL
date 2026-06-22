@@ -177,7 +177,6 @@ def construir_features(state: IPState, t: float) -> np.ndarray:
     h     = hora.hour + hora.minute / 60.0
 
     return np.array([[
-        state.last_score,
         state.last_port,
         int(proto == 'TCP'),
         int(proto == 'UDP'),

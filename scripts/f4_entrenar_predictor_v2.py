@@ -50,12 +50,14 @@ MODEL_DIR.mkdir(exist_ok=True)
 
 # ── Features ──────────────────────────────────────────────────────────────────
 FEATURES = [
-    'score', 'dest_port',
+    'dest_port',
     'proto_tcp', 'proto_udp', 'proto_icmp',
     'hora_sin', 'hora_cos',
     'limit_count_15s', 'block_count_60s',
     'is_block',
 ]
+# 'score' eliminado: labels derivados de score → data leakage.
+# El modelo aprende patrones comportamentales puros (9 features).
 
 # ── Regex: captura ambos formatos (viejo y nuevo) ─────────────────────────────
 # Viejo: score=FLOAT | BLOCK →
@@ -186,10 +188,11 @@ print(f"  Label=1 : {df['label'].sum():,}  ({pos_pct:.1f}%)")
 print(f"  Label=0 : {(df['label']==0).sum():,}  ({100-pos_pct:.1f}%)")
 
 # ── Split aleatorio estratificado 80/20 ──────────────────────────────────────
-# Estratificado para garantizar que ambas clases aparecen en train y test.
-# No usamos split temporal porque los ataques del lab se concentran en ciertos
-# días, lo que haría que train y test tengan distribuciones completamente distintas.
-print("\n[4] Split aleatorio estratificado 80/20 ...")
+# Estratificado para garantizar representación de ambas clases en train/test.
+# Los ataques del lab se concentran en días específicos — split temporal
+# pondría casi todos los positivos en test, sesgando la evaluación.
+# 'score' fue removido de FEATURES para eliminar data leakage.
+print("\n[4] Split aleatorio estratificado 80/20 (sin score — sin leakage) ...")
 
 X_all = df[FEATURES].values.astype(float)
 y_all = df['label'].values
