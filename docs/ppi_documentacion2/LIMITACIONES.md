@@ -57,11 +57,20 @@ El sistema tiene **10 limitaciones identificadas**. Las 3 críticas tienen mitig
 
 ---
 
-#### L2 — Lead time ~62s en SYN Flood
-**Qué es:** el motor tarda ~62s en emitir el primer BLOCK desde que comienza el ataque.
+#### L2 — Lead time por escenario (validado en vivo 2026-06-22)
+**Qué es:** el tiempo desde que comienza el ataque hasta el primer BLOCK varía según el tipo.
 **Por qué existe:** Suricata procesa flows cerrados (FIN/RST). Los SYN floods nunca completan el handshake — Suricata espera el timeout antes de escribir el evento.
-**✅ Mitigación implementada:** detectores heurísticos (SSH BF: menos de 5s, HTTP Abuse: menos de 5s) actúan por paquetes individuales, no por flows.
-**Argumento defensa:** 62s es inherente a la arquitectura basada en Netflow. Sistemas comerciales tienen latencias similares. Para los ataques más peligrosos (BF SSH, HTTP Abuse) la detección es menor a 5s.
+
+**Lead times medidos en vivo:**
+
+| Escenario | Lead time LIMIT | Lead time BLOCK | Mecanismo |
+|---|---|---|---|
+| B1 SYN Flood | — | **~62s** | Suricata flow timeout |
+| B6 SSH BF (hydra -t 4) | **~53s** | **~60s** | Heurístico BF-SSH (ventana 60s, umbral 15 intentos) |
+
+**Evidencia B6 (2026-06-22 08:31):** `T+53s → LIMIT (score=-0.4832)`, `T+60s → BLOCK tipo=BRUTE_FORCE_SSH (score=-0.6228, bloqueo#1 300s)`
+**✅ Mitigación implementada:** detectores heurísticos actúan por conteo de intentos (BF-SSH: ventana 60s / HTTP Abuse: ventana 30s), no esperan cierre del flow.
+**Argumento defensa:** 60s es el tiempo mínimo para acumular evidencia estadística de brute force (15 intentos). Es una ventana deliberada para evitar falsos positivos con SSHs legítimos lentos. Sistemas SIEM comerciales usan ventanas similares (30–120s).
 **Detalle:** `docs/informe_resultados/limitaciones_detalladas.md §2`
 
 ---
@@ -146,7 +155,7 @@ El historial se persiste en `results/block_counts.json` y se recarga en cada rei
 | # | Limitación | Prioridad | Estado | Commit |
 |---|---|---|---|---|
 | L1 | FPR 20.47% — whitelist operativa | Alta | ✅ Implementado | preexistente |
-| L2 | Lead time 62s — heurísticos <5s | Alta | ✅ Implementado | preexistente |
+| L2 | Lead time B6=60s BLOCK, B1=62s — validado en vivo 2026-06-22 | Alta | ✅ Implementado | preexistente |
 | L3 | AVISO-DETERMINISTA lc>=5 | Alta | ✅ Implementado | 8df6132 |
 | L4 | Monitor kernel_drops Suricata | Alta | ✅ Implementado | 8df6132 |
 | L5 | Bloqueo progresivo 5min/30min/perm | Media | ✅ Implementado | esta sesión |
