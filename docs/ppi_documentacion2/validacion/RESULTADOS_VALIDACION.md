@@ -26,13 +26,13 @@
 | CA-13 | F5   | Cron jobs reentrenamiento configurados    | 2 cron activos  | **IF dom 02:00 / XGB 03:00**| ✅ PASS       |
 | CA-14 | F5   | Corridas de reentrenamiento registradas   | ≥ 1 corrida     | **3 corridas en métricas**  | ✅ PASS       |
 | CA-15 | F6   | Corridas completadas                      | 40/40           | **40/40 — 100%**            | ✅ PASS       |
-| CA-16 | F2   | FPR con captura normal nueva              | ≤ 0.30          | pendiente                   | ⏳ PENDIENTE  |
+| CA-16 | F2   | FPR IF en 119 flows normales nuevos (sesión 15:09)   | ≤ 0.30          | **0.0000** (0.0%) — 119/119 PERMIT | ✅ PASS       |
 
 ---
 
 ## Resumen ejecutivo
 
-**15 de 16 criterios verificados — 1 pendiente (CA-16, requiere captura nueva).**
+**16 de 16 criterios verificados. VALIDACION COMPLETA.**
 
 ### F1 — Captura de datos
 - Suricata 7.0.3 activo en ens35 (modo promiscuo)
