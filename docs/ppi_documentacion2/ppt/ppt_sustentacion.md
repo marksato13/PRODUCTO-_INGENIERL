@@ -159,30 +159,31 @@ OE3 — Integrar el modelo en un motor de decisión con control
 **Título:** Pipeline en 6 Fases
 
 ```
-[F1 Captura] → [F2 Datos] → [F3 Modelo] → [F4 Motor] → [F5 Control] → [F6 Validación]
-  Suricata       Dataset      Isolation       Motor         ipset/         40 corridas
-  eve.json       limpio       Forest          decisión      iptables       lab real
+[F1 Captura] → [F2 Modelo IF] → [F3 Motor]  → [F4 XGBoost] → [F5 Aprend.] → [F6 Valid.]
+  Suricata       IF n=300        PERMIT/LIMIT   Predictor       Auto-          40 corridas
+  47 capturas    AUC=0.8998      /BLOCK+ipset   AUC=0.9992      reentren.      P95=34.8ms
+                 τ1/τ2                                           cron noche
 ```
 
 ### Visual
-- Diagrama de pipeline horizontal con 6 cajas conectadas por flechas
+- Diagrama de pipeline horizontal con 6 cajas (usar draw.io XML de `d2_pipeline.md`)
 - Cada caja con ícono representativo:
-  - F1: 📡 (sensor)
-  - F2: 📊 (tabla/CSV)
-  - F3: 🤖 (modelo)
-  - F4: ⚙️ (engranaje)
-  - F5: 🛡️ (escudo)
-  - F6: ✅ (check)
-- Fondo claro o neutro
+  - F1: 📡 sensor
+  - F2: 🤖 modelo IF
+  - F3: ⚡ motor (la caja más grande — es el core)
+  - F4: 🧠 predictor XGBoost
+  - F5: 🔄 aprendizaje automático
+  - F6: ✅ validación
+- Flecha de retroalimentación F5 → F3/F4 (hot-reload)
 
 ### Oralidad
-> "La metodología sigue un pipeline de 6 fases encadenadas. Cada fase alimenta a la siguiente. F1 captura el tráfico real. F2 lo convierte en datos. F3 entrena el modelo. F4 lo convierte en un motor de decisión en tiempo real. F5 aplica el bloqueo efectivo. Y F6 lo valida todo con escenarios reproducibles."
+> "La metodología sigue un pipeline de 6 fases. F1 captura el tráfico real con Suricata. F2 entrena el Isolation Forest con ese tráfico y deriva los umbrales de decisión. F3 es el motor en producción: clasifica cada flujo nuevo en tiempo real y aplica el bloqueo directo en el kernel. F4 es el predictor XGBoost que analiza patrones de ataque para anticipar si el ataque va a persistir. F5 reajusta los modelos automáticamente cada noche. Y F6 validó todo el sistema con 40 corridas reproducibles."
 
 ---
 
 ---
 
-## SLIDE 6 — Fases F1–F3: Datos y Modelo
+## SLIDE 6 — Fases F1–F2: Captura y Modelo
 **Expositor:** E1 | **Tiempo:** 1 min
 
 ### Texto en pantalla
@@ -190,61 +191,79 @@ OE3 — Integrar el modelo en un motor de decisión con control
 
 ```
 F1 — Captura con Suricata 7.0.3
-  · Sensor en ens35 (modo promiscuo)
-  · eve.json: registros de flujos TCP/UDP/ICMP
+  · ens35 modo pasivo · 9 escenarios (A: normal, B: anómalo, C: mixto)
+  · 47 capturas · eve.json: flujos TCP / UDP / ICMP completos
 
-F2 — Procesamiento del dataset
-  · 14 features por flujo (pkts, bytes, duración, ratios, protocolo)
-  · Etiquetado: NORMAL (Grupo A) vs ANÓMALO (Grupo B)
-  · Split 80/20 aleatorio (fase3_entrenar.py)
-
-F3 — Isolation Forest (n=300 árboles)
-  · Entrenado sobre tráfico NORMAL
-  · Score de anomalía continuo [-1, 0]
-  · 2 umbrales derivados de curva AUC-ROC: τ1, τ2
+F2 — Dataset + Isolation Forest            (fase3_entrenar.py + fase3_evaluar.py)
+  · 14 features por flujo
+    pkts / bytes / duración / ratios / protocolo / puerto
+  · 53,708 flujos normales para entrenamiento (80%)
+  · Split 80/20 aleatorio — shuffle=True, random_state=42
+  · IsolationForest(n_estimators=300, contamination=0.05)
+  · AUC-ROC = 0.8998 · Precision = 99.54% · Recall = 99.40%
+  · τ1 = −0.4459  (Youden — umbral PERMIT/LIMIT)
+  · τ2 = −0.6027  (FPR ≤ 2% — umbral LIMIT/BLOCK)
 ```
 
 ### Visual
-- Flujo visual: [eve.json] → [14 features] → [IF model] → [score]
-- Pequeña tabla de las 14 features (texto pequeño, referencial)
-- O captura de pantalla de normal_holdout.csv (20% holdout = 13,427 flujos normales)
+- Flujo: [47 capturas .gz] → [fase3_entrenar.py] → [IF model] → [fase3_evaluar.py] → [τ1 / τ2]
+- Tabla compacta de las 14 features (texto pequeño, dos columnas)
+- Curva ROC con τ1 y τ2 marcados (usar `graficas_f6/f6_07_panel_resumen.png` o crear imagen simple)
 
 ### Oralidad
-> "Suricata captura cada flujo de red y lo registra en un archivo JSON. De ahí extraemos 14 características: volumen de paquetes, bytes, duración, ratios de flujo y protocolo. Con eso entrenamos un Isolation Forest — un algoritmo no supervisado que aprende lo que es 'normal' y asigna un score a cada flujo nuevo. Más bajo el score, más sospechoso el tráfico."
+> "F1 es puro laboratorio: Suricata captura todo el tráfico de la red en modo pasivo, sin interferir. Obtuvimos 47 capturas de 9 escenarios distintos — tráfico HTTP normal, SSH, pero también SYN flood, brute force, UDP flood."
+>
+> "En F2, de cada flujo extraemos 14 características: cuántos paquetes, cuántos bytes, duración, ratios de comunicación, protocolo. Con eso entrenamos un Isolation Forest con 300 árboles, usando solo el tráfico normal — el modelo nunca ve ejemplos de ataque durante el entrenamiento. Aprende qué es 'normal' y luego le asigna un score continuo a cada flujo nuevo: cuanto más negativo el score, más anómalo. De la curva AUC-ROC derivamos dos umbrales: τ1 para separar normal de sospechoso, y τ2 para separar sospechoso de claramente anómalo."
 
 ---
 
 ---
 
-## SLIDE 7 — Fases F4–F6: Motor y Validación
+## SLIDE 7 — Fases F3–F6: Motor, Predictor, Aprendizaje y Validación
 **Expositor:** E1 | **Tiempo:** 1 min
 
 ### Texto en pantalla
-**Título:** Del modelo a la acción en tiempo real
+**Título:** Del modelo a la acción — y el sistema que aprende solo
 
 ```
-F4 — Motor de decisión (motor_decision.py)
-  · Lee eve.json en tiempo real (tail -f)
-  · Clasifica cada flujo: PERMIT / LIMIT / BLOCK
-  · Detectores heurísticos: SSH Brute Force, HTTP Abuse
-
-F5 — Control inline con ipset/iptables
-  · BLOCK  → DROP en kernel (< 35ms)
+F3 — Motor de decisión + control inline     (motor_decision.py)
+  · tail eve.json → 14 features → IF score → PERMIT / LIMIT / BLOCK
+  · BLOCK  → ipset DROP en kernel  (Latencia P95 = 34.8ms)
   · LIMIT  → hashlimit 100 pkt/s
-  · Bloqueo progresivo: 5 min → 30 min → PERMANENTE
+  · Heurísticos: BF-SSH (15 intent./60s) · HTTP-Abuse (100 req/30s)
+  · Bloqueo progresivo: #1 = 5 min  →  #2 = 30 min  →  #3 = PERMANENTE
+  · Dashboard SSE :8080  ·  Telegram alerts (async)
 
-F6 — Validación: 40 corridas (9 escenarios, 3 grupos)
-  · Normal (A), Anómalo (B), Mixto (C)
-  · Disponibilidad 100% | ITL 0% | Latencia P95=34.8ms
+F4 — Predictor XGBoost v2                  (predictor.py)
+  · Lee motor_decision.log en tiempo real
+  · 9 features comportamentales · AUC = 0.9992
+  · P ≥ 70% → ALERTA-PREDICTIVA (Telegram + dashboard 🔴)
+
+F5 — Aprendizaje continuo                  (cron en sensor)
+  · IF: cada domingo 02:00 — reajusta baseline de tráfico normal
+  · XGBoost: cada noche 03:00 — aprende del log del día anterior
+  · Hot-reload: modelos actualizados sin reiniciar ningún servicio
+
+F6 — Validación: 40 corridas · 9 escenarios · 3 grupos (A/B/C)
+  · Disponibilidad = 100% | ITL = 0% | Latencia P95 = 34.8ms
+  · Lead time SYN Flood ≈ 62s · BF SSH BLOCK = 60s
 ```
 
 ### Visual
-- Diagrama de flujo: [eve.json] → [Motor] → {PERMIT/LIMIT/BLOCK} → [ipset server]
-- Tabla de bloqueo progresivo: 1°=300s | 2°=1800s | 3°=∞
-- Texto compacto
+- Diagrama de flujo: [eve.json] → [Motor F3] → {PERMIT / LIMIT / BLOCK}
+                                              ↓
+                                        [XGBoost F4] → Telegram 📱
+                                              ↓
+                                        [F5 cron] → hot-reload modelos
+- Tabla de bloqueo progresivo: #1=300s | #2=1800s | #3=∞ (timeout=0 ipset)
+- Resaltar F3 como el core (borde más grueso / color más intenso)
 
 ### Oralidad
-> "El motor lee el eve.json en tiempo real. Por cada flujo, extrae las 14 features, obtiene el score del modelo y decide: si el tráfico es normal lo deja pasar, si es sospechoso lo limita a 100 paquetes por segundo, y si es claramente anómalo lo bloquea con DROP en el kernel. El bloqueo además es progresivo: la primera vez 5 minutos, la segunda 30 minutos, y a la tercera se vuelve permanente."
+> "F3 es el motor en producción. Lee el eve.json en tiempo real, extrae las 14 features de cada flujo, obtiene el score del Isolation Forest y decide: PERMIT si es normal, LIMIT si es sospechoso —lo frena a 100 paquetes por segundo—, o BLOCK si es claramente anómalo —DROP directo en el kernel del servidor. El bloqueo es progresivo: 5 minutos la primera vez, 30 la segunda, permanente la tercera."
+>
+> "F4 es el predictor: un XGBoost que lee los eventos del motor y predice si el ataque va a persistir. Con 9 features de comportamiento temporal, AUC de 0.9992. Cuando supera el 70% de probabilidad, manda alerta al Telegram del operador."
+>
+> "F5 cierra el ciclo: cada noche los modelos se reajustan automáticamente con los datos del día. Si el nuevo modelo es peor, no reemplaza al anterior."
 
 > *(Aquí E1 entrega a E2)*
 
