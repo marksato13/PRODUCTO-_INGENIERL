@@ -225,7 +225,7 @@ def bloquear_ip(ip):
             cmd = (f'sudo ipset add {SET_BLOCK} {ip} timeout {t} -exist 2>&1 '
                    f'&& echo "BLOCKED {ip} (bloqueo#{n} timeout={t_label})"')
         else:
-            cmd = (f'sudo ipset add {SET_BLOCK} {ip} -exist 2>&1 '
+            cmd = (f'sudo ipset add {SET_BLOCK} {ip} timeout 0 -exist 2>&1 '
                    f'&& echo "BLOCKED {ip} (bloqueo#{n} PERMANENTE)"')
         return _ssh(cmd)
     except Exception as ex:
@@ -613,7 +613,7 @@ def main():
                 log.warning(
                     f"ANOMALÍA | src={src_ip} dst={dest_ip}:{dest_port} "
                     f"proto={proto} score={score:.4f} grado={grado} tipo={tipo} "
-                    f"byte_ratio={byte_ratio:.2f} pkt_rate={pkt_rate:.1f} | BLOCK"
+                    f"byte_ratio={byte_ratio:.2f} pkt_rate={pkt_rate:.1f} | BLOCK → {resp}"
                 )
                 telegram_alerta_ip(src_ip,
                     f"🚨 PPI ALERTA — {tipo}\n"
