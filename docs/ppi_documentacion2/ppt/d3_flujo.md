@@ -41,7 +41,7 @@
         </mxCell>
 
         <!-- IF -->
-        <mxCell id="iforest" value="&lt;b&gt;IsolationForest.score_samples()&lt;/b&gt;&lt;br&gt;n=300 árboles  ·  score ∈ [−1, 0]&lt;br&gt;Latencia P95 = 34.8ms" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#647687;strokeColor=#314354;fontColor=#ffffff;fontSize=12;" vertex="1" parent="1">
+        <mxCell id="iforest" value="&lt;b&gt;IsolationForest.decision_function()&lt;/b&gt;&lt;br&gt;n=300 árboles · score ∈ [-1, 0]&lt;br&gt;Latencia P95 = 34.8ms&lt;br&gt;&lt;br&gt;&lt;font color=&apos;#6d8764&apos;&gt;→ score_medio_10flows &lt; −0.35&lt;br&gt;= 👀 TENDENCIA (Telegram aviso)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#647687;strokeColor=#314354;fontColor=#ffffff;fontSize=12;" vertex="1" parent="1">
           <mxGeometry x="280" y="535" width="440" height="80" as="geometry"/>
         </mxCell>
 
@@ -103,7 +103,7 @@
         </mxCell>
 
         <!-- Notificación -->
-        <mxCell id="notif" value="Notificación&lt;br&gt;motor_decision.log  ·  Dashboard SSE :8080  ·  Telegram (dedup 300s/IP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="notif" value="Notificación&lt;br&gt;motor_decision.log · predictor.log · Dashboard SSE :8080 · Telegram directo api.telegram.org (dedup 300s/IP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="250" y="1475" width="500" height="65" as="geometry"/>
         </mxCell>
 
@@ -175,3 +175,13 @@ Score IF     −1.0          −0.6027         −0.4459          0.0
               │  τ2=FPR≤2%  │               │  τ1=Youden    │
               │  TPR=18.3%  │               │  TPR=99.4%    │
 ```
+
+---
+
+## Notas de actualización (2026-06-22)
+
+- Verificado contra código real en sensor 192.168.0.110
+- ipset/iptables corre en servidor 192.168.0.120 (enforcement vía SSH)
+- Telegram: API directa (api.telegram.org), sin relay
+- Predictor ciclo: 10 segundos (INTERVALO=10)
+- F6: 4 grupos × 10 corridas = 40, 300s cada una, ataque a T+15s

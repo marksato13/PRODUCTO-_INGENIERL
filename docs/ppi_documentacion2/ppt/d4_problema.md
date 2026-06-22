@@ -122,7 +122,7 @@
         </mxCell>
 
         <!-- OE3 -->
-        <mxCell id="oe3" value="&lt;b&gt;OE 3&lt;/b&gt;&lt;br&gt;Motor de decisión +&lt;br&gt;validación 40 corridas&lt;br&gt;&lt;hr/&gt;F4 + F5 + F6&lt;br&gt;Disp. = 100% ✅&lt;br&gt;ITL = 0% ✅&lt;br&gt;P95 = 34.8ms ✅&lt;br&gt;Lead ≈ 62s ✅&lt;br&gt;XGBoost AUC=0.9992 ✅" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#2d6a0b;fontSize=11;" vertex="1" parent="1">
+        <mxCell id="oe3" value="&lt;b&gt;OE 3&lt;/b&gt;&lt;br&gt;Motor de decisión +&lt;br&gt;predictor + aprendizaje + validación&lt;br&gt;&lt;hr/&gt;F3 + F4 + F5 + F6&lt;br&gt;Disp. = 100% ✅&lt;br&gt;ITL = 0% ✅&lt;br&gt;P95 = 34.8ms ✅&lt;br&gt;Lead BF SSH = 60s ✅&lt;br&gt;Lead SYN Flood ≈ 62s ✅&lt;br&gt;XGBoost AUC=0.9992 ✅&lt;br&gt;CA-16 FPR=0.0% ✅" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#2d6a0b;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="1250" y="790" width="250" height="230" as="geometry"/>
         </mxCell>
 

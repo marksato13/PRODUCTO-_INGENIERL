@@ -41,7 +41,7 @@
         </mxCell>
 
         <!-- F6 VALIDACION -->
-        <mxCell id="f6" value="&lt;b&gt;&lt;font style=&apos;font-size:14px;&apos;&gt;F6&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;b&gt;VALIDACIÓN&lt;/b&gt;&lt;br&gt;&lt;hr/&gt;f6_corridas.py&lt;br&gt;auc_por_escenario.py&lt;br&gt;generar_graficas_f6.py&lt;br&gt;&lt;br&gt;40 corridas · 9 escenarios&lt;br&gt;&lt;br&gt;Disponibilidad = 100%&lt;br&gt;ITL = 0%&lt;br&gt;Latencia P95 = 34.8ms&lt;br&gt;(req &lt; 500ms ✓)&lt;br&gt;&lt;br&gt;Lead Time ≈ 62s&lt;br&gt;(SYN Flood)&lt;br&gt;&lt;br&gt;AUC por escenario:&lt;br&gt;A (normal): PERMIT ✅&lt;br&gt;B (anómalo): BLOCK ✅&lt;br&gt;C (mixto): correcto ✅&lt;br&gt;&lt;br&gt;&lt;font color=&apos;#b85450&apos;&gt;Output:&lt;/font&gt;&lt;br&gt;resultados_f6_completo.csv&lt;br&gt;graficas_f6/ (7 PNG 300DPI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;verticalAlign=top;" vertex="1" parent="1">
+        <mxCell id="f6" value="&lt;b&gt;&lt;font style=&apos;font-size:14px;&apos;&gt;F6&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;b&gt;VALIDACIÓN&lt;/b&gt;&lt;br&gt;&lt;hr/&gt;f6_corridas.py&lt;br&gt;auc_por_escenario.py&lt;br&gt;generar_graficas_f6.py&lt;br&gt;&lt;br&gt;40 corridas · 4 grupos × 10&lt;br&gt;5 min/corrida · ataque T+15s&lt;br&gt;&lt;br&gt;Disponibilidad = 100%&lt;br&gt;ITL = 0%&lt;br&gt;Latencia P95 = 34.8ms&lt;br&gt;(req &lt; 500ms ✓)&lt;br&gt;&lt;br&gt;Lead Time ≈ 62s&lt;br&gt;(SYN Flood)&lt;br&gt;&lt;br&gt;Grupos: Normal · Mixto · Reeval · Final&lt;br&gt;Ataques: synflood · portscan · udpflood · httpabuse&lt;br&gt;CA-16 FPR datos nuevos = 0.0% ✅&lt;br&gt;&lt;br&gt;&lt;font color=&apos;#b85450&apos;&gt;Output:&lt;/font&gt;&lt;br&gt;resultados_f6_completo.csv&lt;br&gt;graficas_f6/ (7 PNG 300DPI)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;verticalAlign=top;" vertex="1" parent="1">
           <mxGeometry x="1420" y="60" width="230" height="560" as="geometry"/>
         </mxCell>
 
@@ -89,3 +89,13 @@
 | fase3_isolation_forest.py | No existe → `fase3_entrenar.py` + `fase3_evaluar.py` |
 | auc_roc_umbrales.py | No existe → incluido en `fase3_evaluar.py` |
 | XGBoost no mencionado | **F5b**: `f5_reentrenar_xgboost.py`, 9 features, AUC=0.9992 |
+
+---
+
+## Notas de actualización (2026-06-22)
+
+- Verificado contra código real en sensor 192.168.0.110
+- ipset/iptables corre en servidor 192.168.0.120 (enforcement vía SSH)
+- Telegram: API directa (api.telegram.org), sin relay
+- Predictor ciclo: 10 segundos (INTERVALO=10)
+- F6: 4 grupos × 10 corridas = 40, 300s cada una, ataque a T+15s
