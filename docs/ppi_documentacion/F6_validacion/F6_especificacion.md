@@ -1,5 +1,8 @@
 # F6 — Especificación Técnica: Validación del Sistema
 
+## Estado: ✅ COMPLETA — criterios validados en F6
+
+
 ## 1. Objetivo y posición en el pipeline
 
 Validar el sistema completo (F1-F5) en condiciones operacionales reales con el

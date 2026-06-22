@@ -1,5 +1,8 @@
 # F2 — Especificación Técnica: Captura de Tráfico por Grupos
 
+## Estado: ✅ COMPLETA — criterios validados en F6
+
+
 ## 1. Objetivo y posición en el pipeline
 
 Capturar tráfico de red en **tres grupos con propósito único y separado** (normal puro,

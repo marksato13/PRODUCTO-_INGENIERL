@@ -1,5 +1,8 @@
 # F1 — Especificación Técnica: Entorno de Laboratorio
 
+## Estado: ✅ COMPLETA — criterios validados en F6
+
+
 ## 1. Objetivo
 
 Desplegar y verificar la topología de red virtualizada de 5 nodos que sirve de infraestructura

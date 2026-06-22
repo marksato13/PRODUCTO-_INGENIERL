@@ -1,5 +1,8 @@
 # F3 — Especificación Técnica: Modelado Offline
 
+## Estado: ✅ COMPLETA — criterios validados en F6
+
+
 ## 1. Objetivo y posición en el pipeline
 
 Entrenar el modelo Isolation Forest **exclusivamente con tráfico normal** (Grupo A) y

@@ -1,5 +1,8 @@
 # F4 — Especificación Técnica: Motor de Decisión en Tiempo Real
 
+## Estado: ✅ COMPLETA — criterios validados en F6
+
+
 ## 1. Objetivo y posición en el pipeline
 
 Procesar flujos de Suricata **en tiempo real** (tail -f sobre eve.json), puntuar cada

@@ -1,5 +1,8 @@
 # F5 — Especificación Técnica: Control Inline y Monitoreo
 
+## Estado: ✅ COMPLETA — criterios validados en F6
+
+
 ## 1. Objetivo y posición en el pipeline
 
 F5 agrupa los tres mecanismos de acción y observabilidad del sistema:
