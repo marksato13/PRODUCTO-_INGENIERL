@@ -24,7 +24,7 @@ Entrenar un modelo no supervisado que aprenda el comportamiento normal de la red
 |---|---|---|
 | `scripts/fase3_entrenar.py` | `data/raw/*_normal_*.gz` | `models/isolation_forest.pkl`, `models/scaler.pkl`, `models/features.csv`, `data/normal_holdout.csv` |
 | `scripts/fase3_evaluar.py` | modelos + `normal_holdout.csv` + `data/raw/*_anom_*.gz` | `results/metricas_offline.txt`, `results/auc_roc.png` |
-| `scripts/auc_roc_umbrales.py` | (integrado en fase3_evaluar) | deriva τ1/τ2 de la curva ROC |
+| `scripts/fase3_evaluar.py` | `normal_holdout.csv` + anomalías | deriva τ1/τ2 de la curva ROC → `metricas_offline.txt` |
 
 ---
 

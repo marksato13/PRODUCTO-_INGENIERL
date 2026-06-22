@@ -35,9 +35,9 @@ De cada evento de flujo se extrajeron catorce características numéricas. La ta
 | 13 | `is_icmp` | Indicador de protocolo ICMP (binario) |
 | 14 | `dest_port` | Puerto de destino |
 
-El dataset consolidado comprende un total de 667,420 flujos: 67,135 de tráfico normal y 600,285 de tráfico anómalo capturado en los seis escenarios del Grupo B (SYN flood, port scan, UDP flood, ICMP flood, HTTP abuse y brute force SSH). El etiquetado se realizó por escenario de origen: todo flujo proveniente del host de ataque (192.168.0.100) durante una corrida anómala se marcó como ANÓMALO; el resto, como NORMAL. El split para entrenamiento y evaluación siguió un criterio cronológico estricto (70% train / 15% validación / 15% test), de modo que los datos de evaluación son siempre posteriores a los de entrenamiento.
+El dataset consolidado comprende un total de 667,420 flujos: 67,135 de tráfico normal y 600,285 de tráfico anómalo capturado en los seis escenarios del Grupo B (SYN flood, port scan, UDP flood, ICMP flood, HTTP abuse y brute force SSH). El etiquetado se realizó por escenario de origen: todo flujo proveniente del host de ataque (192.168.0.100) durante una corrida anómala se marcó como ANÓMALO; el resto, como NORMAL. El split para entrenamiento y evaluación siguió un criterio aleatorio (shuffle=True, random_state=42): 80% para entrenamiento (53,708 flujos) y 20% de holdout (13,427 flujos). Se optó por división aleatoria en lugar de cronológica porque el Isolation Forest aprende la distribución estadística del tráfico normal, no secuencias temporales; la distribución aleatoria garantiza representatividad de todos los patrones en el conjunto de entrenamiento.
 
-El pipeline de procesamiento (scripts `parser.py`, `etiquetar_limpiar.py`, `particionar_estadisticos.py`) ejecutó sin errores en las 47 capturas del experimento. El criterio de aceptación CA-F1-01 (pipeline completo sin errores manuales) fue cumplido.
+El pipeline de procesamiento (script `fase3_entrenar.py`) ejecutó sin errores en las 47 capturas del experimento. El script extrae las 14 características, aplica el StandardScaler, entrena el modelo IF y genera `normal_holdout.csv` (13,427 flujos = 20% holdout) y `dataset_comparacion.csv` (25,428 flujos para evaluación). El criterio de aceptación CA-F1-01 (pipeline completo sin errores manuales) fue cumplido.
 
 ---
 

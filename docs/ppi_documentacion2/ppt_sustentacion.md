@@ -196,7 +196,7 @@ F1 — Captura con Suricata 7.0.3
 F2 — Procesamiento del dataset
   · 14 features por flujo (pkts, bytes, duración, ratios, protocolo)
   · Etiquetado: NORMAL (Grupo A) vs ANÓMALO (Grupo B)
-  · Split cronológico 70/15/15 (train/val/test)
+  · Split 80/20 aleatorio (fase3_entrenar.py)
 
 F3 — Isolation Forest (n=300 árboles)
   · Entrenado sobre tráfico NORMAL
@@ -207,7 +207,7 @@ F3 — Isolation Forest (n=300 árboles)
 ### Visual
 - Flujo visual: [eve.json] → [14 features] → [IF model] → [score]
 - Pequeña tabla de las 14 features (texto pequeño, referencial)
-- O captura de pantalla del dataset_clean.csv con las columnas
+- O captura de pantalla de normal_holdout.csv (20% holdout = 13,427 flujos normales)
 
 ### Oralidad
 > "Suricata captura cada flujo de red y lo registra en un archivo JSON. De ahí extraemos 14 características: volumen de paquetes, bytes, duración, ratios de flujo y protocolo. Con eso entrenamos un Isolation Forest — un algoritmo no supervisado que aprende lo que es 'normal' y asigna un score a cada flujo nuevo. Más bajo el score, más sospechoso el tráfico."
@@ -491,7 +491,7 @@ OE1 — Pipeline de datos          OE2 — Modelo IF              OE3 — Motor 
 ✅ 9 escenarios capturados       ✅ AUC-ROC = 0.8998          ✅ 40 corridas ejecutadas
 ✅ 14 features extraídas         ✅ Precision = 99.54%         ✅ Latencia P95 = 34.8ms
 ✅ Dataset etiquetado            ✅ Recall    = 99.40%         ✅ Disponibilidad = 100%
-✅ Split cronológico 70/15/15    ✅ F1-Score  = 0.9947         ✅ ITL = 0%
+✅ Split 80/20 aleatorio         ✅ F1-Score  = 0.9947         ✅ ITL = 0%
                                  ✅ FPR@τ1   = 20.47%*         ✅ Lead time SYN ≈ 62s
 
                                  *mitigado con whitelist
@@ -604,11 +604,12 @@ Gracias.
 
 ## Diagramas que necesitas crear (draw.io / Canva / PowerPoint)
 
-| Diagrama | Slide | Descripción |
-|---|---|---|
-| Topología de red | Slide 9 | 4 VMs con IPs, flechas de tráfico, sensor destacado |
-| Pipeline 6 fases | Slide 5 | 6 cajas conectadas con flechas horizontales |
-| Flujo de decisión | Slide 10 | eve.json → motor → umbrales → acción |
+| Diagrama | Slide | Archivo | Estado |
+|---|---|---|---|
+| Topología de red | Slide 9 | `d1_topologia.md` | ✅ XML draw.io listo |
+| Pipeline 6 fases | Slide 5 | `d2_pipeline.md` | ✅ XML draw.io listo |
+| Flujo de decisión | Slide 10 | `d3_flujo.md` | ✅ XML draw.io listo |
+| Problema + Objetivos | Slides 2+4 | `d4_problema.md` | ✅ XML draw.io listo |
 
 ---
 
@@ -621,8 +622,8 @@ Gracias.
 - [x] Dashboard web verificado — predictor activo P=55% AVISO, AUC=0.9992
 - [ ] Exportar figuras de graficas_f6/ a la PC de presentación
 - [ ] Tomar capturas finales para slides 11/12 (ver tabla abajo)
-- [ ] Crear diagrama de topología (draw.io — gratis en browser)
-- [ ] Crear diagrama de pipeline 6 fases
+- [x] Diagrama topología creado — pegar XML de d1_topologia.md en draw.io
+- [x] Diagrama pipeline creado — pegar XML de d2_pipeline.md en draw.io
 - [ ] Construir el PPT (Canva, PowerPoint o Google Slides)
 - [ ] Ensayar con cronómetro: E1 = 7 min, E2 = 11 min
 - [ ] Preparar Q&A (ver `LIMITACIONES.md` para respuestas técnicas)

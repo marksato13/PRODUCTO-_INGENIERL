@@ -75,7 +75,7 @@
 - 14 features extraídas por flujo (tabla y descripción)
 - Etiquetado: NORMAL (Grupo A) vs ANÓMALO (Grupo B)
 - Estadísticas del dataset: N total, distribución de clases
-- Split cronológico 70/15/15
+- Split 80/20 aleatorio (shuffle=True, random_state=42)
 
 **12. Pipeline F3 — Modelo Isolation Forest**
 - Configuración: n=300, contamination=0.05
