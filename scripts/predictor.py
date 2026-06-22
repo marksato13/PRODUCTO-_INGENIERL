@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 predictor.py — Módulo de predicción temporal (Fase 3).
-Proceso paralelo al motor. Lee motor_decision.log cada 60s,
-calcula P(ataque en próximos 60s) y actúa si P >= umbral.
+Proceso paralelo al motor. Lee motor_decision.log cada 10s,
+calcula P(ataque en próximos 10s) y actúa si P >= umbral.
 """
 import re, time, logging, joblib
 import numpy as np
@@ -19,7 +19,7 @@ FEATS_F = BASE / 'models'  / 'features_predictor.txt'
 
 THETA_ALTA = 0.70
 THETA_MEDIA= 0.40
-INTERVALO  = 60   # segundos entre predicciones
+INTERVALO  = 10   # segundos entre predicciones (permite anticipar al IF ~35s)
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
