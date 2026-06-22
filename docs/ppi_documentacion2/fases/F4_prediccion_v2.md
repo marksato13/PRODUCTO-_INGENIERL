@@ -33,7 +33,7 @@ Lee ambas líneas de `motor_decision.log`:
 ## Features del modelo (9) — sin score (leakage corregido)
 
 > El log histórico usa formato sin pkt_rate/byte_ratio en la mayoría de líneas.
-> Se usan los 10 features disponibles en ambos formatos del log.
+> Se usan los 9 features comportamentales disponibles en ambos formatos del log (sin `score` — leakage corregido).
 
 ```
 dest_port        — puerto objetivo (80=HTTP, 22=SSH, etc.)
