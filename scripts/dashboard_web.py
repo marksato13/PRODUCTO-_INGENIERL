@@ -36,7 +36,7 @@ RE_INICIO = re.compile(
     r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*Motor de decisión PPI — iniciando"
 )
 RE_PRED = re.compile(
-    r"(\d{2}:\d{2}:\d{2}) \| \w+\s*\| ([\w-]+)\s*\| P=([\d.]+)%"
+    r"\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2}) \| \w+\s*\| ([^|]+?)\s*\| src=[\d.]+ P=([\d.]+)%"
 )
 
 # ── Estado global ─────────────────────────────────────────────────────────────
@@ -803,7 +803,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
         <div class="card">
           <div class="ct" style="margin-bottom:8px"><i class="bi bi-clock-history" style="color:var(--yellow)"></i>&nbsp;Historial de predicciones</div>
           <div id="pred-historial" style="font-family:monospace;font-size:.78rem;line-height:1.9"></div>
-          <div style="margin-top:10px;font-size:.68rem;color:var(--muted)">AUC-ROC=0.58 &nbsp;·&nbsp; 11,376 obs &nbsp;·&nbsp; split 80/20 temporal</div>
+          <div style="margin-top:10px;font-size:.68rem;color:var(--muted)">AUC-ROC=0.9992 &nbsp;·&nbsp; 9 features comportamentales &nbsp;·&nbsp; XGBoost</div>
         </div>
       </div>
 
@@ -953,36 +953,35 @@ tbody td{padding:6px 10px;vertical-align:middle}
         <div class="card" style="grid-column:span 1">
           <div class="ct"><i class="bi bi-cpu cb"></i>Estado del modelo</div>
           <div style="font-size:.82rem;line-height:2">
-            <div><span class="cm">Algoritmo:</span> <b>XGBoost (temporal)</b></div>
-            <div><span class="cm">AUC-ROC:</span> <b class="cy">0.58</b> <span class="cm" style="font-size:.72rem">(test set 98.5% positivo)</span></div>
-            <div><span class="cm">Features:</span> <b>10</b> (gap, lag1-3, mean5, std5…)</div>
-            <div><span class="cm">Training:</span> <b>11,376 obs</b> · split 80/20</div>
+            <div><span class="cm">Algoritmo:</span> <b>XGBoost (comportamental)</b></div>
+            <div><span class="cm">AUC-ROC:</span> <b class="cg">0.9992</b> <span class="cm" style="font-size:.72rem">(sin data leakage, F4)</span></div>
+            <div><span class="cm">Features:</span> <b>9</b> — proto(TCP/UDP/ICMP), puerto, hora(sin/cos), limit_count_15s, block_count_60s, is_block</div>
+            <div><span class="cm">Training:</span> <b>~15k obs</b> · split estratificado 80/20</div>
             <div><span class="cm">Servicio:</span> <b class="cg">ppi-predictor.service</b></div>
           </div>
         </div>
         <div class="card" style="grid-column:span 2">
-          <div class="ct"><i class="bi bi-info-circle"></i>Señal predictiva — cómo funciona</div>
+          <div class="ct"><i class="bi bi-info-circle"></i>Cómo predice el modelo</div>
           <div style="font-size:.8rem;line-height:1.8;color:var(--muted)">
-            El motor escribe estadísticas cada <b style="color:var(--txt)">500 flows</b>.
-            El tiempo entre dos líneas consecutivas (<b style="color:var(--yellow)">gap</b>) refleja la tasa de tráfico.
-            Un gap corto = tráfico intenso = posible ataque.
+            Por cada IP activa el predictor mantiene un estado comportamental en tiempo real.
+            Clasifica si el comportamiento actual predice un ataque sostenido en los próximos 60 segundos.
           </div>
           <div style="display:flex;gap:12px;margin-top:10px">
             <div style="flex:1;text-align:center;background:rgba(63,185,80,.1);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:8px">
-              <div style="font-size:1.3rem;font-weight:700;color:var(--green)">~174s</div>
-              <div style="font-size:.7rem;color:var(--muted)">Gap normal</div>
+              <div style="font-size:.75rem;font-weight:700;color:var(--green)">proto_udp / tcp</div>
+              <div style="font-size:.68rem;color:var(--muted)">Tipo de protocolo<br>importancia: 73%</div>
             </div>
             <div style="flex:1;text-align:center;background:rgba(227,179,65,.1);border:1px solid rgba(227,179,65,.3);border-radius:8px;padding:8px">
-              <div style="font-size:1.3rem;font-weight:700;color:var(--yellow)">~60s</div>
-              <div style="font-size:.7rem;color:var(--muted)">Moderado</div>
+              <div style="font-size:.75rem;font-weight:700;color:var(--yellow)">block_count_60s</div>
+              <div style="font-size:.68rem;color:var(--muted)">Bloqueos previos<br>importancia: 24%</div>
             </div>
             <div style="flex:1;text-align:center;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:8px;padding:8px">
-              <div style="font-size:1.3rem;font-weight:700;color:var(--red)">~17s</div>
-              <div style="font-size:.7rem;color:var(--muted)">Ataque (10×)</div>
+              <div style="font-size:.75rem;font-weight:700;color:var(--orange)">limit_count_15s</div>
+              <div style="font-size:.68rem;color:var(--muted)">Presión reciente<br>+ hora del día</div>
             </div>
             <div style="flex:1;text-align:center;background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.3);border-radius:8px;padding:8px">
-              <div style="font-size:1.3rem;font-weight:700;color:var(--blue)">MAX_GAP</div>
-              <div style="font-size:.7rem;color:var(--muted)">&gt;600s → sin pred.</div>
+              <div style="font-size:.75rem;font-weight:700;color:var(--blue)">P ≥ 70%</div>
+              <div style="font-size:.68rem;color:var(--muted)">Umbral ALERTA<br>P ≥ 40% → AVISO</div>
             </div>
           </div>
         </div>
@@ -995,12 +994,10 @@ tbody td{padding:6px 10px;vertical-align:middle}
           <div class="ch-wrap-lg"><canvas id="chartPred"></canvas></div>
         </div>
         <div class="card">
-          <div class="ct"><i class="bi bi-activity cb"></i>Gap entre estadísticas (seg) — tasa de tráfico</div>
+          <div class="ct"><i class="bi bi-activity cb"></i>Cadencia de estadísticas (seg) — densidad de tráfico</div>
           <div class="ch-wrap-lg"><canvas id="chartGap"></canvas></div>
           <div style="display:flex;gap:16px;margin-top:6px;font-size:.68rem">
-            <span style="color:var(--red)">━ 60s umbral</span>
-            <span style="color:var(--green)">━ 174s normal</span>
-            <span style="color:var(--muted)">gap bajo → tráfico intenso</span>
+            <span style="color:var(--muted)">Gap bajo = tráfico denso &nbsp;·&nbsp; gap alto = tráfico escaso</span>
           </div>
         </div>
       </div>
@@ -1720,12 +1717,7 @@ function initPredictorCharts(){
         y:{min:0,ticks:{color:'#8b949e',font:{size:9},callback:v=>v+'s'},grid:{color:'#21262d'}},
       },
       plugins:{...BASE.plugins,
-        annotation:{annotations:{
-          ataque:{type:'line',yMin:60,yMax:60,borderColor:'rgba(248,81,73,.6)',borderWidth:1,borderDash:[5,3],
-            label:{content:'60s umbral',display:true,position:'end',color:'rgba(248,81,73,.8)',font:{size:9}}},
-          normal:{type:'line',yMin:174,yMax:174,borderColor:'rgba(63,185,80,.5)',borderWidth:1,borderDash:[5,3],
-            label:{content:'174s normal',display:true,position:'end',color:'rgba(63,185,80,.7)',font:{size:9}}},
-        }}
+
       }
     }
   });

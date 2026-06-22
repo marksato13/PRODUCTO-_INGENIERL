@@ -452,9 +452,13 @@ def main():
                 dt    = max(ahora - _kdrops_ts, 1)
                 tasa  = (_kd - _kdrops_prev) / dt * 60  # drops/min
                 if tasa > 100_000 and ahora - _kdrops_alert_ts > 600:
-                    msg = (f'[MOTOR] ALERTA saturacion Suricata '
-                           f'kernel_drops={_kd:,} tasa={tasa:,.0f}/min '
-                           f'— motor podria quedar ciego')
+                    msg = (
+                        f'⚠️ PPI AVISO — SATURACIÓN DE RED\n'
+                        f'Suricata acumula {_kd:,} kernel_drops\n'
+                        f'Tasa: {tasa:,.0f} drops/min\n'
+                        f'Impacto: el sensor puede perder eventos — monitoreo reducido\n'
+                        f'Hora: {__import__("datetime").datetime.now().strftime("%H:%M:%S")}'
+                    )
                     log.warning(msg)
                     telegram_alerta(msg)
                     _kdrops_alert_ts = ahora
@@ -529,7 +533,7 @@ def main():
                     f"Proto   : {proto}  Puerto: {dest_port}\n"
                     f"Requests: {hab_n}/{HTTP_VENTANA_SEG}s\n"
                     f"Score   : {score:.4f}\n"
-                    f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Hora    : {datetime.now().strftime('%H:%M:%S')}"
                 )
             elif hab_accion == 'LIMIT' and src_ip not in limitados and src_ip not in bloqueados:
                 limitados.add(src_ip)
@@ -540,8 +544,12 @@ def main():
                 )
                 telegram_alerta_ip(src_ip,
                     f"⚠️ PPI ALERTA — HTTP ABUSE\n"
-                    f"Accion : LIMIT (100pkt/s)\nIP     : {src_ip}\nPuerto : {dest_port}\n"
-                    f"Requests: {hab_n}/{HTTP_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Accion   : LIMIT (100 pkt/s)\n"
+                    f"IP       : {src_ip}\n"
+                    f"Puerto   : {dest_port}\n"
+                    f"Requests : {hab_n}/{HTTP_VENTANA_SEG}s\n"
+                    f"Score    : {score:.4f}\n"
+                    f"Hora     : {datetime.now().strftime('%H:%M:%S')}"
                 )
 
         # ── Detector de Brute Force SSH (override temporal) ───
@@ -560,8 +568,12 @@ def main():
                 )
                 telegram_alerta_ip(src_ip,
                     f"🚨 PPI ALERTA — BRUTE FORCE SSH\n"
-                    f"Accion : BLOCK\nIP     : {src_ip}\nPuerto : {dest_port}\n"
-                    f"Intentos: {bf_n}/{BF_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Accion   : BLOCK (DROP)\n"
+                    f"IP       : {src_ip}\n"
+                    f"Puerto   : {dest_port}\n"
+                    f"Intentos : {bf_n}/{BF_VENTANA_SEG}s\n"
+                    f"Score    : {score:.4f}\n"
+                    f"Hora     : {datetime.now().strftime('%H:%M:%S')}"
                 )
             elif bf_accion == 'LIMIT' and src_ip not in limitados and src_ip not in bloqueados:
                 limitados.add(src_ip)
@@ -572,8 +584,12 @@ def main():
                 )
                 telegram_alerta_ip(src_ip,
                     f"⚠️ PPI ALERTA — BRUTE FORCE SSH\n"
-                    f"Accion : LIMIT\nIP     : {src_ip}\nPuerto : {dest_port}\n"
-                    f"Intentos: {bf_n}/{BF_VENTANA_SEG}s\nHora   : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Accion   : LIMIT (100 pkt/s)\n"
+                    f"IP       : {src_ip}\n"
+                    f"Puerto   : {dest_port}\n"
+                    f"Intentos : {bf_n}/{BF_VENTANA_SEG}s\n"
+                    f"Score    : {score:.4f}\n"
+                    f"Hora     : {datetime.now().strftime('%H:%M:%S')}"
                 )
             # Continuar al análisis de score igual (no skip)
 
@@ -623,7 +639,7 @@ def main():
                     f"Score   : {score:.4f}  Grado: {grado}\n"
                     f"byte_ratio: {byte_ratio:.2f}  (normal ≈ 0.95)\n"
                     f"pkt_rate  : {pkt_rate:,.1f} pkt/s\n"
-                    f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Hora    : {datetime.now().strftime('%H:%M:%S')}"
                 )
             else:
                 # IP ya en ipset: loguear decisión con rate-limit 5s por IP
@@ -655,7 +671,7 @@ def main():
                     f"Score   : {score:.4f}  Grado: {grado}\n"
                     f"byte_ratio: {byte_ratio:.2f}  (normal ≈ 0.95)\n"
                     f"pkt_rate  : {pkt_rate:,.1f} pkt/s\n"
-                    f"Hora    : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    f"Hora    : {datetime.now().strftime('%H:%M:%S')}"
                 )
             else:
                 log.debug(
