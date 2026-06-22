@@ -169,7 +169,7 @@ def main():
             if p >= THETA_ALTA:
                 # Deduplicar: no relanzar alerta si ya se lanzó hace <5min
                 ahora = datetime.now()
-                if ultima_alerta_ts is None or (ahora - ultima_alerta_ts).total_seconds() > 300:
+                if ultima_alerta_ts is None or (ahora - ultima_alerta_ts).total_seconds() > 120:  # 2 min dedup — ajustado para corridas de validación
                     log.warning(f"ALERTA-PREDICTIVA | {resumen}")
                     ultima_alerta_ts = ahora
                 else:
