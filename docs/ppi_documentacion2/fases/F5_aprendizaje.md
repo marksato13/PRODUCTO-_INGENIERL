@@ -1,103 +1,117 @@
 # F5 — Aprendizaje Continuo (Reentrenamiento Automático)
-**Estado: ✅ IMPLEMENTADA**
+**Estado: ✅ IMPLEMENTADA Y VALIDADA**  
+**Resultado:** 2 cron jobs activos | 3 corridas registradas | protección anti-regresión funcional
 
 ---
 
 ## Objetivo
 
-Que el sistema aprenda de su propio historial operativo sin intervención manual. Cuando la red cambia, los modelos se adaptan automáticamente. Lo que diferencia este sistema de un IDS estático.
+Que el sistema mejore con el tiempo sin intervención manual: cuando el tráfico de la red cambia, los modelos se adaptan automáticamente usando sus propios datos operativos. Esto diferencia un sistema de detección estático de uno que aprende.
 
 ---
 
-## ¿Por qué es necesario?
+## Terminología clave
+
+| Término | Definición |
+|---|---|
+| **Reentrenamiento (retraining)** | Volver a entrenar el modelo con datos nuevos. No "olvida" el anterior — lo reemplaza si el nuevo es mejor. |
+| **Aprendizaje continuo** | El sistema aprende de forma periódica de los datos que produce durante su operación normal. No requiere ingeniería de datos manual entre ciclos. |
+| **Batch retraining** | Reentrenamiento por lotes: se acumulan datos durante N horas/días y se reentrena en un momento programado. Alternativa más segura que el online learning (ver sección de diseño). |
+| **Online learning** | Actualización del modelo con cada nuevo evento en tiempo real. Más reactivo pero vulnerable a envenenamiento adversarial. No implementado por seguridad. |
+| **Envenenamiento adversarial** | Técnica de ataque donde el adversario genera tráfico diseñado para "educar" al modelo a clasificar sus ataques futuros como normales. Riesgo del online learning. |
+| **Anti-regresión** | Protección que impide que el reentrenamiento empeore el modelo. Si el AUC nuevo retrocede más del umbral tolerable, el modelo anterior se conserva. |
+| **cron** | Planificador de tareas de Unix/Linux. Ejecuta comandos en horarios predefinidos. Los scripts F5 se configuran como cron jobs en el sensor. |
+| **Hot-reload** | Recarga del modelo en memoria sin reiniciar el proceso. `predictor.py` detecta cambios en el archivo `.pkl` y recarga automáticamente. Minimiza interrupciones. |
+| **mtime** | Timestamp de modificación de un archivo (`st_mtime`). El predictor compara el mtime del `.pkl` en cada ciclo para detectar si fue actualizado. |
+| **Ventana temporal** | Período de datos que el reentrenamiento considera. `--horas 24` usa las últimas 24h del log. `--horas 720` usa los últimos 30 días. |
+| **AUC anterior** | Métrica del modelo activo en producción, medida sobre los mismos datos de test del nuevo modelo. Base de comparación. |
+| **reemplazado=SI/NO** | Flag en `metricas_f5_*.txt`. SI = el nuevo modelo pasó el umbral de calidad y reemplazó al anterior. NO = el nuevo no fue suficientemente bueno. |
+
+---
+
+## ¿Por qué es necesario F5?
 
 Un modelo entrenado una sola vez se desactualiza:
-- El tráfico normal cambia (nuevos servicios, más usuarios, horarios diferentes)
-- Los ataques evolucionan (técnicas nuevas, IPs rotadas)
+- El tráfico normal cambia (nuevos servicios, más usuarios, horarios)
+- Los atacantes cambian de IP, técnica o intensidad
 - Los umbrales τ1/τ2 fijos dejan de ser óptimos
 
-Sin F5: el sistema detecta bien hoy, peor en 6 meses.
-Con F5: el sistema mejora continuamente con experiencia real.
-
----
-
-## Componentes implementados
-
-| Componente | Función | Estado |
-|---|---|---|
-| `scripts/f5_reentrenar_if.py` | Entrena nuevo IF con capturas normales acumuladas | ✅ IMPLEMENTADO |
-| `scripts/f5_reentrenar_xgboost.py` | Entrena XGBoost con últimas N horas del log | ✅ IMPLEMENTADO |
-| `scripts/f5_validar_modelo.py` | Inspecciona AUC actual de ambos modelos | ✅ IMPLEMENTADO |
-| Crontab en sensor | IF domingos 02:00 / XGBoost diario 03:00 | ✅ CONFIGURADO |
-
----
-
-## Flujo de reentrenamiento
-
-```
-                   IF (semanal — domingos 02:00)
-                   ─────────────────────────────
-data/raw/*_normal_*.gz
-    │
-    ├─ f5_reentrenar_if.py
-    │       ├─ carga todos los *_normal_*.gz  (se agrega si hay nuevas capturas)
-    │       ├─ evalúa AUC modelo actual vs nuevo sobre holdout
-    │       └─ reemplaza si AUC no retrocede > 0.02
-    │
-    ↓
-isolation_forest.pkl  ←── motor recarga en próximo arrange
-
-
-              XGBoost (diario — 03:00)
-              ─────────────────────────
-results/motor_decision.log (últimas 24h)
-    │
-    ├─ f5_reentrenar_xgboost.py
-    │       ├─ extrae eventos LIMIT+BLOCK
-    │       ├─ genera labels automáticos (mismo método que F4)
-    │       ├─ split estratificado 80/20
-    │       └─ reemplaza si AUC >= 0.70 y no retrocede > 0.05
-    │
-    ↓
-predictor_modelo_v2.pkl  ←── predictor.py detecta cambio mtime y recarga en caliente
-```
-
----
-
-## Protecciones contra degradación
-
-| Condición | Acción |
+| Sin F5 | Con F5 |
 |---|---|
-| AUC nuevo < AUC anterior − 0.02 (IF) | NO reemplaza, registra aviso |
-| AUC nuevo < 0.70 (XGBoost) | NO reemplaza, log de advertencia |
-| AUC nuevo < AUC anterior − 0.05 (XGBoost) | NO reemplaza |
-| Eventos < 100 en la ventana (XGBoost) | NO reemplaza, pide ampliar ventana |
-| Positivos < 10 (XGBoost) | NO reemplaza, pide ejecutar escenarios primero |
-| Modo `--forzar` | Reemplaza siempre (para debug) |
+| Detecta bien el día del entrenamiento | Mejora con cada semana de operación |
+| Se vuelve menos preciso con el tiempo | Se adapta al tráfico real de la red |
+| Requiere intervención manual para actualizar | Automático, sin downtime |
 
 ---
 
-## Hot-reload sin reiniciar servicios
+## Dos reentrenamientos independientes
 
-`predictor.py` comprueba `models/predictor_modelo_v2.pkl` cada ciclo (5s):
+### F5-IF — Isolation Forest (domingos 02:00)
 
-```python
-mtime_actual = MODEL.stat().st_mtime
-if mtime_actual != self._mtime:
-    self._modelo = joblib.load(MODEL)
-    self._mtime = mtime_actual
-    log.info("Predictor: modelo recargado (F5)")
+**Qué aprende:** a partir de nuevas capturas normales (`.gz` del Grupo A), actualiza qué es "normal" para el IF.
+
+```
+data/raw/*_normal_*.gz   (todos los que existan en data/raw/)
+    │
+    ▼ parse_flows() — mismo proceso que F2
+    │
+    ▼ StandardScaler + IsolationForest(n_estimators=300)
+    │
+    ▼ Evaluar AUC nuevo vs AUC anterior (sobre holdout + anomalías)
+    │
+    ├── AUC_nuevo >= AUC_anterior - 0.02  →  REEMPLAZAR modelos
+    └── AUC_nuevo <  AUC_anterior - 0.02  →  NO reemplazar + aviso
+    │
+    ▼ Guardar: isolation_forest.pkl | scaler.pkl | metricas_f5_if.txt
 ```
 
-El motor IF sí requiere reinicio para recargar (usa `systemctl restart ppi-motor.service`).
+> El motor IF requiere `systemctl restart ppi-motor.service` para recargar el nuevo modelo.
+
+### F5-XGBoost — Predictor comportamental (diario 03:00)
+
+**Qué aprende:** a partir del `motor_decision.log` de las últimas N horas, actualiza los patrones de comportamiento de IPs atacantes.
+
+```
+results/motor_decision.log  (últimas 24h por defecto)
+    │
+    ▼ parse_log() — extrae eventos LIMIT+BLOCK
+    │
+    ▼ construir_dataset() — mismo proceso que F4
+    │   labels automáticos: ¿BLOCK de esta IP en próximos 60s?
+    │
+    ▼ XGBoostClassifier.fit(X_train, y_train)
+    │
+    ▼ Evaluar AUC nuevo vs AUC anterior
+    │
+    ├── AUC_nuevo >= 0.70  Y
+    │   AUC_nuevo >= AUC_anterior - 0.05  →  REEMPLAZAR modelo
+    └── AUC_nuevo < 0.70  O
+        AUC_nuevo < AUC_anterior - 0.05   →  NO reemplazar + aviso
+    │
+    ▼ Guardar: predictor_modelo_v2.pkl → predictor.py detecta mtime → hot-reload
+```
+
+---
+
+## Protecciones anti-regresión
+
+| Condición | Qué pasa | Por qué existe |
+|---|---|---|
+| AUC_IF_nuevo < AUC_IF_anterior − 0.02 | NO reemplaza IF | Degradación detectada — datos nuevos de mala calidad |
+| AUC_XGB_nuevo < 0.70 | NO reemplaza XGBoost | Umbral mínimo de calidad |
+| AUC_XGB_nuevo < AUC_XGB_anterior − 0.05 | NO reemplaza XGBoost | Degradación significativa |
+| Eventos < 100 en ventana | NO reemplaza XGBoost | Datos insuficientes para generalizar |
+| Positivos < 10 | NO reemplaza XGBoost | No hay suficientes ataques en la ventana |
+| `--forzar` | Reemplaza siempre | Debug — solo para desarrollo |
 
 ---
 
 ## Crontab instalado en sensor (192.168.0.110)
 
 ```cron
-# F5 — Reentrenamiento automático PPI
-# IF: domingos 02:00
+# F5 — Reentrenamiento automático PPI UPeU 2026
+
+# IF: domingos 02:00 (semanal)
 0 2 * * 0 /home/m4rk/ppi-sensor/venv/bin/python3 \
   /home/m4rk/ppi-surikata-producto/scripts/f5_reentrenar_if.py \
   >> /home/m4rk/ppi-surikata-producto/results/cron_f5_if.log 2>&1
@@ -110,35 +124,63 @@ El motor IF sí requiere reinicio para recargar (usa `systemctl restart ppi-moto
 
 ---
 
-## Métricas de validación (primera ejecución — 2026-06-22)
+## Hot-reload del XGBoost (sin reinicio de servicio)
 
-### Isolation Forest
+```python
+# En predictor.py — ciclo de 5 segundos
+mtime_actual = Path(MODEL_PATH).stat().st_mtime
+if mtime_actual != self._mtime_anterior:
+    self._modelo = joblib.load(MODEL_PATH)
+    self._mtime_anterior = mtime_actual
+    log.info("Predictor: modelo F5 recargado en caliente")
+```
+
+El servicio `ppi-predictor.service` nunca se interrumpe. El nuevo modelo entra en operación en el siguiente ciclo (≤5 segundos).
+
+---
+
+## Historial de corridas F5 (registrado en metricas_f5_*.txt)
+
+### Isolation Forest — 2026-06-22 02:27
 ```
 flows_entrenamiento : 53,708
 AUC anterior        : 0.9548
-AUC nuevo           : 0.9548
-Resultado           : reemplazado (igual calidad, datos reproducibles con random_state=42)
+AUC nuevo           : 0.9548    (igual — random_state=42 reproduce el resultado)
+Reemplazado         : SI        (calidad idéntica, modelo actualizado)
 ```
 
-### XGBoost — corrida 1 (2026-06-22 02:26, CON leakage — invalidada)
+### XGBoost — corrida 1 (2026-06-22 02:26) — INVALIDADA
 ```
-ventana             : 720h
-eventos             : 62,115
-AUC anterior        : 1.0000  ← leakage (score en features)
-AUC nuevo           : 0.9999  ← leakage
-Resultado           : INVALIDADO — score causaba data leakage
+horas=720 | events=62,115
+AUC anterior : 1.0000    ← artefacto de data leakage (score en features)
+AUC nuevo    : 0.9999    ← ídem
+Reemplazado  : SI        ← modelo con leakage
+Estado       : INVALIDADO — ver corrección leakage en F4
 ```
 
-### XGBoost — corrida 2 (2026-06-22 08:04, SIN leakage — válida)
+### XGBoost — corrida 2 (2026-06-22 08:04) — VÁLIDA
 ```
-ventana             : 24h
-eventos             : 517
-positivos           : 46.1% (ataques recientes)
-AUC anterior        : 0.9762  ← modelo F4 corregido
-AUC nuevo           : 0.9583
-Precision           : 97.96%
-Recall              : 97.96%
-Resultado           : reemplazado — 9 features sin leakage
+horas=24 | events=517 | positivos=238 (46.1%)
+AUC anterior : 0.9762    ← modelo F4 corregido (sin leakage)
+AUC nuevo    : 0.9583    (bajó 0.0179 — dentro del margen de ±0.05)
+Precision    : 97.96%
+Recall       : 97.96%
+Reemplazado  : SI        ← degradación aceptable, datos de ventana corta
+```
+
+### XGBoost — corrida 3 (2026-06-22 08:05) — VÁLIDA
+```
+horas=24 | events=517
+AUC anterior : 0.9583    ← modelo de la corrida 2
+AUC nuevo    : 0.9583    (igual)
+Reemplazado  : SI        ← estable
+```
+
+### Protección en acción — cron 03:00 (ventana pequeña)
+```
+horas=24 | events=91
+AVISO: Muy pocos eventos (<100) — modelo NO reemplazado
+→ La protección funcionó: datos insuficientes detectados automáticamente
 ```
 
 ---
@@ -146,75 +188,65 @@ Resultado           : reemplazado — 9 features sin leakage
 ## Uso manual
 
 ```bash
-# Validar estado de ambos modelos
+ssh m4rk@192.168.0.110
+cd /home/m4rk/ppi-surikata-producto
+source /home/m4rk/ppi-sensor/venv/bin/activate
+
+# Ver estado de ambos modelos
 python3 scripts/f5_validar_modelo.py
 
-# Reentrenar IF manualmente
+# Reentrenar IF
 python3 scripts/f5_reentrenar_if.py
 
-# Reentrenar XGBoost con ventana extendida
+# Reentrenar XGBoost (últimas 48h)
 python3 scripts/f5_reentrenar_xgboost.py --horas 48
 
-# Forzar reemplazo aunque AUC sea menor (debug)
+# Forzar reemplazo (debug)
 python3 scripts/f5_reentrenar_xgboost.py --forzar
 ```
 
 ---
 
-## Nota de diseño — ¿Por qué no online learning puro?
+## ¿Por qué batch y no online learning?
 
-El online learning (actualizar pesos con cada evento nuevo) introduce riesgo de **envenenamiento**:
-un atacante podría generar tráfico diseñado para "educar" al modelo a clasificar sus ataques como normales.
+El online learning actualiza el modelo con cada evento en tiempo real. Parece mejor, pero tiene un riesgo crítico: **envenenamiento adversarial**.
 
-El reentrenamiento por lotes (batch nocturno) con validación de AUC es más robusto:
-- El atacante necesita sostener el ataque 24h para influir
-- La validación AUC detecta degradación antes de reemplazar
-- Los logs acumulados proveen contexto temporal suficiente
+Un atacante sofisticado podría:
+1. Generar tráfico anómalo de forma muy gradual y sostenida
+2. El modelo online aprende que ese patrón "es normal"
+3. El atacante escala el ataque — el modelo ya no lo detecta
+
+El batch retraining nocturno con validación de AUC es más robusto:
+- El atacante necesita sostener el ataque TODA LA NOCHE para influir
+- La validación AUC detecta si los nuevos datos degradaron el modelo
+- Los 24h de log proveen contexto temporal suficiente
 
 ---
 
+## Imágenes de referencia (pendientes de captura)
+
+| Imagen | Descripción |
+|---|---|
+| `F5_aprendizaje/captura_cron_configurado.png` | `crontab -l` con los 2 cron jobs activos |
+| `F5_aprendizaje/captura_reentrenamiento_xgb.png` | Salida de `f5_reentrenar_xgboost.py` con comparación AUC |
+| `F5_aprendizaje/captura_metricas_f5_historial.png` | `cat results/metricas_f5_xgboost.txt` con 3 corridas |
+| `F5_aprendizaje/captura_proteccion_antiregresion.png` | Aviso "muy pocos eventos — modelo no reemplazado" |
+
 ---
 
-## Corrección de data leakage (2026-06-22)
+## Criterios de aceptación — CUMPLIDOS ✅
 
-Durante la validación pre-defensa se detectó que `f5_reentrenar_xgboost.py` incluía
-`score` (IF decision function) como feature. Los labels se derivan de los umbrales del
-mismo `score`, creando correlación directa (data leakage). AUC=0.9999 era artefactual.
-
-**Fix aplicado (commit `2f60545`):**
-- `score` removido de `FEATURES` en `f5_reentrenar_xgboost.py`
-- `is_block` ahora derivado de `ev['decision'] == 'BLOCK'` (no de `ev['score'] <= TAU2`)
-- Script ahora genera 9 features consistentes con `f4_entrenar_predictor_v2.py`
-
-**Features activas (9):**
-
-| Feature | Importancia F5 | Interpretación |
+| CA | Criterio | Resultado |
 |---|---|---|
-| `proto_udp` | 51.95% | UDP floods son sostenidos por naturaleza |
-| `block_count_60s` | 24.37% | Reincidencia previa predice futura |
-| `proto_tcp` | 20.79% | SYN floods son campañas prolongadas |
-| `is_block` | 0.92% | Acción actual (BLOCK vs LIMIT) |
-| `dest_port` | 0.89% | Puerto objetivo |
-| `hora_cos/sin` | 0.62% | Patrón temporal |
-| `limit_count_15s` | 0.22% | Presión reciente de tráfico |
-| `proto_icmp` | 0.00% | ICMP floods (escasos en dataset) |
-
-**AUC post-fix:** F4=0.9992, F5=0.9583 — ambos sin leakage, sobre umbral CA-F4-01 (>0.70).
-
----
-
-## Criterios de aceptación
-
-| ID | Criterio | Estado |
-|---|---|---|
-| CA-F5-01 | Scripts de reentrenamiento ejecutan sin error | ✅ Validado 2026-06-22 (post-fix leakage) |
-| CA-F5-02 | Modelo NO se reemplaza si AUC retrocede > umbral | ✅ Lógica implementada |
-| CA-F5-03 | XGBoost recargado en caliente (sin reiniciar servicio) | ✅ Hot-reload en predictor.py |
-| CA-F5-04 | Crons configurados en sensor | ✅ Instalados |
-| CA-F5-05 | Registro de métricas por corrida | ✅ metricas_f5_*.txt |
+| CA-13 | Cron jobs de reentrenamiento configurados | ✅ 2 crons activos |
+| CA-14 | ≥1 corrida de reentrenamiento registrada | ✅ 3 corridas documentadas |
+| CA-F5-01 | Protección anti-regresión implementada | ✅ 5 condiciones de guarda |
+| CA-F5-02 | Hot-reload sin reiniciar ppi-predictor.service | ✅ mtime check cada 5s |
+| CA-F5-03 | Datos insuficientes detectados automáticamente | ✅ cron 03:00 con 91 eventos rechazado |
+| CA-F5-04 | Leakage corregido en reentrenamiento | ✅ score eliminado de FEATURES en v2 |
 
 ---
 
 ## Argumento de defensa
 
-> "F5 cierra el ciclo de aprendizaje. El sistema no se congela en el estado del día del entrenamiento — mejora con la experiencia real de la red. Pero lo hace de forma controlada: solo actualiza cuando el nuevo modelo es estadísticamente mejor, y el predictor recarga en caliente sin interrumpir el monitoreo."
+> "F5 es lo que hace que el sistema sea de largo plazo y no un proyecto de laboratorio que se degrada. El reentrenamiento batch nocturno con validación AUC garantiza que el modelo mejora cuando hay datos nuevos de calidad y se protege solo cuando no los hay. El hot-reload del XGBoost asegura que las mejoras entran en producción en segundos sin interrumpir el monitoreo. La decisión de batch sobre online learning es una decisión de seguridad: un sistema que se actualiza con cada paquete es un sistema que un atacante sofisticado puede manipular."

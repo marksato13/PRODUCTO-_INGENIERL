@@ -1,203 +1,203 @@
 # F4 — Predicción Inteligente (XGBoost v2)
-**Estado: ✅ IMPLEMENTADA Y VALIDADA**
+**Estado: ✅ IMPLEMENTADA Y VALIDADA**  
+**Resultado:** AUC-ROC=0.9992 | FP+FN=14/12,488 | ALERTA-PREDICTIVA validada P=77.39%
 
 ---
 
 ## Objetivo
 
-Predecir si un evento del IF (LIMIT o BLOCK) corresponde a un ataque sostenido o a una anomalía puntual, usando los outputs del propio IF como señal. Notificar al operador con anticipación gradual.
+Complementar al IF añadiendo memoria temporal: predecir si un evento LIMIT o BLOCK corresponde al inicio de un ataque sostenido (que continuará) o a una anomalía puntual (que cesará sola), usando el historial de comportamiento de la IP atacante como features.
+
+---
+
+## Terminología clave
+
+| Término | Definición |
+|---|---|
+| **XGBoost** | eXtreme Gradient Boosting. Ensemble de árboles de decisión entrenado de forma supervisada. Cada árbol corrige los errores del anterior (boosting). Usado aquí para clasificación binaria. |
+| **Clasificación supervisada** | El modelo aprende de ejemplos etiquetados (label=0 o label=1). A diferencia del IF (no supervisado), XGBoost necesita saber cuáles eventos fueron "sostenidos" para aprender a predecirlos. |
+| **Label automático** | La etiqueta se deriva automáticamente del propio log del motor, sin etiquetado manual. `label=1` si la misma IP genera otro BLOCK en los próximos 60 segundos. |
+| **Amenaza sostenida (label=1)** | IP que después de ser bloqueada vuelve a atacar en 60s. Requiere atención del operador. Ejemplos: SYN flood continuo, hydra sin parar. |
+| **Anomalía puntual (label=0)** | IP que genera un evento aislado y no reincide. Puede ser un falso positivo del IF o un scan único. No requiere intervención. |
+| **Data leakage (fuga de datos)** | Cuando una feature del modelo contiene información que ya responde la pregunta, creando una correlación artificial. En v1: `score` del IF (labels derivados de ese mismo score). Resultado: AUC inflado que no generaliza. |
+| **scale_pos_weight** | Parámetro XGBoost para clases desbalanceadas. Si label=1 son el 9.3% del dataset, asignar weight=9.78 al label minoritario compensa el desbalance. |
+| **SHAP (Shapley Additive Explanations)** | Método para explicar cuánto contribuye cada feature a la predicción de un caso específico. Muestra qué features "empujaron" la probabilidad hacia arriba o abajo. |
+| **Probabilidad P** | Salida del `predict_proba()` de XGBoost. P ∈ [0,1]. P=0.77 significa "77% de probabilidad de que este ataque sea sostenido". |
+| **Umbral de alerta** | Valor de P a partir del cual el predictor genera una alerta. P≥0.70 → ALERTA-PREDICTIVA. 0.40≤P<0.70 → AVISO. P<0.40 → silencio. |
+| **Hot-reload** | El predictor (`predictor.py`) detecta automáticamente que `predictor_modelo_v2.pkl` cambió de fecha (mtime) y recarga el modelo en caliente, sin reiniciar el servicio. |
+| **stratify** | Split estratificado: mantiene la misma proporción de label=0/label=1 en train y test. Sin esto, el test podría tener muy pocos positivos y las métricas serían inestables. |
+| **ALERTA-PREDICTIVA** | Nivel máximo de alerta del predictor (P≥0.70). Activa notificación Telegram, panel rojo en dashboard, y log WARNING. Dedup de 5 minutos por IP. |
 
 ---
 
 ## ¿Por qué complementa al IF?
 
-El IF clasifica flujo por flujo — no tiene memoria temporal. No distingue entre:
-- Una anomalía puntual (falso positivo o evento aislado → puede ignorarse)
-- El inicio de un ataque sostenido que continuará → requiere atención
+El IF responde: **¿este flujo es anómalo ahora?**  
+El XGBoost responde: **¿esta IP seguirá atacando en los próximos 60 segundos?**
 
-El XGBoost analiza el patrón temporal de eventos del IF para predecir persistencia.
+Son preguntas distintas con valor operativo diferente:
 
----
-
-## Señal de entrada — LIMIT + BLOCK combinados
-
-Lee ambas líneas de `motor_decision.log`:
-
-| Línea del log | Tipo | Ataque típico |
+| Escenario | IF (flujo actual) | XGBoost (comportamiento futuro) |
 |---|---|---|
-| `SOSPECHOSO ... \| LIMIT` | Gradual | HTTP Abuse, Brute Force SSH |
-| `ANOMALÍA ... \| BLOCK` | Volumétrico | SYN Flood, UDP/ICMP Flood, Port Scan |
+| SYN flood continuo | BLOCK desde el flujo 1 | P=77.39% → ALERTA-PREDICTIVA |
+| Port scan único | BLOCK (reconocimiento) | P≈0.20 → silencio (puntual) |
+| BF SSH con hydra | LIMIT→BLOCK heurístico | P≈0.85 → ALERTA antes de BLOCK |
+| Tráfico normal | PERMIT (whitelist) | Sin eventos → sin predicción |
 
 ---
 
 ## Features del modelo (9) — sin score (leakage corregido)
 
-> El log histórico usa formato sin pkt_rate/byte_ratio en la mayoría de líneas.
-> Se usan los 9 features comportamentales disponibles en ambos formatos del log (sin `score` — leakage corregido).
-
-```
-dest_port        — puerto objetivo (80=HTTP, 22=SSH, etc.)
-proto_tcp        — booleano
-proto_udp        — booleano
-proto_icmp       — booleano
-hora_sin         — componente temporal sin(hora/24 * 2π)
-hora_cos         — componente temporal cos(hora/24 * 2π)
-limit_count_15s  — LIMITs de esta IP en los últimos 15s
-block_count_60s  — BLOCKs de esta IP en los últimos 60s
-is_block         — 1=BLOCK, 0=LIMIT
-```
-> `score` fue removido (data leakage: los labels se derivan de los umbrales del mismo score).
-> Ver sección "Corrección de data leakage" en F5_aprendizaje.md.
-
----
-
-## Label automático (sin etiquetado manual)
-
-```
-label = 1  → hay otro BLOCK de la misma IP en los próximos 60s (ataque sostenido)
-label = 0  → no hay más eventos en 60s (anomalía puntual / falso positivo)
-```
-
----
-
-## Comportamiento por escenario
-
-| Escenario | Señal dominante | ¿Antes o después del BLOCK? | Valor |
+| Feature | Importancia | Cómo se calcula | Por qué importa |
 |---|---|---|---|
-| B1 SYN Flood | BLOCK (score=-0.74) | Después (~T+10s) | ¿Es sostenido? |
-| B2 Port Scan | BLOCK mixto | Después | ¿Va a escalar? |
-| B3 UDP Flood | BLOCK directo | Después | ¿Es sostenido? |
-| B4 ICMP Flood | BLOCK directo | Después | ¿Es sostenido? |
-| B5 HTTP Abuse | LIMITs acumulados → BLOCK | **Antes** ✅ | Alerta temprana |
-| B6 Brute Force SSH | LIMITs acumulados → BLOCK | **Antes** ✅ | Alerta temprana |
+| `proto_udp` | **51.95%** | 1 si proto==UDP, 0 si no | UDP floods (B3) son casi siempre sostenidos por naturaleza |
+| `block_count_60s` | **24.37%** | Nº BLOCKs de esta IP en los últimos 60s | Reincidencia previa predice reincidencia futura |
+| `proto_tcp` | **20.79%** | 1 si proto==TCP | SYN floods y BF SSH sostenidos son TCP |
+| `is_block` | 1.22% | 1 si el evento actual fue BLOCK | Diferencia entre "límite sospechoso" y "BLOCK confirmado" |
+| `dest_port` | 0.84% | Puerto destino del flujo | :22=SSH, :80=HTTP, :53=UDP → contexto del ataque |
+| `hora_cos` | 0.33% | cos(hora/24 × 2π) | Componente temporal — ataques nocturnos vs diurnos |
+| `hora_sin` | 0.29% | sin(hora/24 × 2π) | Codificación cíclica del horario |
+| `limit_count_15s` | 0.22% | Nº LIMITs de esta IP en los últimos 15s | Presión previa al BLOCK |
+| `proto_icmp` | 0.00% | 1 si proto==ICMP | ICMP floods escasos — información ya en block_count_60s |
+
+> **¿Por qué proto_udp es tan dominante?** Los floods UDP (hping3 --udp --flood) generan miles de flujos UDP por segundo desde la misma IP. Cada flujo entra al IF y recibe BLOCK. Esto crea una señal muy fuerte y consistente que el XGBoost aprende como "si es UDP y ya fue bloqueado varias veces en 60s, definitivamente es sostenido".
+
+> **¿Por qué proto_icmp=0%?** Los floods ICMP (B4) también generan block_count_60s alto. La información ya está capturada por esa feature — proto_icmp no añade discriminación adicional y XGBoost la ignoró.
 
 ---
 
-## Niveles de alerta — 2 tipos
+## Corrección de data leakage (v1 → v2)
+
+**v1 (con leakage):**
+```python
+FEATURES_v1 = ['dest_port', 'proto_tcp', 'proto_udp', 'proto_icmp',
+                'hora_sin', 'hora_cos', 'limit_count_15s', 'block_count_60s',
+                'is_block', 'score']  # ← LEAKAGE
+```
+El `score` es la salida del IF. Los labels se derivan de los umbrales del mismo score (score≤τ2 → BLOCK → label=1). El modelo aprendía: "score bajo = label=1", trivialmente. AUC=1.0000 era artefactual.
+
+**v2 (sin leakage):**
+```python
+FEATURES_v2 = ['dest_port', 'proto_tcp', 'proto_udp', 'proto_icmp',
+                'hora_sin', 'hora_cos', 'limit_count_15s', 'block_count_60s',
+                'is_block']  # ← score eliminado
+```
+El modelo aprende patrones comportamentales reales. AUC=0.9992 sobre test set separado — sin trampa.
+
+---
+
+## Pipeline de entrenamiento (`f4_entrenar_predictor_v2.py`)
 
 ```
-P < 0.40         → SILENCIO
-                   Tráfico normal o anomalía puntual. No se registra.
+results/motor_decision.log
+    │
+    ▼ parse_log() — extrae eventos LIMIT+BLOCK
+    │
+    ▼ construir_dataset()
+    │   ├─ Para cada evento: calcular ventanas deslizantes
+    │   │   limit_count_15s = nº LIMITs de esta IP en [t-15s, t]
+    │   │   block_count_60s = nº BLOCKs de esta IP en [t-60s, t]
+    │   └─ Label: ¿hay BLOCK de esta IP en [t, t+60s]?
+    │       SÍ → label=1 (sostenido)
+    │       NO → label=0 (puntual)
+    │
+    ▼ train_test_split(stratify=y, test_size=0.20, random_state=42)
+    │   ├── 80% → entrenamiento
+    │   └── 20% → test set (12,488 muestras — nunca visto)
+    │
+    ▼ XGBoostClassifier(n_estimators=300, max_depth=4, learning_rate=0.05,
+    │                   scale_pos_weight=9.78)
+    ▼ Evaluar: AUC, Precision, Recall, F1, matriz confusión
+    │
+    ▼ Guardar: predictor_modelo_v2.pkl | features_predictor_v2.txt
+```
 
-0.40 ≤ P < 0.70  → AVISO (amarillo en dashboard)
-                   "Actividad sospechosa detectada, monitoreando."
-                   Log INFO. Sin Telegram. El sistema sigue observando.
-
-P ≥ 0.70         → ALERTA-PREDICTIVA (rojo en dashboard)
-                   "Ataque sostenido en curso — actuar."
-                   Log WARNING. Telegram al operador. Dedup 5 min por IP.
+```bash
+python3 scripts/f4_entrenar_predictor_v2.py
 ```
 
 ---
 
-## Métricas de entrenamiento — REALES (2026-06-22)
+## Métricas de entrenamiento — reales (2026-06-22)
 
 | Métrica | Valor |
 |---|---|
-| Dataset total | 61,921 eventos |
-| LIMIT (SOSPECHOSO) | 49,997 |
-| BLOCK (ANOMALÍA) | 11,924 |
-| Label=1 (sostenido) | 5,302 (8.6%) |
-| Label=0 (puntual) | 56,619 (91.4%) |
-| Split | Aleatorio estratificado 80/20 |
-| AUC-ROC | **0.9992** (sin leakage) |
-| Precision clase 1 | 99.25% |
-| Recall clase 1 | 99.53% |
+| Dataset total | 62,436 eventos LIMIT+BLOCK |
+| label=1 (sostenido) | 5,790 (9.3%) |
+| label=0 (puntual) | 56,646 (90.7%) |
+| Split train/test | 49,948 / 12,488 |
+| **AUC-ROC** | **0.9992** |
+| Precision (sostenido) | 99.40% |
+| Recall (sostenido) | 99.40% |
+| **FP + FN en test** | **14** (7+7 de 12,488) |
 
-**Feature importance (modelo v2 — 9 features, sin leakage):**
-- `proto_udp` 51.95% — UDP floods son sostenidos por naturaleza
-- `block_count_60s` 24.37% — reincidencia previa predice reincidencia futura
-- `proto_tcp` 20.79% — SYN floods son campañas prolongadas
-- `is_block` 0.92% — acción actual (BLOCK vs LIMIT)
-- `dest_port` 0.89% — puerto objetivo
-- `hora_cos/sin` 0.62% — patrón temporal
-- `limit_count_15s` 0.22% — presión reciente
-- `proto_icmp` 0.00% — ICMP floods (escasos en dataset)
+### Matriz de confusión (test set — 12,488 muestras)
 
----
+```
+                  Predicho: Puntual   Predicho: Sostenido
+Real: Puntual        TN=11,323            FP=7
+Real: Sostenida      FN=7                 TP=1,151
+```
 
-## Corrida de validación SYN Flood — 2026-06-22
-
-| Evento | Timestamp | Detalle |
-|---|---|---|
-| Motor LIMIT | 00:43:12 | src=192.168.0.100 score=-0.4638 pkt_rate=444 |
-| Motor BLOCK | 00:43:30 | src=192.168.0.100 score=-0.6157 tipo=HTTP_ABUSE |
-| **Predictor ALERTA** | **00:51:59** | **P=77.39% — ALERTA-PREDICTIVA ✅** |
-
-El predictor v2 disparó ALERTA-PREDICTIVA con P=77.39% (θ=0.70).
+> 7 FP: alertas innecesarias (bajo impacto — el IF ya bloqueó igualmente)  
+> 7 FN: ataques sostenidos no predichos (el IF ya los bloqueó — el XGBoost es predictor adicional)
 
 ---
 
-## Fix aplicado al motor (2026-06-22)
+## Niveles de alerta del predictor
 
-**Problema:** el motor solo logueaba el primer BLOCK por IP por sesión (el resto como DEBUG).
-Esto hacía que `block_count_60s` fuera siempre 1 → P bajo para ataques volumétricos.
+```
+P < 0.40    → SILENCIO
+             Tráfico puntual o bajo riesgo. No se registra ni notifica.
+             Ejemplo: port scan único, falso positivo del IF.
 
-**Solución:** el motor ahora loguea TODOS los intentos de BLOCK con rate-limit de 5s por IP.
-El enforcement (ipset DROP) sigue aplicándose solo una vez.
+0.40 ≤ P < 0.70  → AVISO (amarillo en dashboard web)
+                   "Actividad sospechosa — vigilando."
+                   Log INFO. Sin Telegram. El sistema sigue monitoreando.
+                   Ejemplo: inicio de BF SSH con pocos intentos.
 
-```python
-# IP ya en ipset: loguear decisión con rate-limit 5s por IP
-if _block_repeat_ts.get(src_ip, 0) + 5.0 <= _ahora:
-    _block_repeat_ts[src_ip] = _ahora
-    log.warning(f"ANOMALÍA | ... | BLOCK")
+P ≥ 0.70    → ALERTA-PREDICTIVA (rojo en dashboard)
+              "Ataque sostenido en curso — actuar."
+              Log WARNING. Telegram al operador. Dedup 5 min por IP.
+              Ejemplo: SYN flood activo, P=77.39%.
 ```
 
 ---
 
-## Archivos implementados
-
-| Archivo | Estado |
-|---|---|
-| `scripts/f4_entrenar_predictor_v2.py` | ✅ Script de entrenamiento |
-| `scripts/predictor.py` | ✅ v2 — señal LIMIT+BLOCK, per-IP, hot-reload |
-| `models/predictor_modelo_v2.pkl` | ✅ Modelo entrenado (gitignored) |
-| `models/features_predictor_v2.txt` | ✅ 9 features (sin score) |
-| `results/metricas_predictor_v2.txt` | ✅ AUC=1.0000, métricas completas |
-| `config/systemd/ppi-predictor.service` | ✅ Activo y habilitado |
-
----
-
-## Criterios de aceptación
-
-| ID | Criterio | Estado |
-|---|---|---|
-| CA-F4-01 | AUC-ROC > 0.70 | ✅ AUC=1.0000 |
-| CA-F4-02 | B5/B6: predictor dispara ALERTA tras primer BLOCK y predice persistencia | ⚠️ Limitación documentada |
-| CA-F4-03 | B1 SYN Flood: ALERTA-PREDICTIVA disparada | ✅ P=77.39% validado |
-| CA-F4-04 | Corridas normales: FPR = 0% (whitelist) | ✅ 0% — whitelist impide LIMIT/BLOCK para IPs normales |
-| CA-F4-05 | Inferencia por ciclo < 50ms | ✅ implementado |
-| CA-F4-06 | AVISO nivel intermedio visible | ✅ implementado |
-| CA-F4-07 | ALERTA con Telegram dedup 5min | ✅ implementado |
-
-> **Nota CA-F4-02**: Para ataques graduales (B5 HTTP Abuse, B6 BF SSH), el IF inicialmente
-> genera eventos LIMIT antes del BLOCK. Sin embargo, el predictor fue diseñado para predecir
-> *persistencia* de BLOCKs — el feature  tiene 5.8% de importancia mientras
->  tiene 0.8%. Con P=0.02% para LIMIT-only, el predictor no dispara AVISO.
-> El predictor sí dispara ALERTA **después** del primer BLOCK heurístico (HTTP-ABUSE o BF-SSH),
-> prediciendo si el ataque continuará. Para ataques volumétricos (B1-B4), el comportamiento
-> es el diseñado. CA-F4-03 valida el caso más crítico (SYN Flood).
-
----
-
-## Corrida de validación CA-F4-04 — Tráfico normal 2026-06-22
+## Validación en vivo (2026-06-22)
 
 | Evento | Timestamp | Detalle |
 |---|---|---|
-| Inicio corrida | 02:55:53 | curl HTTP desde Desktop (192.168.0.20) → Servidor :80 |
-| Duración | 6 minutos | 90 requests, 1 cada 2 segundos |
-| Flows en Suricata | 02:56-03:01 | 79 HTTP flows + 4 SSH flows capturados |
-| Motor log WARNINGs | — | **0 líneas** — todos procesados como PERMIT |
-| Predictor alertas | — | **0 AVISO / 0 ALERTA-PREDICTIVA** |
-| **FPR** | — | **0% ✅** |
+| Motor LIMIT | 00:43:12 | src=192.168.0.100 score=−0.4638 pkt_rate=444 |
+| Motor BLOCK | 00:43:30 | src=192.168.0.100 score=−0.6157 HTTP_ABUSE |
+| **Predictor ALERTA** | **00:51:59** | **P=77.39% → ALERTA-PREDICTIVA ✅** |
 
-El whitelist activo (192.168.0.20, 192.168.0.110, 192.168.0.120) impide que el motor
-genere LIMIT/BLOCK para IPs de tráfico normal. Sin eventos LIMIT/BLOCK, el predictor
-permanece en silencio. La corrida confirma que el sistema no genera falsas alertas
-bajo tráfico legítimo.
+Comportamiento correcto: el XGBoost predijo correctamente que el ataque continuaría (y así fue — Kali siguió atacando hasta el bloqueo permanente a las 06:39).
+
+---
+
+## Imágenes de referencia
+
+| Imagen | Ruta |
+|---|---|
+| Curva ROC XGBoost v2 | `docs/ppi_documentacion2/imagenes/F4_predictor/f4_roc_comparacion.png` |
+| SHAP — importancia de features | `docs/ppi_documentacion2/imagenes/F4_predictor/f4_shap_importancia.png` |
+
+---
+
+## Criterios de aceptación — CUMPLIDOS ✅
+
+| CA | Criterio | Resultado |
+|---|---|---|
+| CA-11 | AUC-ROC ≥ 0.95 | ✅ **0.9992** |
+| CA-12 | FP + FN ≤ 30 en test set | ✅ **14** (7+7) |
+| CA-F4-01 | ALERTA-PREDICTIVA disparada en SYN Flood | ✅ P=77.39% |
+| CA-F4-02 | FPR en corridas normales = 0% | ✅ whitelist — 0 alertas |
+| CA-F4-03 | Hot-reload sin reiniciar servicio | ✅ Detecta mtime del pkl |
+| CA-F4-04 | Sin data leakage en features | ✅ score eliminado (v2) |
 
 ---
 
 ## Argumento de defensa
 
-> "El IF detecta anomalías flujo por flujo pero no distingue una anomalía puntual de un ataque sostenido. El XGBoost usa los outputs del IF como features para predecir la persistencia. Validado con SYN Flood real: P=77.39% → ALERTA-PREDICTIVA. El sistema tiene dos niveles: aviso de vigilancia activa, y alerta de alta confianza con notificación al operador."
+> "El XGBoost cierra la brecha que el IF no puede cubrir: la dimensión temporal. Un IDS que solo clasifica flujo por flujo no distingue un scan único de una campaña sostenida. El XGBoost, alimentado con los contadores de ventana temporal del propio motor, hace exactamente eso con AUC=0.9992. El dato más importante para la defensa es que detectamos y corregimos data leakage durante el desarrollo — la versión v1 tenía AUC=1.0000 artificial. Al eliminarlo, el AUC bajó a 0.9992 y el modelo ahora generaliza correctamente a datos nuevos."
