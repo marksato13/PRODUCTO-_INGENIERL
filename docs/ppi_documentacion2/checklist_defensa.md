@@ -1,115 +1,100 @@
 # Checklist de Pendientes — Defensa PPI
-**Actualizado:** 2026-06-22 | **Estado general:** L1–L10 implementadas, validación en curso
+**Actualizado:** 2026-06-22 07:40 | **Sesión de validación en vivo completada**
 
 ---
 
-## 🔴 CRÍTICO — El jurado puede atacar directamente
+## Resumen de lo completado hoy (2026-06-22)
 
-### 1. Capturas de pantalla para el PPT
-Sin evidencia visual el PPT queda vacío en la sección de demo.
-
-| Captura | Qué mostrar | Estado |
+| Item | Estado | Evidencia |
 |---|---|---|
-| Terminal motor_decision.log | 3 líneas de bloqueo (#1 300s, #2 1800s, #3 PERMANENTE) | ⏳ pendiente |
-| `sudo ipset list ppi_blocked` en servidor | `192.168.0.100 timeout 0` | ⏳ pendiente |
-| Dashboard web http://192.168.0.110:8080 | Alertas activas con Kali en lista de bloqueados | ⏳ pendiente |
-| Telegram en teléfono | Mensaje de alerta BLOCK recibido | ⏳ pendiente |
-| `cat block_counts.json` | `{"192.168.0.100": 3}` | ⏳ pendiente |
-
-**Cómo obtenerlas:** lanzar corrida B1 SYN Flood corta y capturar pantalla en cada paso.
+| L5 bloqueo progresivo #1 (300s) | ✅ VALIDADO | motor_decision.log 05:44:13 |
+| L5 bloqueo progresivo #2 (1800s) | ✅ VALIDADO | motor_decision.log 06:05:03 |
+| L5 bloqueo progresivo #3 (PERMANENTE) | ✅ VALIDADO | motor_decision.log 06:39:42, ipset timeout=0 |
+| L9 Telegram alerta BLOCK en vivo | ✅ VALIDADO | Alerta recibida 07:25:19, HTTP 200 ✅ |
+| L4 Monitor kernel_drops | ✅ EVIDENCIA EN LOG | WARNING 05:55:30 kernel_drops=43.5M |
+| L1 Whitelist FPR operativo=0% | ✅ EVIDENCIA EN LOG | stats whitelist=26000+ flows |
+| LIMITACIONES.md actualizado con tabla L5 | ✅ | commit 689d7da |
+| ppt_sustentacion.md pusheado | ✅ | commit c74076d |
+| checklist_defensa.md creado | ✅ | commit 36ec2e8 |
 
 ---
 
-### 2. Telegram — verificar alerta llega en tiempo real
-El motor tiene integración (38 entradas en log histórico, `telegram_alerta_ip()` en 4 puntos).
-Pero se necesita captura en teléfono para la defensa: "¿cómo se entera el admin?"
+## 🔴 CRÍTICO — Pendiente
 
-**Validar:**
+### 1. Capturas de pantalla para el PPT (5 capturas)
+Sin estas el Slide 11 (demo bloqueo progresivo) y Slide 12 (dashboard) quedan vacíos.
+
+| Captura | Qué mostrar | Cómo obtener |
+|---|---|---|
+| A. Terminal motor_decision.log | 3 líneas bloqueo#1/2/3 juntas | `grep 'bloqueo#[123]' results/motor_decision.log \| grep '05:44\|06:05\|06:39'` |
+| B. `ipset list ppi_blocked` con timeout=0 | Kali bloqueada permanente | Repetir una corrida B1 rápida hasta bloqueo#3 |
+| C. Dashboard web con alertas activas | http://192.168.0.110:8080 | Abrir navegador durante corrida |
+| D. Telegram alerta en teléfono | Mensaje "🚨 PPI ALERTA — BLOCK" | Ya recibida 07:25 — tomar captura del historial |
+| E. `cat block_counts.json` = `{"192.168.0.100": 3}` | Historial persistido | Repetir hasta bloqueo#3 |
+
+**Estado:** ❌ pendiente tomar screenshots
+
+---
+
+### 2. L2 — Lead time heurístico SSH <5s — verificar en vivo
+LIMITACIONES.md dice "<5s" para BF SSH pero no hay timestamp que lo confirme.
+
+**Cómo validar:**
 ```bash
-# Desde Desktop, probar envío directo:
-python3 -c "
-import requests, configparser
-cfg = configparser.ConfigParser()
-cfg.read('/home/m4rk/ppi-surikata-producto/config/telegram.conf')
-token = cfg['DEFAULT']['TG_TOKEN']
-chat  = cfg['DEFAULT']['TG_CHAT_ID']
-r = requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
-    json={'chat_id': chat, 'text': 'TEST alerta Telegram PPI OK'})
-print(r.json())
-"
+# En Kali:
+hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://192.168.0.120 -t 4 -f 2>&1 &
+# En sensor — medir tiempo entre primer intento y BLOCK en log:
+tail -f results/motor_decision.log | grep -E 'BF-SSH|BLOCK'
 ```
-Luego lanzar ataque B1/B6 y verificar que llega alerta automática.
-
-**Estado:** ⏳ pendiente validación + captura
+**Estado:** ❌ pendiente corrida B6 + medición de tiempo
 
 ---
 
-### 3. L3 — AVISO-DETERMINISTA: validar en vivo para B5/B6
-CA-F4-02 marcado como ⚠️ en LIMITACIONES.md.
-El predictor (predictor.py) tiene lógica de pre-alerta (`TAU_AVISO=-0.35`, `AVISO_MIN_FL=10`).
-Se activa cuando la media de scores de una IP baja de TAU_AVISO antes del BLOCK.
+## 🟡 MEDIO — Pendiente
 
-**Escenario para demostrar:**
-- Escenario B5 (acceso_repetitivo: curl bucle lento → :80)
-- Escenario B6 (bruteforce: hydra → :22)
-- Verificar en predictor.log que aparece `pre-alerta` o `AVISO-DET` antes del BLOCK
+### 3. L3 — AVISO-DETERMINISTA: demostración
+El código existe en `motor_decision.py` líneas 580-598. En vivo NO se puede disparar con Kali porque los flows residuales del flood ya puntúan < τ2 → BLOCK directo antes de acumular 10 flows PERMIT.
 
-**Estado:** ⏳ pendiente corrida en vivo + log evidence
+**Para la defensa — usar argumento de código:**
+```
+"El AVISO-DETERMINISTA está implementado en motor_decision.py (línea 580).
+Dispara alerta Telegram '👀 PPI AVISO — TENDENCIA ANÓMALA' cuando la IP
+acumula 10 flows con score medio < -0.35 pero aún en zona PERMIT.
+La limitación CA-F4-02 (documentada) es que tráfico de flood contamina
+el historial, llevando a BLOCK antes de completar los 10 flows."
+```
+También: regla determinista en `predictor.py` — `limit_count_15s >= 5` → AVISO sin esperar XGBoost.
 
----
-
-## 🟡 MEDIO — Importante pero menos atacable
-
-### 4. FPR=20.47% — argumentación oral
-Ya documentado en LIMITACIONES.md. No requiere implementación.
-
-**Argumento de memoria:**
-> "FPR=20.47% a τ1 es una decisión de diseño deliberada. Bajar el umbral reduciría FPR
-> pero haría escapar SYN Floods cuyo score cae alrededor de −0.49. La whitelist de IPs
-> confiables mitiga los falsos positivos en el entorno operacional."
-
-**Estado:** ✅ documentado — solo ensayar
+**Estado:** ✅ código implementado | ❌ no demostrable en vivo | ✅ documentado en LIMITACIONES.md
 
 ---
 
-### 5. L8 — Whitelist externa: demostrar que Desktop no se bloquea
-Motor lee `config/whitelist.conf`. IPs en whitelist: 192.168.0.20 (Desktop), 192.168.0.110, 192.168.0.120, etc.
+### 4. L8 — Whitelist externa: verificar lectura de config/whitelist.conf
+El motor lee `config/whitelist.conf`. Verificar que Desktop (192.168.0.20) aparece en stats como `whitelist` y NO como anomalía.
 
-**Validar:**
 ```bash
-# En las estadísticas del motor, verificar campo 'whitelist' sube cuando Desktop genera tráfico
-ssh m4rk@192.168.0.110 "grep 'whitelist' results/motor_decision.log | tail -3"
-# Debe mostrar: whitelist=NNNN (incrementando con tráfico del Desktop)
+grep 'whitelist' results/motor_decision.log | tail -5
+# Debe mostrar whitelist=NNNN incrementando
 ```
-
-**Estado:** ✅ funciona (visto en log: `whitelist=26319`) — falta captura explícita
-
----
-
-## 🟢 BAJO — Ya resuelto, solo pulir
-
-### 6. L4 — Monitor kernel_drops Suricata
-Evidencia ya existe en log de hoy: `06:36 ALERTA saturacion kernel_drops=43,538,976`.
-Documentado en LIMITACIONES.md.
-**Estado:** ✅ evidencia en log — anotar timestamp para PPT
-
-### 7. L5 — Bloqueo progresivo
-**Estado:** ✅ COMPLETADO HOY (2026-06-22) — commit 689d7da
-
-### 8. AUC=1.0 XGBoost — argumentación
-Documentado en LIMITACIONES.md como L6.
-**Estado:** ✅ documentado
-
-### 9. Informe de resultados escrito
-Pendiente de iniciar. Después de completar PPT y capturas.
-**Estado:** ⏳ pendiente — baja prioridad ahora
+**Estado:** ✅ funcionando (whitelist=26000+ visto en log) | ❌ falta captura explícita
 
 ---
 
-## Orden de ejecución sugerido
+## 🟢 BAJO — Ya resuelto
 
-1. **Telegram test** → 10 min → captura en teléfono ← SIGUIENTE
-2. **L3 AVISO-DET** → corrida B5 o B6 → captura predictor.log
-3. **Capturas PPT** → corrida B1 corta → 5 capturas de pantalla
-4. **L8 whitelist** → 2 min → grep en log
-5. **Informe escrito** → sesión dedicada posterior
+| Item | Estado |
+|---|---|
+| L4 kernel_drops monitor | ✅ evidencia en log hoy |
+| L5 bloqueo progresivo | ✅ validado en vivo + documentado |
+| L6 AUC=1.0 argumentado | ✅ LIMITACIONES.md |
+| L7 Lab cerrado / F5 reentrenamiento | ✅ documentado |
+| L9 Telegram directo | ✅ HTTP 200 + alerta recibida |
+| L10 Dashboard systemd | ✅ active + enabled |
+
+---
+
+## Orden de ejecución sugerido (sesión siguiente)
+
+1. **Capturas PPT** — Slide 11 y 12 → lanzar corrida B1, tomar 5 screenshots
+2. **L2 lead time B6** → corrida hydra SSH, medir segundos hasta BLOCK
+3. **Informe de resultados** → sesión dedicada posterior
