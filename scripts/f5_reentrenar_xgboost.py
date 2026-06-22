@@ -48,12 +48,13 @@ METRICAS   = f"{RESULTS}/metricas_f5_xgboost.txt"
 METRICAS_V2 = f"{RESULTS}/metricas_predictor_v2.txt"
 
 FEATURES = [
-    'score', 'dest_port',
+    'dest_port',
     'proto_tcp', 'proto_udp', 'proto_icmp',
     'hora_sin', 'hora_cos',
     'limit_count_15s', 'block_count_60s',
     'is_block',
 ]
+# 'score' eliminado: data leakage (labels derivados de score). Consistente con f4.
 
 RE_EVENT = re.compile(
     r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ \| WARNING \| '
@@ -138,7 +139,6 @@ def construir_dataset(events):
 
         proto_u = ev['proto']
         rows_X.append([
-            ev['score'],
             ev['dest_port'],
             int(proto_u == 'TCP'),
             int(proto_u == 'UDP'),
@@ -147,7 +147,7 @@ def construir_dataset(events):
             math.cos(2 * math.pi * h / 24),
             len(lw),
             len(bw),
-            int(ev['score'] <= TAU2),
+            int(ev['decision'] == 'BLOCK'),  # is_block sin depender de score
         ])
         rows_y.append(label)
 
