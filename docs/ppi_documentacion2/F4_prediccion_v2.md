@@ -124,11 +124,11 @@ Los nuevos scripts de F4 usan prefijo `f4_` para distinguirlos de los scripts le
 
 | Archivo | Estado |
 |---|---|
-| `scripts/f4_entrenar_predictor_v2.py` | ⬜ PENDIENTE — extrae features, entrena XGBoost |
+| `scripts/f4_entrenar_predictor_v2.py` | ✅ CREADO — AUC=1.0000, 61921 eventos |
 | `scripts/predictor.py` | ⬜ MODIFICAR — nueva señal LIMIT+BLOCK, ciclo 10s |
-| `models/predictor_modelo_v2.pkl` | ⬜ PENDIENTE — se genera al entrenar |
-| `models/features_predictor_v2.txt` | ⬜ PENDIENTE — lista de 12 features |
-| `results/metricas_predictor_v2.txt` | ⬜ PENDIENTE — AUC, F1, τ, lead time |
+| `models/predictor_modelo_v2.pkl` | ✅ GENERADO — 61921 eventos, split estratificado |
+| `models/features_predictor_v2.txt` | ✅ GENERADO — lista de 12 features |
+| `results/metricas_predictor_v2.txt` | ✅ GENERADO — AUC, F1, τ, lead time |
 | `config/systemd/ppi-predictor.service` | ✅ YA EXISTE |
 
 ---
