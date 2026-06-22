@@ -24,7 +24,7 @@ Complementar al IF añadiendo memoria temporal: predecir si un evento LIMIT o BL
 | **SHAP (Shapley Additive Explanations)** | Método para explicar cuánto contribuye cada feature a la predicción de un caso específico. Muestra qué features "empujaron" la probabilidad hacia arriba o abajo. |
 | **Probabilidad P** | Salida del `predict_proba()` de XGBoost. P ∈ [0,1]. P=0.77 significa "77% de probabilidad de que este ataque sea sostenido". |
 | **Umbral de alerta** | Valor de P a partir del cual el predictor genera una alerta. P≥0.70 → ALERTA-PREDICTIVA. 0.40≤P<0.70 → AVISO. P<0.40 → silencio. |
-| **Hot-reload** | El predictor (`predictor.py`) detecta automáticamente que `predictor_modelo_v2.pkl` cambió de fecha (mtime) y recarga el modelo en caliente, sin reiniciar el servicio. |
+| **Hot-reload** | El predictor (`predictor.py`) ejecuta un ciclo cada **10 segundos** (`INTERVALO=10`). En cada ciclo verifica el mtime del `.pkl` y si cambió, recarga en caliente sin reiniciar el servicio. |
 | **stratify** | Split estratificado: mantiene la misma proporción de label=0/label=1 en train y test. Sin esto, el test podría tener muy pocos positivos y las métricas serían inestables. |
 | **ALERTA-PREDICTIVA** | Nivel máximo de alerta del predictor (P≥0.70). Activa notificación Telegram, panel rojo en dashboard, y log WARNING. Dedup de 5 minutos por IP. |
 

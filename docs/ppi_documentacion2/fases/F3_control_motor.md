@@ -37,33 +37,31 @@ Aplicar la decisión del IF sobre cada flujo nuevo en la red de forma automátic
 
 ## Arquitectura del componente
 
+> ⚠️ **Nota de arquitectura importante:** el motor corre en el **SENSOR (192.168.0.110)** pero el enforcement (ipset/iptables) se aplica en el **SERVIDOR (192.168.0.120)**. El motor hace SSH al servidor para ejecutar `sudo ipset add`. La whitelist protege al Desktop y al propio Sensor de ser bloqueados por el servidor.
+
 ```
-Suricata → eve.json
-              │
-              ▼  (tail en tiempo real)
-     motor_decision.py
-              │
-    ┌─────────┼─────────────────────────┐
-    │         │                         │
-    ▼         ▼                         ▼
-Whitelist   IF.decision_function()   Heurísticos
-check       + τ1/τ2                  BF-SSH / HTTP-Abuse
-    │         │                         │
-    └─────────┼─────────────────────────┘
-              │
-         ┌────┴────┐
-    PERMIT    LIMIT/BLOCK
-         │         │
-      log INFO   enforce.sh
-                   │
-              ┌────┴────────────────┐
-              │                     │
-         ipset add            Telegram
-         ppi_blocked          notificación
-         ppi_limited
-              │
-         Dashboard           predictor.py
-         web :8080            (F4)
+SENSOR (192.168.0.110)                    SERVIDOR (192.168.0.120)
+─────────────────────────────────         ─────────────────────────
+Suricata → eve.json                       iptables (INPUT chain)
+    │                                         │
+    ▼  tail en tiempo real                    │ DROP ← ppi_blocked
+motor_decision.py                             │ LIMIT ← ppi_limited
+    │                                         │
+    ├── Whitelist check                    ipset ppi_blocked
+    │       (antes del IF)                 ipset ppi_limited
+    ├── IF.decision_function()                 ▲
+    │   + τ1/τ2 + TAU_AVISO                   │  SSH m4rk@192.168.0.120
+    └── Heurísticos BF/HTTP               "sudo ipset add ..."
+              │                               │
+         ┌────┴──────────────────────────────┘
+         │
+    PERMIT → log INFO only
+    TENDENCIA → Telegram 👀 aviso (score_medio < TAU_AVISO=-0.35)
+    LIMIT  → SSH → ipset add ppi_limited + log WARNING
+    BLOCK  → SSH → ipset add ppi_blocked + Telegram 🚨 + log WARNING
+         │
+    Dashboard web :8080          predictor.py
+    (Flask+SSE)                  (lee motor_decision.log cada 10s)
 ```
 
 ---
@@ -87,9 +85,15 @@ ENTRADA: nueva línea JSON en eve.json con event_type=flow
    score = IF.decision_function(X_scaled)
 
 5. Clasificar:
-   score > −0.4459 (τ1) → PERMIT
-   −0.6027 < score ≤ −0.4459 → LIMIT → ipset ppi_limited
-   score ≤ −0.6027 (τ2)     → BLOCK → ipset ppi_blocked → Telegram
+   score > −0.4459 (τ1)           → PERMIT  (log INFO)
+   −0.6027 < score ≤ −0.4459      → LIMIT   → SSH→servidor ipset ppi_limited
+   score ≤ −0.6027 (τ2)           → BLOCK   → SSH→servidor ipset ppi_blocked → Telegram 🚨
+
+5b. Pre-alerta TENDENCIA (independiente del score actual):
+   Si los últimos 10 flows de esta IP son aún PERMIT pero:
+   score_medio < TAU_AVISO (−0.35) → Telegram 👀 AVISO TENDENCIA
+   "La IP todavía no supera τ1 pero su score promedio se acerca peligrosamente"
+   Parámetros: TAU_AVISO=−0.35, AVISO_MIN_FL=10 flows
 
 6. Verificar heurísticos (independiente del score):
    BF-SSH:     src_ip hizo ≥5 intentos SSH en 60s → LIMIT
@@ -134,7 +138,7 @@ WHITELIST = {
 }
 ```
 
-La verificación de whitelist ocurre **antes** del IF. Las IPs whitelisted nunca consumen tiempo de inferencia.
+La verificación de whitelist ocurre **antes** del IF. Las IPs whitelisted nunca consumen tiempo de inferencia ni se envía SSH al servidor para añadirlas a ipset.
 
 ---
 
@@ -172,17 +176,20 @@ Muestra: flujos/min, anomalías detectadas, IPs bloqueadas activas, latencia med
 ## Dashboard web (`dashboard_web.py`)
 
 ```bash
+# El dashboard corre en el SENSOR (192.168.0.110:8080)
 # Acceder desde Desktop:
 # http://192.168.0.110:8080
 
-# Iniciar si no está corriendo:
+# Estado del servicio:
+systemctl is-active ppi-dashboard.service
+
+# Iniciar si no está como servicio:
 ssh m4rk@192.168.0.110 \
   "nohup /home/m4rk/ppi-sensor/venv/bin/python3 \
    /home/m4rk/ppi-surikata-producto/scripts/dashboard_web.py &"
 ```
 
-Usa Flask + SSE (Server-Sent Events) para actualización en tiempo real sin recargar.  
-Muestra: panel de decisiones en vivo, IPs bloqueadas, predicciones XGBoost (F4), historial de alertas.
+Usa Flask + SSE (Server-Sent Events). El dashboard lee `motor_decision.log` en el sensor y muestra el estado en tiempo real. No se conecta al servidor.
 
 ---
 
@@ -195,6 +202,19 @@ Muestra: panel de decisiones en vivo, IPs bloqueadas, predicciones XGBoost (F4),
 - **No bloqueante:** si el relay no responde, el motor continúa sin esperar
 
 Evidencia real: `🚨 PPI ALERTA — BRUTE_FORCE_SSH | BLOCK | IP: 192.168.0.100 | Puerto: 22 | 08:31:37`
+
+---
+
+## enforce.sh — control manual (también sobre servidor)
+
+```bash
+# enforce.sh SSHea a 192.168.0.120 para ejecutar ipset
+bash scripts/enforce.sh 192.168.0.100 BLOCK 120
+# → SSH m4rk@192.168.0.120 "sudo ipset add ppi_blocked 192.168.0.100 timeout 120 -exist"
+
+bash scripts/enforce.sh 192.168.0.100 LIMIT 300
+bash scripts/enforce.sh 192.168.0.100 UNBLOCK
+```
 
 ---
 
