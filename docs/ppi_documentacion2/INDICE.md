@@ -2,7 +2,7 @@
 ## PPI — Universidad Peruana Unión | Rubén Mark Salazar Tocas
 
 > Índice principal. Cada fase tiene su propio archivo de especificación y validación.
-> Estado actualizado al 2026-06-21.
+> Estado actualizado al 2026-06-22.
 
 ---
 
@@ -48,7 +48,7 @@ Red de datos
 | F2 | Detección de Anomalías (IF) | ✅ COMPLETA | [F2_deteccion_if.md](F2_deteccion_if.md) |
 | F3 | Control en Tiempo Real | ✅ COMPLETA | [F3_control_motor.md](F3_control_motor.md) |
 | F4 | Predicción XGBoost v2 | 🔄 EN IMPLEMENTACIÓN | [F4_prediccion_v2.md](F4_prediccion_v2.md) |
-| F5 | Aprendizaje Continuo | 📋 PLANIFICADA | [F5_aprendizaje.md](F5_aprendizaje.md) |
+| F5 | Aprendizaje Continuo | ✅ COMPLETA | [F5_aprendizaje.md](F5_aprendizaje.md) |
 
 ---
 

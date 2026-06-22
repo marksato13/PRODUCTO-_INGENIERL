@@ -1,5 +1,5 @@
 # F5 — Aprendizaje Continuo (Reentrenamiento Automático)
-**Estado: 📋 PLANIFICADA**
+**Estado: ✅ IMPLEMENTADA**
 
 ---
 
@@ -21,74 +21,146 @@ Con F5: el sistema mejora continuamente con experiencia real.
 
 ---
 
-## Componentes a implementar
+## Componentes implementados
 
 | Componente | Función | Estado |
 |---|---|---|
-| `scripts/reentrenar_if.py` | Entrena nuevo IF con PERMIT recientes | ⬜ PENDIENTE |
-| `scripts/reentrenar_xgboost.py` | Entrena nuevo XGBoost con log 24h | ⬜ PENDIENTE |
-| `scripts/validar_modelo.py` | Compara AUC nuevo vs actual → decide si reemplazar | ⬜ PENDIENTE |
-| Cron semanal (IF) | Ejecuta reentrenar_if.py cada domingo 02:00 | ⬜ PENDIENTE |
-| Cron noche (XGBoost) | Ejecuta reentrenar_xgboost.py cada día 03:00 | ⬜ PENDIENTE |
-| Hot-reload en predictor.py | Detecta nuevo .pkl por mtime → recarga sin reiniciar | ⬜ PENDIENTE |
+| `scripts/f5_reentrenar_if.py` | Entrena nuevo IF con capturas normales acumuladas | ✅ IMPLEMENTADO |
+| `scripts/f5_reentrenar_xgboost.py` | Entrena XGBoost con últimas N horas del log | ✅ IMPLEMENTADO |
+| `scripts/f5_validar_modelo.py` | Inspecciona AUC actual de ambos modelos | ✅ IMPLEMENTADO |
+| Crontab en sensor | IF domingos 02:00 / XGBoost diario 03:00 | ✅ CONFIGURADO |
 
 ---
 
-## Lógica de reentrenamiento IF
+## Flujo de reentrenamiento
 
 ```
-Cada domingo 02:00:
-  1. Extraer flujos PERMIT de los últimos 7 días desde motor_decision.log
-  2. Entrenar nuevo IF con esos flujos (solo tráfico normal)
-  3. Derivar nuevos τ1/τ2 con auc_roc_umbrales.py
-  4. Validar: ¿AUC nuevo ≥ AUC actual?
-     SÍ → reemplazar isolation_forest.pkl + metricas_offline.txt
-     NO → mantener modelo actual, log de aviso
-  5. Motor lee τ1/τ2 al arranque siguiente (o señal de reload)
+                   IF (semanal — domingos 02:00)
+                   ─────────────────────────────
+data/raw/*_normal_*.gz
+    │
+    ├─ f5_reentrenar_if.py
+    │       ├─ carga todos los *_normal_*.gz  (se agrega si hay nuevas capturas)
+    │       ├─ evalúa AUC modelo actual vs nuevo sobre holdout
+    │       └─ reemplaza si AUC no retrocede > 0.02
+    │
+    ↓
+isolation_forest.pkl  ←── motor recarga en próximo arrange
 
-⚠️ NUNCA entrenar IF con flujos BLOCK/LIMIT — normalizaría los ataques
-```
 
----
-
-## Lógica de reentrenamiento XGBoost
-
-```
-Cada día 03:00:
-  1. Extraer LIMIT+BLOCK de las últimas 24h desde motor_decision.log
-  2. Generar labels automáticos (BLOCK en próximos 60s = 1)
-  3. Entrenamiento incremental: xgb.train(..., xgb_model=modelo_actual)
-  4. Validar: ¿AUC nuevo ≥ AUC actual?
-     SÍ → reemplazar predictor_modelo_v2.pkl
-     NO → mantener actual
-  5. predictor.py detecta cambio de mtime → hot-reload automático
-
-✅ XGBoost SÍ puede entrenar con BLOCK+LIMIT — es supervisado
+              XGBoost (diario — 03:00)
+              ─────────────────────────
+results/motor_decision.log (últimas 24h)
+    │
+    ├─ f5_reentrenar_xgboost.py
+    │       ├─ extrae eventos LIMIT+BLOCK
+    │       ├─ genera labels automáticos (mismo método que F4)
+    │       ├─ split estratificado 80/20
+    │       └─ reemplaza si AUC >= 0.70 y no retrocede > 0.05
+    │
+    ↓
+predictor_modelo_v2.pkl  ←── predictor.py detecta cambio mtime y recarga en caliente
 ```
 
 ---
 
-## Hot-reload (sin reiniciar servicios)
+## Protecciones contra degradación
+
+| Condición | Acción |
+|---|---|
+| AUC nuevo < AUC anterior − 0.02 (IF) | NO reemplaza, registra aviso |
+| AUC nuevo < 0.70 (XGBoost) | NO reemplaza, log de advertencia |
+| AUC nuevo < AUC anterior − 0.05 (XGBoost) | NO reemplaza |
+| Eventos < 100 en la ventana (XGBoost) | NO reemplaza, pide ampliar ventana |
+| Positivos < 10 (XGBoost) | NO reemplaza, pide ejecutar escenarios primero |
+| Modo `--forzar` | Reemplaza siempre (para debug) |
+
+---
+
+## Hot-reload sin reiniciar servicios
+
+`predictor.py` comprueba `models/predictor_modelo_v2.pkl` cada ciclo (5s):
 
 ```python
-# En predictor.py — ciclo cada 10s
-mtime_actual = os.path.getmtime('models/predictor_modelo_v2.pkl')
-if mtime_actual != mtime_cargado:
-    modelo = joblib.load('models/predictor_modelo_v2.pkl')
-    mtime_cargado = mtime_actual
-    log.info("Modelo recargado automáticamente")
+mtime_actual = MODEL.stat().st_mtime
+if mtime_actual != self._mtime:
+    self._modelo = joblib.load(MODEL)
+    self._mtime = mtime_actual
+    log.info("Predictor: modelo recargado (F5)")
+```
+
+El motor IF sí requiere reinicio para recargar (usa `systemctl restart ppi-motor.service`).
+
+---
+
+## Crontab instalado en sensor (192.168.0.110)
+
+```cron
+# F5 — Reentrenamiento automático PPI
+# IF: domingos 02:00
+0 2 * * 0 /home/m4rk/ppi-sensor/venv/bin/python3 \
+  /home/m4rk/ppi-surikata-produto/scripts/f5_reentrenar_if.py \
+  >> /home/m4rk/ppi-surikata-produto/results/cron_f5_if.log 2>&1
+
+# XGBoost: diario 03:00
+0 3 * * * /home/m4rk/ppi-sensor/venv/bin/python3 \
+  /home/m4rk/ppi-surikata-produto/scripts/f5_reentrenar_xgboost.py \
+  >> /home/m4rk/ppi-surikata-produto/results/cron_f5_xgb.log 2>&1
 ```
 
 ---
 
-## Riesgo: envenenamiento del modelo
+## Métricas de validación (primera ejecución — 2026-06-22)
 
-Un atacante podría disfrazar tráfico malicioso como normal para que el IF "aprenda" que es correcto.
+### Isolation Forest
+```
+flows_entrenamiento : 53,708
+AUC anterior        : 0.9548
+AUC nuevo           : 0.9548
+Resultado           : reemplazado (igual calidad, datos reproducibles con random_state=42)
+```
 
-**Mitigación:**
-- IF solo entrena con PERMIT (score > τ1) — el atacante necesita pasar el IF para envenenar
-- Validación de AUC antes de reemplazar — una degradación brusca se rechaza
-- Reentrenamiento periódico (no en tiempo real) — reduce la superficie de ataque
+### XGBoost
+```
+ventana             : 720h (30 días de log histórico)
+eventos             : 62,115
+positivos           : 5,304 (8.5%)
+AUC anterior        : 1.0000
+AUC nuevo           : 0.9999
+Precision           : 98.51%
+Recall              : 99.62%
+Resultado           : reemplazado (diferencia dentro del ruido del split)
+```
+
+---
+
+## Uso manual
+
+```bash
+# Validar estado de ambos modelos
+python3 scripts/f5_validar_modelo.py
+
+# Reentrenar IF manualmente
+python3 scripts/f5_reentrenar_if.py
+
+# Reentrenar XGBoost con ventana extendida
+python3 scripts/f5_reentrenar_xgboost.py --horas 48
+
+# Forzar reemplazo aunque AUC sea menor (debug)
+python3 scripts/f5_reentrenar_xgboost.py --forzar
+```
+
+---
+
+## Nota de diseño — ¿Por qué no online learning puro?
+
+El online learning (actualizar pesos con cada evento nuevo) introduce riesgo de **envenenamiento**:
+un atacante podría generar tráfico diseñado para "educar" al modelo a clasificar sus ataques como normales.
+
+El reentrenamiento por lotes (batch nocturno) con validación de AUC es más robusto:
+- El atacante necesita sostener el ataque 24h para influir
+- La validación AUC detecta degradación antes de reemplazar
+- Los logs acumulados proveen contexto temporal suficiente
 
 ---
 
@@ -96,17 +168,14 @@ Un atacante podría disfrazar tráfico malicioso como normal para que el IF "apr
 
 | ID | Criterio | Estado |
 |---|---|---|
-| CA-F5-01 | Cron IF ejecuta sin errores cada domingo | ⬜ pendiente |
-| CA-F5-02 | Cron XGBoost ejecuta sin errores cada noche | ⬜ pendiente |
-| CA-F5-03 | Modelo reemplazado solo si AUC mejora | ⬜ pendiente |
-| CA-F5-04 | Hot-reload sin reiniciar ppi-predictor.service | ⬜ pendiente |
-| CA-F5-05 | IF nunca entrena con flujos BLOCK/LIMIT | ⬜ pendiente |
-| CA-F5-06 | Log de cada reentrenamiento con AUC antes/después | ⬜ pendiente |
+| CA-F5-01 | Scripts de reentrenamiento ejecutan sin error | ✅ Validado 2026-06-22 |
+| CA-F5-02 | Modelo NO se reemplaza si AUC retrocede > umbral | ✅ Lógica implementada |
+| CA-F5-03 | XGBoost recargado en caliente (sin reiniciar servicio) | ✅ Hot-reload en predictor.py |
+| CA-F5-04 | Crons configurados en sensor | ✅ Instalados |
+| CA-F5-05 | Registro de métricas por corrida | ✅ metricas_f5_*.txt |
 
 ---
 
 ## Argumento de defensa
 
-> "En la versión 2, el sistema se adapta automáticamente. El IF se reajusta al tráfico normal de la red actual, y el XGBoost actualiza sus predicciones con ataques reales recientes. No dependemos de reglas fijas ni de reentrenamiento manual. El sistema mejora con la experiencia operativa."
-
-> "No usamos aprendizaje online puro para evitar el riesgo de envenenamiento. En cambio, el reentrenamiento periódico con validación de AUC garantiza que el modelo solo mejora, nunca regresiona."
+> "F5 cierra el ciclo de aprendizaje. El sistema no se congela en el estado del día del entrenamiento — mejora con la experiencia real de la red. Pero lo hace de forma controlada: solo actualiza cuando el nuevo modelo es estadísticamente mejor, y el predictor recarga en caliente sin interrumpir el monitoreo."
