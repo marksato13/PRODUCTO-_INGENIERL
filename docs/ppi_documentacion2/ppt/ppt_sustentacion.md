@@ -502,32 +502,37 @@ Alerta Telegram recibida: 🚨 PPI ALERTA — BRUTE_FORCE_SSH
 ### Texto en pantalla
 **Título:** Resultados — todos los criterios de aceptación cumplidos
 
-**Tres columnas (una por OE):**
-
 ```
-OE1 — Pipeline de datos          OE2 — Modelo IF              OE3 — Motor + Validación
-────────────────────             ──────────────               ───────────────────────
-✅ 9 escenarios capturados       ✅ AUC-ROC = 0.8998          ✅ 40 corridas ejecutadas
-✅ 14 features extraídas         ✅ Precision = 99.54%         ✅ Latencia P95 = 34.8ms
-✅ Dataset etiquetado            ✅ Recall    = 99.40%         ✅ Disponibilidad = 100%
-✅ Split 80/20 aleatorio         ✅ F1-Score  = 0.9947         ✅ ITL = 0%
-                                 ✅ FPR@τ1   = 20.47%*         ✅ Lead time SYN ≈ 62s
+OE1 — Pipeline F1+F2             OE2 — Modelo IF (F2)         OE3 — Motor + Predictor + Valid. (F3–F6)
+──────────────────────           ────────────────             ──────────────────────────────────────────
+✅ 9 escenarios · 3 grupos       ✅ AUC-ROC    = 0.8998       ✅ Latencia P95  =  34.8 ms  (req <500ms)
+✅ 47 capturas  (.json.gz)       ✅ Precision  = 99.54 %      ✅ Disponibilidad = 100 %
+✅ 14 features por flujo         ✅ Recall     = 99.40 %      ✅ ITL            =   0 %
+✅ 667,420 flujos etiquetados    ✅ F1-Score   =  0.9947      ✅ 40 corridas · 9 escenarios validados
+✅ 53,708 flujos entrenamiento   ✅ τ1 = −0.4459  (Youden)    ✅ Lead time SYN Flood  ≈  62 s
+✅ Split 80 / 20 aleatorio       ✅ τ2 = −0.6027  (FPR ≤ 2%)  ✅ Lead time BF SSH     =  60 s
+                                 ✅ FPR@τ1 = 20.47 %*         ✅ XGBoost v2 AUC       =  0.9992
+                                    *FPR operativo = 0 %       ✅ Bloqueo #3 PERMANENTE validado en vivo
+                                     (whitelist activa)        ✅ Telegram alerta recibida (HTTP 200)
 
-                                 *mitigado con whitelist
-
-OBJETIVO GENERAL: Sistema funcional, validado en laboratorio real, con control automático inline
+── OBJETIVO GENERAL ────────────────────────────────────────────────────────────────────────────────
+   Sistema funcional de extremo a extremo · 6 fases implementadas · laboratorio real · sin intervención humana
 ```
 
 ### Visual
-- **FIGURA 1:** `f6_07_panel_resumen.png` — panel de resumen F6 (esquina o centro)
-- **FIGURA 2:** `f6_03_timeline_deteccion.png` — timeline de detecciones
-- **FIGURA 3:** `f6_06_latencia_pipeline.png` — distribución de latencia
-- Diseño en 3 columnas, una por objetivo específico
+- **FIGURA 1:** `graficas_f6/f6_07_panel_resumen.png` — panel resumen (centro del slide)
+- **FIGURA 2:** `graficas_f6/f6_06_latencia_pipeline.png` — distribución latencia P95
+- **FIGURA 3:** `graficas_f6/f6_03_timeline_deteccion.png` — timeline detecciones
+- 3 columnas alineadas con los 3 OEs · texto compacto · ✅ en verde para cada ítem
 
 ### Oralidad
-> "Los resultados responden directamente a los tres objetivos. Para OE1: el pipeline está completo, 9 escenarios, 14 features, dataset limpio. Para OE2: el modelo alcanzó AUC de 0.8998, con Precision y Recall superiores al 99%. Para OE3: 40 corridas de validación, latencia P95 de 34.8 milisegundos —el requisito era menos de 500ms, cumplimos con margen—, disponibilidad del 100%."
+> "Los resultados responden directamente a los tres objetivos específicos."
 >
-> "El único indicador que merece una nota es el FPR de 20.47%. No lo ignoramos: está mitigado con una whitelist de IPs confiables, y bajar ese umbral generaría falsos negativos en SYN Flood —lo documentamos como limitación con su mitigación."
+> "OE1: el pipeline está completo — 9 escenarios, 47 capturas, 14 features, 667 mil flujos etiquetados para evaluación, con split 80/20 aleatorio."
+>
+> "OE2: el Isolation Forest alcanzó AUC de 0.8998 —por encima del criterio de 0.80—, con Precision y Recall superiores al 99%. Los dos umbrales τ1 y τ2 fueron derivados estadísticamente de la curva ROC, no arbitrarios. El FPR de 20.47% en τ1 es la única limitación, y su FPR operativo es cero porque la whitelist protege todos los hosts legítimos."
+>
+> "OE3: 40 corridas de validación, latencia P95 de 34.8 milisegundos —catorce veces por debajo del requisito de 500ms—, disponibilidad del 100%, cero interrupciones de tráfico legítimo. El lead time para SYN Flood es 62 segundos y para Brute Force SSH 60 segundos —dentro del umbral requerido de 120s. El predictor XGBoost alcanzó AUC de 0.9992 sobre 9 features comportamentales. Y el bloqueo progresivo hasta permanente fue validado en vivo el 22 de junio con evidencia real en ipset."
 
 ---
 
