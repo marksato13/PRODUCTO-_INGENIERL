@@ -85,12 +85,22 @@ El sistema tiene **10 limitaciones identificadas**. Las 3 críticas tienen mitig
 
 #### L5 — Timeout de bloqueo fijo (300s)
 **Qué era:** los BLOCKs en ipset expiraban a los 5 minutos. Un atacante que pausa puede reintentar.
-**✅ Mitigación implementada:** bloqueo progresivo en `motor_decision.py`:
+**✅ Mitigación implementada y validada en vivo:** bloqueo progresivo en `motor_decision.py`:
 - 1° bloqueo de la IP → 300s (5 min)
 - 2° bloqueo → 1.800s (30 min)
-- 3° bloqueo en adelante → permanente (sin timeout en ipset)
+- 3° bloqueo en adelante → permanente (`timeout 0` en ipset — no expira)
 
 El historial se persiste en `results/block_counts.json` y se recarga en cada reinicio del motor.
+
+**Validación en vivo — corrida B1 SYN Flood (2026-06-22):**
+
+| Corrida | Timestamp | Evento detector | Resultado | ipset verificado |
+|---|---|---|---|---|
+| 1ª | 04:56:23 | HTTP-ABUSE 100 req/30s | `bloqueo#1 timeout=300s` | ✅ |
+| 2ª | 05:03:57 | ANOMALÍA score=−0.6141 grado=ALTA | `bloqueo#2 timeout=1800s` | ipset: timeout=1696 ✅ |
+| 3ª | 05:32:49 | ANOMALÍA score=−0.6169 grado=ALTA | `bloqueo#3 PERMANENTE` | ipset: timeout=0 ✅ |
+
+`results/block_counts.json` final: `{"192.168.0.100": 3}` — historial persistido entre reinicios.
 
 ---
 
