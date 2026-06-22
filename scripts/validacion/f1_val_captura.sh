@@ -5,7 +5,7 @@ echo "=== F1: CAPTURA DE DATOS (Suricata) ==="
 echo ""
 
 # Suricata activo
-if sudo systemctl is-active suricata &>/dev/null; then
+if systemctl is-active suricata &>/dev/null; then
     echo "  ✅ PASS  Suricata service: activo"
 else
     echo "  ❌ FAIL  Suricata service: inactivo — sudo systemctl start suricata"
