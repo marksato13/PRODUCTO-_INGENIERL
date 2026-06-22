@@ -1,25 +1,42 @@
 #!/usr/bin/env python3
 """
-predictor.py — Módulo de predicción temporal (Fase 3).
-Proceso paralelo al motor. Lee motor_decision.log cada 10s,
-calcula P(ataque en próximos 10s) y actúa si P >= umbral.
+predictor.py — Predictor XGBoost v2 (señal combinada LIMIT+BLOCK)
+
+Lee nuevas líneas de motor_decision.log cada INTERVALO segundos.
+Por cada IP con eventos LIMIT o BLOCK recientes, predice si el ataque es sostenido.
+
+Niveles de alerta:
+  P < 0.40          → SILENCIO
+  0.40 <= P < 0.70  → AVISO (dashboard amarillo)
+  P >= 0.70         → ALERTA-PREDICTIVA (dashboard rojo + log WARNING)
 """
-import re, time, logging, joblib
+
+import re
+import math
+import time
+import logging
+import urllib.request
+import urllib.parse
+import joblib
 import numpy as np
-import pandas as pd
 from datetime import datetime
 from pathlib import Path
-from collections import deque
+from collections import defaultdict, deque
 
-BASE    = Path('/home/m4rk/ppi-surikata-producto')
-LOG     = BASE / 'results' / 'motor_decision.log'
-PRED_LOG= BASE / 'results' / 'predictor.log'
-MODEL   = BASE / 'models'  / 'predictor_modelo.pkl'
-FEATS_F = BASE / 'models'  / 'features_predictor.txt'
+# ── Rutas ─────────────────────────────────────────────────────────────────────
+BASE      = Path('/home/m4rk/ppi-surikata-producto')
+LOG       = BASE / 'results' / 'motor_decision.log'
+PRED_LOG  = BASE / 'results' / 'predictor.log'
+MODEL     = BASE / 'models'  / 'predictor_modelo_v2.pkl'
+FEATS_F   = BASE / 'models'  / 'features_predictor_v2.txt'
 
-THETA_ALTA = 0.70
-THETA_MEDIA= 0.40
-INTERVALO  = 10   # segundos entre predicciones (permite anticipar al IF ~35s)
+# ── Config ────────────────────────────────────────────────────────────────────
+THETA_ALTA  = 0.70
+THETA_MEDIA = 0.40
+INTERVALO   = 10        # segundos entre ciclos
+DEDUP_SEG   = 300       # segundos entre alertas por la misma IP
+
+TG_RELAY    = "http://192.168.0.20:8889/telegram"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -30,154 +47,207 @@ logging.basicConfig(
 )
 log = logging.getLogger('predictor')
 
-# ── Parseo del log ────────────────────────────────────────────────────────────
-RE_STATS = re.compile(
-    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}).*'
-    r'flows=(\d+) anomal[íi]as?=\d+ bf=\d+ http_abuse=\d+ '
-    r'bloqueados=(\d+)'
+# ── Regex: captura LIMIT y BLOCK (ambos formatos) ────────────────────────────
+RE_EVENT = re.compile(
+    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ \| WARNING \| '
+    r'(?:ANOMAL[IÍ]A|SOSPECHOSO) \| '
+    r'src=(\S+) dst=(\S+) proto=(\w+[\w-]*) '
+    r'score=([-\d.]+)'
+    r'[^|]*\| (BLOCK|LIMIT)'
 )
 
-def parsear_historial_stats(n=20):
-    """Lee las últimas n stats lines para calcular historial de gaps."""
+# ── Estado por IP ─────────────────────────────────────────────────────────────
+class IPState:
+    __slots__ = ('limits', 'blocks', 'last_score', 'last_port',
+                 'last_proto', 'last_alert_ts', 'last_event_ts')
+    def __init__(self):
+        self.limits        = deque()   # timestamps de LIMITs (ventana 15s)
+        self.blocks        = deque()   # timestamps de BLOCKs (ventana 60s)
+        self.last_score    = 0.0
+        self.last_port     = 0
+        self.last_proto    = 'TCP'
+        self.last_alert_ts = None
+        self.last_event_ts = None
+
+ip_states  = defaultdict(IPState)
+file_pos   = 0
+model_mtime = 0.0
+clf        = None
+FEATURES   = []
+
+# ── Telegram ──────────────────────────────────────────────────────────────────
+def telegram_alerta(ip: str, p: float, action: str):
     try:
-        with open(LOG, 'r', errors='ignore') as _f:
-            _f.seek(0, 2)
-            size = _f.tell()
-            _f.seek(max(0, size - 512 * 1024))  # últimos 512 KB
-            if size > 512 * 1024:
-                _f.readline()  # descartar línea parcial
-            lineas = _f.read().splitlines()
+        msg = f"[PREDICTOR] Ataque sostenido | IP={ip} | P={p:.0%} | ultimo={action}"
+        data = urllib.parse.urlencode({'message': msg}).encode()
+        req  = urllib.request.Request(TG_RELAY, data=data, method='POST')
+        urllib.request.urlopen(req, timeout=5)
     except Exception:
-        return []
+        pass   # no bloquear el ciclo si Telegram falla
 
-    rows = []
-    prev_flows = None
-    for linea in lineas:
-        if 'Estadísticas' not in linea and 'Estad' not in linea:
-            continue
-        m = RE_STATS.search(linea)
-        if m:
-                flows = int(m.group(2))
-                # Detectar reinicio de sesión
-                if prev_flows is not None and flows <= prev_flows:
-                    rows = []   # nueva sesión — reiniciar historial
-                prev_flows = flows
-                rows.append({
-                    'ts': pd.to_datetime(m.group(1)),
-                    'flows': flows,
-                    'bloqueados': int(m.group(3)),
-                })
-
-    return rows[-n:] if len(rows) >= 2 else []
-
-MAX_GAP_INACTIVIDAD = 600  # 10 min sin stats → sistema inactivo, no predecir
-
-def construir_features(historial, tiempo_desde_ultima):
-    """
-    Construye el vector de features a partir del historial de gaps.
-    tiempo_desde_ultima: segundos desde la última stats line (gap parcial actual).
-    """
-    if len(historial) < 2:
-        return None
-
-    # Si el sistema lleva >10 min sin estadísticas, está inactivo — no predecir
-    if tiempo_desde_ultima > MAX_GAP_INACTIVIDAD:
-        return None
-
-    # Calcular gaps entre stats consecutivas dentro de la sesión
-    gaps = []
-    for i in range(1, len(historial)):
-        delta = (historial[i]['ts'] - historial[i-1]['ts']).total_seconds()
-        if 0 < delta < 3600:
-            gaps.append(delta)
-
-    if len(gaps) < 1:
-        return None
-
-    gap_actual = tiempo_desde_ultima
-    g = gaps
-    # Rellenar lags faltantes con el último gap disponible
-    while len(g) < 3:
-        g = [g[0]] + g
-
-    feat = {
-        'gap':      gap_actual,
-        'gap_lag1': g[-1],
-        'gap_lag2': g[-2],
-        'gap_lag3': g[-3],
-        'gap_delta': gap_actual - g[-1],
-        'gap_mean5': np.mean(g[-5:]),
-        'gap_std5':  np.std(g[-5:]) if len(g) >= 5 else 0.0,
-        'bloqueados': historial[-1]['bloqueados'],
-        'hora_sin':  np.sin(2 * np.pi * datetime.now().hour / 24),
-        'hora_cos':  np.cos(2 * np.pi * datetime.now().hour / 24),
-    }
-    return feat
-
-# ── Main loop ─────────────────────────────────────────────────────────────────
-def main():
-    log.info("=" * 55)
-    log.info("Predictor PPI — XGBoost temporal — iniciando")
-    log.info("=" * 55)
-
+# ── Cargar / recargar modelo ──────────────────────────────────────────────────
+def cargar_modelo():
+    global clf, FEATURES, model_mtime
     if not MODEL.exists():
         log.error(f"Modelo no encontrado: {MODEL}")
-        log.error("Ejecutar primero: python3 scripts/entrenar_predictor.py")
+        log.error("Ejecutar: python3 scripts/f4_entrenar_predictor_v2.py")
+        return False
+    clf        = joblib.load(MODEL)
+    FEATURES   = FEATS_F.read_text().strip().splitlines()
+    model_mtime = MODEL.stat().st_mtime
+    log.info(f"Modelo cargado | features={len(FEATURES)} | θ_alta={THETA_ALTA} | θ_media={THETA_MEDIA}")
+    return True
+
+def check_hot_reload():
+    global clf, FEATURES, model_mtime
+    try:
+        mtime = MODEL.stat().st_mtime
+        if mtime != model_mtime:
+            clf        = joblib.load(MODEL)
+            FEATURES   = FEATS_F.read_text().strip().splitlines()
+            model_mtime = mtime
+            log.info("Modelo recargado (hot-reload)")
+    except Exception:
+        pass
+
+# ── Leer nuevas líneas del log ────────────────────────────────────────────────
+def leer_nuevos_eventos():
+    global file_pos
+    nuevos = []
+    try:
+        with open(LOG, 'r', encoding='utf-8', errors='ignore') as f:
+            # Detectar rotación: si el archivo es más pequeño que la posición guardada
+            f.seek(0, 2)
+            size = f.tell()
+            if size < file_pos:
+                file_pos = 0
+                log.info("Rotación de log detectada — reiniciando posición")
+
+            f.seek(file_pos)
+            for line in f:
+                m = RE_EVENT.match(line)
+                if not m:
+                    continue
+                ts_str, src_ip, dst, proto, score, action = m.groups()
+                if ':' in src_ip or src_ip.startswith('0.') or src_ip.startswith('255.'):
+                    continue
+                try:
+                    dest_port = int(dst.rsplit(':', 1)[1])
+                except (IndexError, ValueError):
+                    dest_port = 0
+                ts = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
+                nuevos.append({
+                    'ts':       ts,
+                    'ts_epoch': ts.timestamp(),
+                    'src_ip':   src_ip,
+                    'proto':    proto.upper(),
+                    'score':    float(score),
+                    'dest_port': dest_port,
+                    'action':   action,
+                })
+            file_pos = f.tell()
+    except Exception as e:
+        log.error(f"Error leyendo log: {e}")
+    return nuevos
+
+# ── Construir features para una IP ───────────────────────────────────────────
+def construir_features(state: IPState, t: float) -> np.ndarray:
+    # Limpiar ventanas
+    while state.limits and t - state.limits[0] > 15:
+        state.limits.popleft()
+    while state.blocks and t - state.blocks[0] > 60:
+        state.blocks.popleft()
+
+    proto = state.last_proto
+    hora  = datetime.fromtimestamp(t)
+    h     = hora.hour + hora.minute / 60.0
+
+    return np.array([[
+        state.last_score,
+        state.last_port,
+        int(proto == 'TCP'),
+        int(proto == 'UDP'),
+        int(proto in ('ICMP', 'IPV6-ICMP')),
+        math.sin(2 * math.pi * h / 24),
+        math.cos(2 * math.pi * h / 24),
+        len(state.limits),
+        len(state.blocks),
+        int(state.last_score <= -0.6027),   # is_block (score <= τ2)
+    ]])
+
+# ── Ciclo principal ───────────────────────────────────────────────────────────
+def main():
+    log.info("=" * 55)
+    log.info("Predictor PPI v2 — XGBoost LIMIT+BLOCK — iniciando")
+    log.info("=" * 55)
+
+    if not cargar_modelo():
         return
 
-    clf = joblib.load(MODEL)
-    FEATURES = FEATS_F.read_text().strip().splitlines()
-    log.info(f"Modelo cargado | features={len(FEATURES)} | θ_alta={THETA_ALTA}")
-
-    ultima_alerta_ts = None   # para deduplicar alertas
+    ips_con_eventos = set()   # IPs con eventos en este ciclo
 
     while True:
         try:
-            # 1. Obtener historial de stats recientes
-            historial = parsear_historial_stats(n=20)
+            check_hot_reload()
 
-            if not historial:
-                log.info("Sin stats recientes — motor inactivo o log vacío")
+            # 1. Leer nuevos eventos del log
+            nuevos = leer_nuevos_eventos()
+
+            ips_con_eventos.clear()
+
+            # 2. Actualizar estado por IP
+            for ev in nuevos:
+                ip    = ev['src_ip']
+                t     = ev['ts_epoch']
+                state = ip_states[ip]
+
+                state.last_score    = ev['score']
+                state.last_port     = ev['dest_port']
+                state.last_proto    = ev['proto']
+                state.last_event_ts = t
+
+                if ev['action'] == 'LIMIT':
+                    state.limits.append(t)
+                else:
+                    state.blocks.append(t)
+
+                ips_con_eventos.add(ip)
+
+            # 3. Predecir por cada IP activa
+            if not ips_con_eventos:
                 time.sleep(INTERVALO)
                 continue
 
-            # 2. Calcular tiempo desde última stats (gap parcial)
-            ultima_stats = historial[-1]
-            tiempo_desde = (datetime.now() - ultima_stats['ts'].to_pydatetime()).total_seconds()
+            ahora = datetime.now()
+            for ip in ips_con_eventos:
+                state = ip_states[ip]
+                t     = state.last_event_ts
 
-            # 3. Construir vector de features
-            feat = construir_features(historial, tiempo_desde)
-            if feat is None:
-                if len(historial) < 2:
-                    log.info(f"Historial insuficiente ({len(historial)} stats) — esperando más datos")
-                elif tiempo_desde > MAX_GAP_INACTIVIDAD:
-                    log.info(f"Sistema inactivo (gap={tiempo_desde:.0f}s > {MAX_GAP_INACTIVIDAD}s) — sin prediccion")
+                X = construir_features(state, t)
+                p = float(clf.predict_proba(X)[0, 1])
+
+                lc  = len(state.limits)
+                bc  = len(state.blocks)
+                tag = f"src={ip} P={p:.2%} score={state.last_score:.4f} limits_15s={lc} blocks_60s={bc}"
+
+                if p >= THETA_ALTA:
+                    # Deduplicar por IP
+                    dedup_ok = (
+                        state.last_alert_ts is None or
+                        (ahora - state.last_alert_ts).total_seconds() > DEDUP_SEG
+                    )
+                    if dedup_ok:
+                        log.warning(f"ALERTA-PREDICTIVA | {tag}")
+                        state.last_alert_ts = ahora
+                        telegram_alerta(ip, p, ev['action'])
+                    else:
+                        log.info(f"ALERTA-PREDICTIVA (dedup) | {tag}")
+
+                elif p >= THETA_MEDIA:
+                    log.info(f"AVISO | {tag}")
+
                 else:
-                    log.info("Sin gaps válidos en historial — esperando")
-                time.sleep(INTERVALO)
-                continue
-
-            X = np.array([[feat[f] for f in FEATURES]])
-
-            # 4. Predicción
-            p = float(clf.predict_proba(X)[0, 1])
-
-            top_feat = max(feat, key=lambda k: abs(feat[k]) if k not in ('hora_sin','hora_cos') else 0)
-            resumen  = f"P={p:.2%} | gap={feat['gap']:.0f}s lag1={feat['gap_lag1']:.0f}s delta={feat['gap_delta']:+.0f}s | top={top_feat}={feat[top_feat]:.1f}"
-
-            # 5. Actuar según nivel
-            if p >= THETA_ALTA:
-                # Deduplicar: no relanzar alerta si ya se lanzó hace <5min
-                ahora = datetime.now()
-                if ultima_alerta_ts is None or (ahora - ultima_alerta_ts).total_seconds() > 120:  # 2 min dedup — ajustado para corridas de validación
-                    log.warning(f"ALERTA-PREDICTIVA | {resumen}")
-                    ultima_alerta_ts = ahora
-                else:
-                    log.info(f"RIESGO-ALTO (dedup) | {resumen}")
-            elif p >= THETA_MEDIA:
-                log.info(f"RIESGO-MEDIO | {resumen}")
-            else:
-                log.info(f"OK | {resumen}")
+                    log.info(f"OK | {tag}")
 
         except KeyboardInterrupt:
             log.info("Predictor detenido por usuario.")
