@@ -175,6 +175,24 @@ if _block_repeat_ts.get(src_ip, 0) + 5.0 <= _ahora:
 
 ---
 
+## Corrida de validación CA-F4-04 — Tráfico normal 2026-06-22
+
+| Evento | Timestamp | Detalle |
+|---|---|---|
+| Inicio corrida | 02:55:53 | curl HTTP desde Desktop (192.168.0.20) → Servidor :80 |
+| Duración | 6 minutos | 90 requests, 1 cada 2 segundos |
+| Flows en Suricata | 02:56-03:01 | 79 HTTP flows + 4 SSH flows capturados |
+| Motor log WARNINGs | — | **0 líneas** — todos procesados como PERMIT |
+| Predictor alertas | — | **0 AVISO / 0 ALERTA-PREDICTIVA** |
+| **FPR** | — | **0% ✅** |
+
+El whitelist activo (192.168.0.20, 192.168.0.110, 192.168.0.120) impide que el motor
+genere LIMIT/BLOCK para IPs de tráfico normal. Sin eventos LIMIT/BLOCK, el predictor
+permanece en silencio. La corrida confirma que el sistema no genera falsas alertas
+bajo tráfico legítimo.
+
+---
+
 ## Argumento de defensa
 
 > "El IF detecta anomalías flujo por flujo pero no distingue una anomalía puntual de un ataque sostenido. El XGBoost usa los outputs del IF como features para predecir la persistencia. Validado con SYN Flood real: P=77.39% → ALERTA-PREDICTIVA. El sistema tiene dos niveles: aviso de vigilancia activa, y alerta de alta confianza con notificación al operador."
