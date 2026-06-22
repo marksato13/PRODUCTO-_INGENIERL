@@ -54,12 +54,27 @@ if os.path.exists(_METRICAS):
                 try: TAU2 = float(_line.split(':')[1].split('#')[0].strip())
                 except: pass
 
-WHITELIST = {"192.168.0.1", "192.168.0.20", "192.168.0.110",
+WHITELIST_FILE = "/home/m4rk/ppi-surikata-producto/config/whitelist.conf"
+_WL_BASE  = {"192.168.0.1", "192.168.0.20", "192.168.0.110",
              "192.168.0.120", "127.0.0.1", "192.168.0.130", "192.168.0.140"}
+def _cargar_whitelist():
+    wl = set(_WL_BASE)
+    if os.path.exists(WHITELIST_FILE):
+        for ln in open(WHITELIST_FILE).read().splitlines():
+            ln = ln.strip()
+            ln = ln.split("#")[0].strip()
+            if ln:
+                wl.add(ln)
+    return wl
+WHITELIST = _cargar_whitelist()
 
 SET_BLOCK   = "ppi_blocked"
 SET_LIMIT   = "ppi_limited"
-TIMEOUT_SEC = 300   # segundos que dura el bloqueo/límite
+TIMEOUT_SEC = 300   # segundos que dura el bloqueo/límite (primer bloqueo)
+# Bloqueo progresivo: 1°=5min, 2°=30min, 3°+=permanente (ipset sin timeout)
+_BLOCK_TIMEOUTS   = [300, 1800, 0]
+_block_counts: dict = {}          # ip → nº de veces bloqueada (persistente)
+BLOCK_COUNTS_FILE = "/home/m4rk/ppi-surikata-producto/results/block_counts.json"
 
 FEATURES = [
     'pkts_toserver', 'pkts_toclient', 'bytes_toserver', 'bytes_toclient',
@@ -192,13 +207,27 @@ def _ssh(cmd):
     return (result.stdout + result.stderr).strip()
 
 
-def bloquear_ip(ip):
+def _save_block_counts():
     try:
-        out = _ssh(
-            f'sudo ipset add {SET_BLOCK} {ip} timeout {TIMEOUT_SEC} -exist 2>&1 '
-            f'&& echo "BLOCKED {ip}"'
-        )
-        return out
+        import json as _j
+        open(BLOCK_COUNTS_FILE, "w").write(_j.dumps(_block_counts))
+    except Exception:
+        pass
+
+def bloquear_ip(ip):
+    n = _block_counts.get(ip, 0) + 1
+    _block_counts[ip] = n
+    t = _BLOCK_TIMEOUTS[min(n - 1, len(_BLOCK_TIMEOUTS) - 1)]
+    t_label = f"{t}s" if t > 0 else "permanente"
+    _save_block_counts()
+    try:
+        if t > 0:
+            cmd = (f'sudo ipset add {SET_BLOCK} {ip} timeout {t} -exist 2>&1 '
+                   f'&& echo "BLOCKED {ip} (bloqueo#{n} timeout={t_label})"')
+        else:
+            cmd = (f'sudo ipset add {SET_BLOCK} {ip} -exist 2>&1 '
+                   f'&& echo "BLOCKED {ip} (bloqueo#{n} PERMANENTE)"')
+        return _ssh(cmd)
     except Exception as ex:
         return f"ERROR: {ex}"
 
@@ -381,6 +410,15 @@ def main():
     clf, scaler = load_model()
     inicializar_servidor()
 
+    # Cargar historial de bloqueos (bloqueo progresivo L5)
+    global _block_counts
+    if os.path.exists(BLOCK_COUNTS_FILE):
+        try:
+            import json as _j
+            _block_counts = _j.loads(open(BLOCK_COUNTS_FILE).read())
+            log.info(f"Block counts cargados: {len(_block_counts)} IPs en historial")
+        except Exception:
+            _block_counts = {}
     bloqueados    = set()
     limitados     = set()
     _block_repeat_ts = {}
