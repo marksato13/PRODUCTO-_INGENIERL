@@ -27,7 +27,7 @@ Sin estas el Slide 11 (demo bloqueo progresivo) y Slide 12 (dashboard) quedan va
 | Captura | Qué mostrar | Cómo obtener |
 |---|---|---|
 | A. Terminal motor_decision.log | 3 líneas bloqueo#1/2/3 juntas | `grep 'bloqueo#[123]' results/motor_decision.log \| grep '05:44\|06:05\|06:39'` |
-| B. `ipset list ppi_blocked` con timeout=0 | Kali bloqueada permanente | Repetir una corrida B1 rápida hasta bloqueo#3 |
+| B. `ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"` con timeout=0 | Kali bloqueada permanente en servidor | Repetir corrida B1 hasta bloqueo#3 |
 | C. Dashboard web con alertas activas | http://192.168.0.110:8080 | Abrir navegador durante corrida |
 | D. Telegram alerta en teléfono | Mensaje "🚨 PPI ALERTA — BLOCK" | Ya recibida 07:25 — tomar captura del historial |
 | E. `cat block_counts.json` = `{"192.168.0.100": 3}` | Historial persistido | Repetir hasta bloqueo#3 |

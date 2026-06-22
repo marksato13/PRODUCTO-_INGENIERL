@@ -41,7 +41,7 @@
 | `F3_motor_control/captura_dashboard_terminal.png` | Screenshot: `python3 scripts/dashboard.py` en terminal | ⏳ | PPT slide 10, Defensa |
 | `F3_motor_control/captura_dashboard_web.png` | Screenshot: navegador http://192.168.0.110:8080 con alertas | ⏳ | PPT slide 10, Defensa |
 | `F3_motor_control/captura_telegram_alerta.png` | Screenshot: notificación Telegram de BLOCK/ALERTA-PREDICTIVA | ⏳ | PPT slide 11, Defensa |
-| `F3_motor_control/captura_ipset_bloqueados.png` | Screenshot: `sudo ipset list ppi_blocked` con Kali bloqueada | ⏳ | Defensa — evidencia enforcement |
+| `F3_motor_control/captura_ipset_bloqueados.png` | Screenshot: `ssh 192.168.0.120 "sudo ipset list ppi_blocked"` con Kali bloqueada | ⏳ | Defensa — evidencia enforcement |
 | `F3_motor_control/captura_bloqueo_permanente.png` | Screenshot: ipset con timeout=0 (bloqueo #3 permanente) | ⏳ | Defensa — CA-10 |
 | `F3_motor_control/captura_latencia_pipeline.png` | Screenshot: `cat results/latencia_pipeline.txt` (P95=34.8ms) | ⏳ | Defensa — CA-5 |
 
@@ -134,8 +134,8 @@ tail -20 results/motor_decision.log
 # 2. Dashboard web (F3)
 # Abrir navegador en Desktop → http://192.168.0.110:8080
 
-# 3. ipset (F3) — necesita sudo en terminal del sensor
-sudo ipset list ppi_blocked
+# 3. ipset (F3) — corre en SERVIDOR, no en sensor
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 
 # 4. run_all.sh completo (F6)
 bash scripts/validacion/run_all.sh

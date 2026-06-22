@@ -127,7 +127,7 @@ results/motor_decision.log  (últimas 24h por defecto)
 ## Hot-reload del XGBoost (sin reinicio de servicio)
 
 ```python
-# En predictor.py — ciclo de 5 segundos
+# En predictor.py — ciclo de 10 segundos (INTERVALO=10)
 mtime_actual = Path(MODEL_PATH).stat().st_mtime
 if mtime_actual != self._mtime_anterior:
     self._modelo = joblib.load(MODEL_PATH)
@@ -135,7 +135,7 @@ if mtime_actual != self._mtime_anterior:
     log.info("Predictor: modelo F5 recargado en caliente")
 ```
 
-El servicio `ppi-predictor.service` nunca se interrumpe. El nuevo modelo entra en operación en el siguiente ciclo (≤5 segundos).
+El servicio `ppi-predictor.service` nunca se interrumpe. El nuevo modelo entra en operación en el siguiente ciclo (≤10 segundos).
 
 ---
 
@@ -241,7 +241,7 @@ El batch retraining nocturno con validación de AUC es más robusto:
 | CA-13 | Cron jobs de reentrenamiento configurados | ✅ 2 crons activos |
 | CA-14 | ≥1 corrida de reentrenamiento registrada | ✅ 3 corridas documentadas |
 | CA-F5-01 | Protección anti-regresión implementada | ✅ 5 condiciones de guarda |
-| CA-F5-02 | Hot-reload sin reiniciar ppi-predictor.service | ✅ mtime check cada 5s |
+| CA-F5-02 | Hot-reload sin reiniciar ppi-predictor.service | ✅ mtime check cada 10s (INTERVALO=10) |
 | CA-F5-03 | Datos insuficientes detectados automáticamente | ✅ cron 03:00 con 91 eventos rechazado |
 | CA-F5-04 | Leakage corregido en reentrenamiento | ✅ score eliminado de FEATURES en v2 |
 

@@ -34,9 +34,9 @@ V6 — Datos normales nuevos (generalización del IF)
 | CA-5 | Motor      | Latencia P95 del pipeline                | < 500 ms               | latencia_pipeline.txt                  |
 | CA-6 | Motor      | ITL (tiempo sin clasificaciones)         | = 0%                   | motor_decision.log                     |
 | CA-7 | Motor      | Umbrales cargados correctamente al init  | τ1=-0.4459 τ2=-0.6027  | log arranque motor                     |
-| CA-8 | ipset      | Whitelist — Desktop nunca bloqueado      | 0 entradas bloqueadas  | ipset list ppi_blocked                 |
-| CA-9 | ipset      | IP atacante bloqueada — curl falla       | curl timeout/refused   | prueba manual curl desde Kali          |
-| CA-10| ipset      | Bloqueo progresivo #3 = PERMANENTE       | timeout = 0            | ipset list ppi_blocked                 |
+| CA-8 | ipset      | Whitelist — Desktop nunca en ipset       | 0 entradas bloqueadas  | `block_counts.json` (sensor) + ipset en servidor |
+| CA-9 | ipset      | IP atacante bloqueada en servidor        | curl timeout/refused   | `ssh 192.168.0.120 "sudo ipset list ppi_blocked"` |
+| CA-10| ipset      | Bloqueo progresivo #3 = PERMANENTE       | timeout = 0            | `ssh 192.168.0.120 "sudo ipset list ppi_blocked"` |
 | CA-11| XGBoost    | AUC-ROC en test set                      | ≥ 0.95                 | metricas_predictor_v2.txt              |
 | CA-12| XGBoost    | FP + FN totales en test (12,488 muestras)| ≤ 30                   | metricas_predictor_v2.txt              |
 | CA-13| Integración| Lead time SYN flood (B1) → primer BLOCK  | ≤ 120s                 | motor_decision.log timestamp           |
@@ -51,7 +51,7 @@ V6 — Datos normales nuevos (generalización del IF)
 ```
 1. test_v1_metricas_if.sh      (2 min — solo lee archivos)
 2. test_v2_latencia_motor.sh   (2 min — solo lee archivos)
-3. test_v3_enforcement.sh      (5 min — requiere ipset activo)
+3. f3_val_ipset.sh             (5 min — requiere SSH a servidor 192.168.0.120)
 4. test_v4_xgboost.sh          (2 min — solo lee archivos)
 5. test_v5_lead_times.sh       (20-30 min — requiere corridas reales B1+B6)
 6. v6_datos_nuevos_normal.md   (manual — requiere captura nueva)

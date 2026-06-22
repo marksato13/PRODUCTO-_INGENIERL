@@ -76,4 +76,4 @@ Salida esperada:
 
 **ITL = 0%** se verifica viendo que el log no tiene gaps: mientras Suricata genera eventos, el motor los procesa sin detenerse.
 
-**Pipeline completo:** eve.json → parse → 14 features → StandardScaler → IsolationForest.decision_function() → comparar τ1/τ2 → escribir log → ipset si necesario.
+**Pipeline completo:** eve.json → parse → 14 features → StandardScaler → IsolationForest.decision_function() → comparar τ1/τ2 → escribir log → **SSH→servidor sudo ipset add** si LIMIT/BLOCK.

@@ -1,16 +1,17 @@
-# V3 — Validación del Control Inline ipset/iptables
+# F3-ipset — Validación del Control Inline (enforcement en SERVIDOR 192.168.0.120)
 
 **Criterios:** CA-8, CA-9, CA-10  
 **Tiempo estimado:** 5-10 minutos  
-**Requiere:** ipset activo en sensor, acceso SSH a Kali (192.168.0.100)
+**Requiere:** ipset activo en **servidor 192.168.0.120**, acceso SSH a Kali (192.168.0.100)
 
 ---
 
 ## Qué se valida
 
-El módulo de enforcement (`enforce.sh` + ipset) ejecuta las decisiones del motor en la red real:
-- **ppi_blocked**: IPs con DROP total (iptables -j DROP)
-- **ppi_limited**: IPs con hashlimit 100pkt/s
+El módulo de enforcement (`enforce.sh` + ipset) ejecuta las decisiones del motor en la red real.
+> ⚠️ **ipset/iptables corre en el SERVIDOR (192.168.0.120)**, no en el sensor. El motor hace SSH al servidor para añadir IPs.
+- **ppi_blocked**: IPs con DROP total (iptables -j DROP) — en servidor
+- **ppi_limited**: IPs con hashlimit 100pkt/s — en servidor
 - **Whitelist**: IPs nunca bloqueadas independientemente del score
 
 ---
@@ -28,9 +29,11 @@ El módulo de enforcement (`enforce.sh` + ipset) ejecuta las decisiones del moto
 ## Prueba CA-8: Whitelist nunca bloqueada
 
 ```bash
-# En el sensor (192.168.0.110)
-ipset list ppi_blocked | grep -E "192.168.0.20|192.168.0.110|192.168.0.120|192.168.0.1$|127.0.0.1"
+# En el SERVIDOR (192.168.0.120) — donde corre ipset
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked" | grep -E "192.168.0.20|192.168.0.110|192.168.0.120|192.168.0.1 |127.0.0.1"
 # Resultado esperado: vacío (ninguna de estas IPs debe aparecer)
+# O verificar via block_counts.json en sensor:
+cat /home/m4rk/ppi-surikata-producto/results/block_counts.json
 ```
 
 IPs en whitelist del sistema:
@@ -47,14 +50,15 @@ IPs en whitelist del sistema:
 
 **Paso 1** — Bloquear manualmente la IP de Kali:
 ```bash
-# En el sensor
+# Desde Desktop — enforce.sh hace SSH al servidor automáticamente
 bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK 120
 # Resultado esperado: "BLOCK aplicado a 192.168.0.100 (timeout=120s)"
+# (enforce.sh SSHea a 192.168.0.120 y ejecuta sudo ipset add ppi_blocked)
 ```
 
-**Paso 2** — Verificar que está en ipset:
+**Paso 2** — Verificar que está en ipset del servidor:
 ```bash
-ipset list ppi_blocked | grep 192.168.0.100
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked | grep 192.168.0.100"
 # Esperado: 192.168.0.100 timeout 119 (contando hacia 0)
 ```
 
@@ -87,7 +91,8 @@ cat /home/m4rk/ppi-surikata-producto/results/block_counts.json
 
 **Verificar en ipset:**
 ```bash
-ipset list ppi_blocked
+# Verificar en el SERVIDOR:
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 # IPs con "timeout 0" = permanentes
 # IPs con "timeout NNN" = temporales
 ```
@@ -100,7 +105,7 @@ bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK  # 
 bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK  # #2 → 1800s
 # Esperar que expire (o resetear block_counts.json para prueba rápida)
 bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK  # #3 → timeout=0
-ipset list ppi_blocked | grep 192.168.0.100
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked | grep 192.168.0.100"
 # Esperado: 192.168.0.100  (sin timeout = PERMANENTE)
 ```
 

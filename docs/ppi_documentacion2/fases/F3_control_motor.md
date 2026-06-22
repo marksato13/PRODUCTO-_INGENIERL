@@ -18,8 +18,8 @@ Aplicar la decisión del IF sobre cada flujo nuevo en la red de forma automátic
 | **tail -f (seguimiento)** | El motor lee eve.json como un proceso que espera nuevas líneas (similar a `tail -f`). Cada línea nueva de Suricata es procesada inmediatamente. |
 | **ipset** | Estructura de datos del kernel Linux que almacena conjuntos de IPs con soporte para timeout. Más eficiente que reglas iptables individuales. Actualizable en tiempo real sin reiniciar el firewall. |
 | **iptables** | Sistema de filtrado de paquetes del kernel Linux. Referencia a ipsets: "si la IP origen está en `ppi_blocked`, descartar el paquete (DROP)". |
-| **ppi_blocked** | Conjunto ipset de IPs con DROP total. Todo paquete de estas IPs es descartado en el kernel antes de llegar a las aplicaciones. Timeout configurable (300s / 1800s / permanente). |
-| **ppi_limited** | Conjunto ipset de IPs con rate limiting (`hashlimit 100pkt/s`). La IP puede comunicarse pero a velocidad reducida. |
+| **ppi_blocked** | Conjunto ipset de IPs con DROP total, **en el servidor (192.168.0.120)**. Timeout configurable (300s / 1800s / permanente). |
+| **ppi_limited** | Conjunto ipset de IPs con rate limiting (`hashlimit 100pkt/s`), **en el servidor (192.168.0.120)**. |
 | **hashlimit** | Módulo iptables que limita la tasa de paquetes por IP. Configurado en 100 pkt/s para IPs en `ppi_limited`. Un SYN flood genera 10,000+ pkt/s → reducido a 100. |
 | **PERMIT** | Decisión del motor: el flujo es normal (score > τ1). Solo se registra en log como INFO. No hay acción en red. |
 | **LIMIT** | Decisión: el flujo es sospechoso (τ2 < score ≤ τ1). IP añadida a `ppi_limited`. Tráfico limitado a 100 pkt/s. |
