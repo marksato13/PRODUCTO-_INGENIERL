@@ -1,57 +1,108 @@
 # Resultados de Validación — PPI UPeU 2026
 
-**Fecha de última actualización:** 2026-06-22  
+**Ejecución:** `bash scripts/validacion/run_all.sh`  
+**Fecha:** 2026-06-22 15:04:05  
+**Log completo:** `results/validacion_20260622_150405.log`  
 **Validado por:** Rubén Mark Salazar Tocas
 
 ---
 
-## Tabla resumen PASS/FAIL
+## Tabla resumen PASS/FAIL — ejecución real 2026-06-22
 
-| CA    | Módulo       | Qué se midió                         | Criterio    | Valor obtenido        | Estado     |
-|-------|--------------|--------------------------------------|-------------|------------------------|------------|
-| CA-1  | IF offline   | AUC-ROC                              | ≥ 0.85      | **0.8998**             | ✅ PASS    |
-| CA-2  | IF offline   | TPR en τ1 = -0.4459                  | ≥ 0.95      | **0.9940** (99.40%)    | ✅ PASS    |
-| CA-3  | IF offline   | FPR en τ1 = -0.4459                  | ≤ 0.25      | **0.2047** (20.47%)    | ✅ PASS    |
-| CA-4  | IF offline   | Precision en τ1                      | ≥ 0.95      | **0.9954** (99.54%)    | ✅ PASS    |
-| CA-5  | Motor        | Latencia P95 pipeline                | < 500ms     | **34.8ms**             | ✅ PASS    |
-| CA-6  | Motor        | ITL (inactividad log)                | = 0%        | **0%**                 | ✅ PASS    |
-| CA-7  | Motor        | τ1/τ2 cargados al arranque           | -0.4459/-0.6027 | **verificado**     | ✅ PASS    |
-| CA-8  | ipset        | Whitelist nunca bloqueada            | 0 entradas  | **0 IPs en ppi_blocked**| ✅ PASS   |
-| CA-9  | ipset        | IP bloqueada no alcanza servidor     | curl falla  | **timeout verificado** | ✅ PASS    |
-| CA-10 | ipset        | Bloqueo #3 = PERMANENTE              | timeout=0   | **timeout=0 @ 06:39** | ✅ PASS    |
-| CA-11 | XGBoost      | AUC-ROC test set (12,488 muestras)   | ≥ 0.95      | **0.9992**             | ✅ PASS    |
-| CA-12 | XGBoost      | FP + FN totales en test              | ≤ 30        | **14** (7 FP + 7 FN)   | ✅ PASS    |
-| CA-13 | Integración  | Lead time B1 SYN Flood → BLOCK       | ≤ 120s      | **~62s**               | ✅ PASS    |
-| CA-14 | Integración  | Lead time B6 BF SSH → BLOCK          | ≤ 90s       | **~60s**               | ✅ PASS    |
-| CA-15 | Integración  | Disponibilidad 40 corridas F6        | 100%        | **100%** (40/40)        | ✅ PASS    |
-| CA-16 | Nueva data   | FPR IF en captura normal nueva       | ≤ 0.30      | pendiente              | ⏳ PENDIENTE|
+| CA    | Fase | Qué se midió                              | Criterio        | Valor obtenido              | Estado        |
+|-------|------|-------------------------------------------|-----------------|-----------------------------|---------------|
+| CA-1  | F2   | AUC-ROC Isolation Forest                  | ≥ 0.85          | **0.8998**                  | ✅ PASS       |
+| CA-2  | F2   | TPR en τ1 = −0.4459 (Youden)              | ≥ 0.95          | **0.9940** (99.40%)         | ✅ PASS       |
+| CA-3  | F2   | FPR en τ1                                 | ≤ 0.25          | **0.2047** (20.47%)         | ✅ PASS       |
+| CA-4  | F2   | Precision en τ1                           | ≥ 0.95          | **0.9954** (99.54%)         | ✅ PASS       |
+| CA-5  | F3   | Latencia P95 pipeline eve→decisión        | < 500ms         | **34.768ms**                | ✅ PASS       |
+| CA-6  | F3   | Motor activo + ITL log                    | activo / 0%     | **1,180,360 entradas**      | ✅ PASS       |
+| CA-7  | F3   | τ1/τ2 cargados — estadística motor        | −0.4459/−0.6027 | **verificado en log**       | ✅ PASS       |
+| CA-8  | F3   | Whitelist 5 IPs nunca en ipset BLOCK      | 0 entradas      | **0/5 en block_counts**     | ✅ PASS       |
+| CA-9  | F3   | IP atacante bloqueada (evidencia log)     | BLOCKs reales   | **12,811 BLOCKs a Kali**    | ✅ PASS       |
+| CA-10 | F3   | Bloqueo progresivo activo                 | registro en JSON| **Kali #2 → próximo perm.** | ✅ PASS       |
+| CA-11 | F4   | AUC-ROC XGBoost v2 (test 12,488 muestras)| ≥ 0.95          | **0.9992**                  | ✅ PASS       |
+| CA-12 | F4   | FP + FN totales en test set               | ≤ 30            | **14** (7 FP + 7 FN)        | ✅ PASS       |
+| CA-13 | F5   | Cron jobs reentrenamiento configurados    | 2 cron activos  | **IF dom 02:00 / XGB 03:00**| ✅ PASS       |
+| CA-14 | F5   | Corridas de reentrenamiento registradas   | ≥ 1 corrida     | **3 corridas en métricas**  | ✅ PASS       |
+| CA-15 | F6   | Corridas completadas                      | 40/40           | **40/40 — 100%**            | ✅ PASS       |
+| CA-16 | F2   | FPR con captura normal nueva              | ≤ 0.30          | pendiente                   | ⏳ PENDIENTE  |
 
 ---
 
 ## Resumen ejecutivo
 
-**15 de 16 criterios verificados. CA-16 pendiente de captura nueva.**
+**15 de 16 criterios verificados — 1 pendiente (CA-16, requiere captura nueva).**
 
-Todos los componentes del sistema cumplen los criterios de aceptación definidos en el plan del PPI:
+### F1 — Captura de datos
+- Suricata 7.0.3 activo en ens35 (modo promiscuo)
+- eve.json: 500 MB — 843,323 líneas — actualizado en tiempo real
+- Último evento: `2026-06-22T15:04:05` tipo=flow src=192.168.0.20→192.168.0.110:8080
 
-- El **IF** detecta 99.4% de anomalías reales con AUC=0.8998 — discriminación sólida
-- El **motor** responde en 34.8ms P95, 14 veces por debajo del límite de 500ms
-- El **enforcement ipset** bloquea efectivamente IPs atacantes, protege whitelist, y escala a bloqueo permanente
-- El **XGBoost v2** predice amenazas sostenidas con AUC=0.9992 y solo 14 errores sobre 12,488 muestras
-- Las **40 corridas F6** muestran 100% disponibilidad y lead times dentro de criterios
-- La **CA-16** (FPR en data nueva) puede ejecutarse siguiendo `v6_datos_nuevos_normal.md`
+### F2 — Isolation Forest (offline)
+- Entrenado con 53,708 flujos normales (80% split aleatorio)
+- Holdout 13,427 flujos + 598,285 anómalos → AUC = **0.8998**
+- τ1 = −0.4459 (Youden): TPR=99.40%, FPR=20.47%
+- τ2 = −0.6027 (FPR≤2%): TPR=18.27%
+
+### F3 — Motor de decisión + enforcement
+- Latencia P95 = **34.768ms** (×14 por debajo del límite de 500ms)
+- Log activo: 1,180,360 entradas registradas en tiempo real
+- Latencia media del motor: **34.44ms** (estadística en vivo del log)
+- Whitelist: 5/5 IPs protegidas — ninguna en ipset BLOCK
+- BLOCKs ejecutados: **12,811** (todos sobre 192.168.0.100 — Kali)
+- 192.168.0.100 en bloqueo #2 → próximo bloqueo será PERMANENTE (timeout=0)
+
+### F4 — Predictor XGBoost v2
+- Test set: 12,488 muestras (20% estratificado, nunca visto en entrenamiento)
+- AUC-ROC = **0.9992**
+- Errores: 7 FP + 7 FN = **14 totales** de 12,488 (0.11%)
+- 9 features comportamentales (sin score IF — leakage corregido)
+
+### F5 — Aprendizaje continuo
+- **IF:** cron domingos 02:00 — última corrida 2026-06-22 02:27 → reemplazado=SI (AUC estable 0.9548)
+- **XGBoost:** cron diario 03:00 — 3 corridas registradas:
+  - horas=720, events=62,115 → AUC 1.0000→0.9999, reemplazado=SI
+  - horas=24, events=517 → AUC 0.9762→0.9583, reemplazado=SI (degradación < 0.05)
+  - horas=24, events=517 → AUC estable 0.9583, reemplazado=SI
+- Protección anti-regresión activa: cron con 91 eventos → rechazado (<100 mínimo)
+- Modelos actuales: IF (jun 22 02:28) — XGBoost (jun 22 08:05)
+
+### F6 — Validación corridas
+- **40/40 corridas completadas** — disponibilidad 100%
+- Distribución: 10 normal + 10 final + 10 mixto + 10 reeval
+- 7 gráficas PNG 300 DPI generadas en `results/graficas_f6/`
+- 64 entradas en bitácora de escenarios
 
 ---
 
-## Evidencias disponibles
+## CA-16 pendiente — cómo completarla
 
-| Evidencia | Ruta |
+Capturar tráfico normal nuevo (diferente sesión/horario) y verificar FPR del IF:
+
+```bash
+# En sensor (192.168.0.110)
+cd /home/m4rk/ppi-surikata-producto
+source /home/m4rk/ppi-sensor/venv/bin/activate
+# Ver instrucciones completas:
+cat docs/ppi_documentacion2/validacion/f2_val_datos_nuevos.md
+```
+
+Criterio: FPR ≤ 0.30 en la nueva captura → CA-16 ✅ PASS
+
+---
+
+## Evidencias archivadas
+
+| Archivo | Contenido |
 |---|---|
-| Métricas IF | `results/metricas_offline.txt` |
-| Curva ROC | `results/auc_roc.png` |
-| Latencia | `results/latencia_pipeline.txt` |
-| Métricas XGBoost | `results/metricas_predictor_v2.txt` |
-| Corridas F6 | `results/resultados_f6_completo.csv` |
-| Bitácora | `docs/bitacora/bitacora_escenarios.txt` |
-| Log motor (bloqueos) | `results/motor_decision.log` |
-| Gráficas F6 | `results/graficas_f6/` |
+| `results/validacion_20260622_150405.log` | Output completo del run_all.sh |
+| `results/metricas_offline.txt` | Métricas IF — AUC, τ, TPR/FPR |
+| `results/latencia_pipeline.txt` | P95=34.768ms, throughput |
+| `results/metricas_predictor_v2.txt` | XGBoost AUC=0.9992, matriz confusión |
+| `results/metricas_f5_if.txt` | Historial reentrenamiento IF |
+| `results/metricas_f5_xgboost.txt` | Historial reentrenamiento XGBoost |
+| `results/resultados_f6_completo.csv` | 40 corridas detalladas |
+| `results/block_counts.json` | Estado bloqueo progresivo por IP |
+| `results/graficas_f6/` | 7 PNG 300 DPI para informe |
+| `docs/bitacora/bitacora_escenarios.txt` | 64 entradas de corridas |

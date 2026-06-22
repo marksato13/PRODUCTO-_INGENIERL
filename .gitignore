@@ -18,3 +18,4 @@ scripts/validation/suricata_revision.txt
 !docs/*.pptx
 !docs/*.zip
 config/telegram.conf
+!results/validacion_*.log
