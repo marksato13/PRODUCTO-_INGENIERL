@@ -27,23 +27,100 @@ Monitorea todo el tráfico de red en tiempo real, detecta comportamiento anómal
 
 ---
 
-## PREPARACIÓN (hacer antes de entrar al auditorio)
+## PASO 0 — Estado limpio garantizado (HACER SIEMPRE ANTES DE LA DEMO)
+
+> Ejecutar en orden desde Desktop (192.168.0.20). Tarda ~30 segundos.
+
+### 0A — Verificar que Kali no tiene ningún ataque en curso
 
 ```bash
-# 1. Verificar que los 4 servicios están activos
+ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap|nikto|ab |siege|curl.*loop|python.*flood' | grep -v grep"
+```
+**Si no sale nada:** ✅ Kali limpia, continuar.  
+**Si sale algo:** matar el proceso antes de seguir:
+```bash
+ssh m4rk@192.168.0.100 "sudo pkill hping3; sudo pkill hydra; sudo pkill nmap"
+```
+
+---
+
+### 0B — Vaciar bloqueos del servidor (ipset en cero)
+
+```bash
+ssh m4rk@192.168.0.120 "echo cisco123 | sudo -S ipset flush ppi_blocked && echo cisco123 | sudo -S ipset flush ppi_limited && echo IPSETS_VACIOS"
+```
+**Esperado:** `IPSETS_VACIOS`
+
+Verificar que está realmente vacío:
+```bash
+ssh m4rk@192.168.0.120 "echo cisco123 | sudo -S ipset list ppi_blocked | grep 'Number of entries'"
+```
+**Esperado:** `Number of entries: 0`
+
+---
+
+### 0C — Resetear historial de bloqueos del motor
+
+```bash
+ssh m4rk@192.168.0.110 "echo '{}' > /home/m4rk/ppi-surikata-producto/results/block_counts.json && cat /home/m4rk/ppi-surikata-producto/results/block_counts.json"
+```
+**Esperado:** `{}`
+
+---
+
+### 0D — Reiniciar motor y predictor (limpiar memoria interna)
+
+```bash
+ssh m4rk@192.168.0.110 "echo cisco123 | sudo -S systemctl restart ppi-motor.service ppi-predictor.service && echo REINICIADOS"
+sleep 6
+ssh m4rk@192.168.0.110 "systemctl is-active ppi-motor.service ppi-predictor.service"
+```
+**Esperado:** `active` × 2
+
+---
+
+### 0E — Confirmar que los 4 servicios están activos
+
+```bash
 ssh m4rk@192.168.0.110 "systemctl is-active suricata ppi-motor.service ppi-predictor.service ppi-dashboard.service"
-# Esperado: active × 4
+```
+**Esperado:** `active` × 4
 
-# 2. Limpiar estado para demo limpia
-ssh m4rk@192.168.0.120 "echo cisco123 | sudo -S ipset flush ppi_blocked && sudo -S ipset flush ppi_limited"
-ssh m4rk@192.168.0.110 "echo '{}' > /home/m4rk/ppi-surikata-producto/results/block_counts.json"
-ssh m4rk@192.168.0.110 "echo cisco123 | sudo -S systemctl restart ppi-motor.service ppi-predictor.service"
-sleep 5
+📸 **CAPTURA aquí** — los 4 `active` en pantalla
 
-# 3. Abrir las 2 terminales de monitoreo (dejarlas visibles todo el tiempo)
+---
+
+### 0F — Verificar que el log del motor arrancó limpio
+
+```bash
+ssh m4rk@192.168.0.110 "tail -5 /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+```
+**Esperado:** líneas de `INFO` de arranque, sin ningún `WARNING` ni `BLOCK`:
+```
+INFO | Motor de decisión PPI — iniciando
+INFO | Modelo cargado | τ1=-0.4459 τ2=-0.6027
+INFO | Servidor init: OK | BLOCK=ipset+DROP | LIMIT=ipset+hashlimit(100pkt/s)
+INFO | Block counts cargados: 0 IPs en historial
+INFO | Monitoreando /var/log/suricata/eve.json ...
+```
+
+---
+
+### 0G — Abrir terminales de monitoreo (dejarlas visibles durante toda la demo)
+
+```bash
+# Terminal 1 — motor de decisión (la más importante)
 ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
+
+# Terminal 2 — predictor XGBoost
 ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/predictor.log"
 ```
+
+📸 **CAPTURA aquí** — las 2 terminales abiertas con el arranque limpio del motor
+
+---
+
+> ✅ **Sistema listo.** Kali sin procesos, ipsets vacíos, block_counts={}, motor recién arrancado.
 
 ---
 
