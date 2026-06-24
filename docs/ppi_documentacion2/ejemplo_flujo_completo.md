@@ -1,18 +1,55 @@
 # Guion de Demo — Sustentación PPI
-**Rubén Mark Salazar Tocas · PPI UPeU 2026**  
+**Rubén Mark Salazar Tocas · PPI UPeU 2026**
 **Verificado en vivo 2026-06-23**
 
-> **Formato:** *cursiva* = lo que digo en voz alta · `código` = lo que ejecuto en pantalla
+> **Formato:** *cursiva* = lo que digo en voz alta · `código` = lo que ejecuto · 📸 = tomar captura
 
 ---
 
-## Tiempo disponible → elige tu plan
+## Todo lo que el sistema puede demostrar
 
-| ⏱ Tiempo | Plan | Escenarios |
+| # | Capacidad | Cómo se activa | Dónde se ve | Tiempo |
+|---|---|---|---|---|
+| 1 | Captura de tráfico en tiempo real | Suricata corre siempre | `tail -f eve.json` en sensor | continuo |
+| 2 | Score Isolation Forest por flujo | Cualquier flujo no-whitelist | `motor_decision.log` → `score=-0.XXXX` | continuo |
+| 3 | Decisión PERMIT (tráfico normal) | curl desde Desktop | log: sin entrada (whitelist skip) | inmediato |
+| 4 | Decisión LIMIT (sospechoso) | hping3 primer flujo | log: `SOSPECHOSO … LIMIT` | ~30s |
+| 5 | Decisión BLOCK (anomalía IF) | flujo score ≤ τ2 | log: `ANOMALÍA … BLOCK` | ~30s |
+| 6 | Heurístico HTTP-ABUSE | >100 req/30s desde hping3 | log: `HTTP-ABUSE … BLOCK → BLOCKED` | ~35s |
+| 7 | Heurístico Brute Force SSH | >15 intentos SSH/60s con hydra | log: `ANOMALÍA … BRUTE_FORCE_SSH BLOCK` | 60s |
+| 8 | Bloqueo real en servidor (ipset) | Automático tras BLOCK | `sudo ipset list ppi_blocked` en 192.168.0.120 | tras BLOCK |
+| 9 | LIMIT real en servidor (hashlimit) | Automático tras LIMIT | `sudo ipset list ppi_limited` en 192.168.0.120 | tras LIMIT |
+| 10 | Bloqueo progresivo #1→#2→#3 | Reincidir varias veces | `block_counts.json` + timeout en ipset | por corrida |
+| 11 | Bloqueo permanente (timeout=0) | Tercer bloqueo de misma IP | `ipset list` sin timeout | tras 3er BLOCK |
+| 12 | Telegram — alerta al operador | Automático en cada BLOCK/LIMIT | Celular del operador | tras detección |
+| 13 | Alerta TENDENCIA (pre-aviso) | score_medio_10flows < −0.35 | log: `TENDENCIA … AVISO` + Telegram 👀 | variable |
+| 14 | Whitelist — nunca bloquear | curl desde Desktop 192.168.0.20 | `ipset test ppi_blocked 192.168.0.20` → NOT in set | inmediato |
+| 15 | Control manual enforce.sh | `enforce.sh <ip> BLOCK\|LIMIT\|UNBLOCK` | ipset en servidor cambia al instante | inmediato |
+| 16 | Predictor XGBoost — ALERTA-PREDICTIVA | Automático tras BLOCK (ciclo 10s) | `predictor.log` → `P=XX%` | 10s tras BLOCK |
+| 17 | Dashboard web en tiempo real | Abrir navegador :8080 | Browser → stats flows/anomalías/latencia | continuo |
+| 18 | Estadísticas del motor | Cada 500 flujos | log: `Estadísticas flows=N latencia=Xms` | cada ~18s |
+| 19 | Latencia del pipeline | Verificar metricas | `cat latencia_pipeline.txt` → P95=34.7ms | inmediato |
+| 20 | Reentrenamiento IF automático | Mostrar crontab | `crontab -l` → domingos 02:00 | inmediato |
+| 21 | Reentrenamiento XGBoost automático | Mostrar crontab | `crontab -l` → diario 03:00 | inmediato |
+| 22 | Anti-regresión en reentrenamiento | Mostrar metricas F5 | `metricas_f5_xgboost.txt` → AUC antes/después | inmediato |
+| 23 | Hot-reload de modelos | Motor detecta cambio en .pkl | log: `Modelo recargado (hot-reload)` | automático |
+| 24 | AUC Isolation Forest = 0.8998 | Mostrar métricas | `cat metricas_offline.txt` | inmediato |
+| 25 | Precision 99.54% / Recall 99.40% | Mostrar métricas | `cat metricas_offline.txt` | inmediato |
+| 26 | AUC XGBoost v2 = 0.9992 | Mostrar métricas | `cat metricas_predictor_v2.txt` | inmediato |
+| 27 | FPR = 0.0% en datos nuevos (CA-16) | Mostrar resultado | `RESULTADOS_VALIDACION.md` → 119 flujos | inmediato |
+| 28 | 16/16 criterios PASS | `run_all.sh` | Terminal → 16 líneas PASS | ~2 min |
+| 29 | 40 corridas F6 en CSV | Mostrar archivo | `head resultados_f6_completo.csv` | inmediato |
+| 30 | Gráficas del modelo (7 PNG) | Abrir imágenes | `graficas_f6/` → AUC, ROC, distribución | inmediato |
+
+---
+
+## Qué puede demostrar según el tiempo disponible
+
+| ⏱ Tiempo | Plan | Capacidades que muestra |
 |---|---|---|
-| 5 min | MÍNIMO | Paso 0 → Escenario 1 → Métricas |
-| 10 min | **ESTÁNDAR** ← recomendado | Paso 0 → E1 → E2 → 16/16 PASS |
-| 15 min | COMPLETO | Paso 0 → E1 → E2 → Predictor → Normal → 16/16 |
+| **5 min** | MÍNIMO | 2, 4, 5, 6, 8, 24, 28 |
+| **10 min** | **ESTÁNDAR** ← recomendado | 2, 4, 5, 6, 7, 8, 9, 12, 14, 16, 24, 25, 26, 27, 28 |
+| **15 min** | COMPLETO | todas las anteriores + 10, 11, 15, 17, 18, 19, 20, 21, 22 |
 
 ---
 
@@ -22,112 +59,121 @@
 
 ---
 
-## [0:00] Apertura — 30 segundos
+## [0:00–0:30] Apertura y verificación del sistema
 
-*"Voy a demostrar el sistema funcionando en tiempo real. Tenemos tres máquinas: el sensor con Suricata en 192.168.0.110 que captura el tráfico, el servidor nginx en 192.168.0.120 que es el objetivo, y Kali Linux en 192.168.0.100 desde donde lanzaré los ataques."*
+*"Voy a demostrar el sistema funcionando en tiempo real. Tenemos tres máquinas: el sensor con Suricata en 192.168.0.110 que captura el tráfico, el servidor nginx en 192.168.0.120 que es el objetivo, y Kali Linux en 192.168.0.100 desde donde lanzaré los ataques. Primero verifico que todo está activo."*
 
-*"Primero verifico que todo está activo."*
-
-**Mostrar en Desktop:**
+**Ejecutar desde Desktop:**
 ```bash
 ssh m4rk@192.168.0.110 "systemctl is-active suricata ppi-motor.service ppi-predictor.service ppi-dashboard.service"
 ```
-**Lo que aparece:**
+**Aparece:**
 ```
 active
 active
 active
 active
 ```
-*"Cuatro servicios activos. El sistema está listo."*
+*"Cuatro servicios activos: Suricata capturando, motor de decisión, predictor XGBoost y dashboard web."*
 
-📸 **CAPTURA — los 4 `active`**
+📸 **CAPTURA — los 4 `active`** ← muestra capacidades 1, 2, 16, 17
 
 ---
 
-## [0:30] Abrir monitoreo — 30 segundos
+## [0:30–1:00] Abrir monitoreo
 
-*"Abro dos terminales para ver el sistema en vivo mientras corre el ataque."*
+*"Abro dos terminales para ver el sistema en vivo."*
 
-**Terminal 1 (dejar abierta y visible):**
+**Terminal 1:**
 ```bash
 ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
 ```
-*"Esta terminal muestra cada flujo que analiza el motor: el score del modelo y si lo permite, lo limita o lo bloquea."*
+*"Acá veo cada decisión del motor: el score del Isolation Forest y si permite, limita o bloquea el flujo."*
 
-**Terminal 2 (dejar abierta y visible):**
+**Terminal 2:**
 ```bash
 ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/predictor.log"
 ```
-*"Esta es la capa predictiva — el XGBoost que anticipa si una IP va a reincidir."*
+*"Acá veo el predictor XGBoost — evalúa el historial de cada IP y alerta si predice que va a reincidir."*
+
+📸 **CAPTURA — las 2 terminales vacías y limpias** ← confirma sistema en cero
 
 ---
 
-## [1:00] Escenario 1 — Ataque HTTP Flood — 4 minutos
+## [1:00–4:30] Escenario 1 — HTTP Flood (hping3) → muestra capacidades 2, 4, 5, 6, 8, 12, 16
 
-*"Lanzo el primer ataque: un flood de paquetes SYN hacia el puerto 80 del servidor."*
+*"Lanzo el primer ataque: un flood de paquetes SYN/HTTP hacia el servidor nginx en el puerto 80."*
 
-**En la VM Kali (abrir terminal en Kali y ejecutar):**
+**En la VM Kali (abrir terminal en Kali):**
 ```bash
 sudo hping3 -S -p 80 -i u5000 192.168.0.120
 ```
-*"Kali está enviando 200 paquetes por segundo al servidor. El sistema los está viendo ahora mismo a través de Suricata."*
+*"200 paquetes por segundo hacia el servidor. Suricata los captura, el motor los analiza con el Isolation Forest."*
 
-📸 **CAPTURA — hping3 corriendo con el contador de paquetes**
+📸 **CAPTURA — hping3 corriendo** ← capacidad 1 (captura en tiempo real)
 
 ---
 
-*"Miren la Terminal 1. En segundos van a ver aparecer las primeras detecciones."*
+*"Miren la Terminal 1. En segundos aparecen las primeras detecciones."*
 
-**[~30s después — aparece en Terminal 1]:**
+**[~30s — Terminal 1 muestra:]**
 ```
 WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:80
-  score=-0.4654 tipo=BAJA_ANOMALIA | LIMIT
+  score=-0.4654 grado=BAJA tipo=BAJA_ANOMALIA
+  byte_ratio=60.00 pkt_rate=1000.0 | LIMIT
 ```
-*"Primer flujo detectado. El Isolation Forest le dio un score de −0.4654. Mis umbrales son τ1=−0.4459 y τ2=−0.6027. El score cae entre los dos, así que el sistema aplica LIMIT: limita a esa IP a 100 paquetes por segundo."*
+*"Primer flujo detectado. Score −0.4654 — está entre mis dos umbrales τ1=−0.4459 y τ2=−0.6027, zona SOSPECHOSA. El sistema aplica LIMIT: le limita el ancho de banda a 100 paquetes por segundo en el servidor."*
+
+← muestra capacidades 2, 4, 9
 
 ---
 
-**[~35s después — aparece el BLOCK]:**
+**[~35s — Terminal 1 muestra:]**
 ```
 WARNING | HTTP-ABUSE | src=192.168.0.100 dst=192.168.0.120:80
   requests=100/30s | BLOCK → BLOCKED 192.168.0.100 (bloqueo#1 timeout=300s)
 ```
-*"A los 35 segundos el detector HTTP-ABUSE contó 100 requests de esa IP en 30 segundos — supera el umbral. El sistema escala a BLOCK: llama al servidor por SSH y agrega la IP al ipset."*
+*"A los 35 segundos el detector heurístico HTTP-ABUSE contó 100 requests de esa IP en 30 segundos. Supera el umbral — escala a BLOCK. El motor hace SSH al servidor y agrega la IP al ipset con timeout de 5 minutos."*
 
-📸 **CAPTURA — la línea HTTP-ABUSE BLOCK → BLOCKED en Terminal 1**
+📸 **CAPTURA — la línea HTTP-ABUSE BLOCK en Terminal 1** ← capacidades 5, 6, 12
 
 ---
 
-*"Verifico que el bloqueo está activo en el servidor."*
+*"Verifico el bloqueo directamente en el servidor."*
 
-**En Desktop:**
+**Ejecutar desde Desktop:**
 ```bash
 ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
 ```
-**Lo que aparece:**
+**Aparece:**
 ```
 Members:
 192.168.0.100 timeout 293
 ```
-*"Ahí está: 192.168.0.100 bloqueada con 293 segundos restantes. Todo el tráfico de esa IP cae en DROP por la regla iptables del servidor. El atacante está efectivamente cortado."*
+*"192.168.0.100 está en el set con 293 segundos restantes. La regla iptables hace DROP a todo paquete de esa IP. El atacante está cortado."*
 
-📸 **CAPTURA — ipset list con IP y timeout**
-
-*"Si la misma IP reincide, el bloqueo escala: 5 minutos la primera vez, 30 minutos la segunda, permanente la tercera."*
-
-**En Kali — parar el ataque:**
-```bash
-# Ctrl+C en la terminal de Kali
-```
+📸 **CAPTURA — ipset list con IP y timeout** ← capacidad 8
 
 ---
 
-## [5:00] Escenario 2 — Brute Force SSH — 3 minutos
+**[Terminal 2 muestra — predictor reacciona:]**
+```
+WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=77.XX%
+  score=-0.606X limits_15s=0 blocks_60s=1
+```
+*"En Terminal 2 el predictor XGBoost calculó P=77%: 77% de probabilidad de que esa IP genere otro bloqueo. El XGBoost no analiza el flujo actual — predice comportamiento futuro usando 9 features de historial."*
 
-*"Segundo ataque: fuerza bruta sobre SSH. Este es más interesante porque el Isolation Forest solo ve un flujo a la vez — un intento de login SSH individual se parece mucho al SSH legítimo."*
+📸 **CAPTURA — ALERTA-PREDICTIVA P=XX% en Terminal 2** ← capacidad 16
 
-**En Desktop — desbloquear Kali primero:**
+**Parar el ataque — en Kali: Ctrl+C**
+
+---
+
+## [4:30–7:30] Escenario 2 — Brute Force SSH (hydra) → muestra capacidades 2, 4, 5, 7, 8, 12
+
+*"Segundo ataque: fuerza bruta sobre SSH. Este es más interesante porque un intento de login SSH individual se parece al SSH legítimo en las features — el Isolation Forest solo ve flujos. Aquí entra una segunda capa de detección: el heurístico que cuenta intentos acumulados."*
+
+**Desde Desktop — desbloquear Kali:**
 ```bash
 bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
 ```
@@ -138,94 +184,123 @@ hydra -l root -P /usr/share/wordlists/fasttrack.txt ssh://192.168.0.120 -t 4
 ```
 *"Hydra prueba contraseñas del diccionario con 4 hilos en paralelo."*
 
-📸 **CAPTURA — hydra corriendo con los intentos**
+📸 **CAPTURA — hydra corriendo**
 
 ---
 
-**[~30s — aparece LIMIT en Terminal 1]:**
+**[~30s — Terminal 1 muestra LIMIT:]**
 ```
 WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:22
   score=-0.4832 tipo=BAJA_ANOMALIA | LIMIT
 ```
-*"El IF detecta algo sospechoso pero no está seguro — score intermedio, aplica LIMIT."*
+*"El Isolation Forest detecta algo sospechoso — score intermedio — aplica LIMIT."*
 
-**[~60s — aparece BLOCK en Terminal 1]:**
+**[~60s — Terminal 1 muestra BLOCK:]**
 ```
 WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:22
   score=-0.6228 tipo=BRUTE_FORCE_SSH | BLOCK → BLOCKED 192.168.0.100 (bloqueo#1 timeout=300s)
 ```
-*"A los 60 segundos el detector heurístico BF-SSH contó 15 intentos de autenticación desde esa IP en una ventana de 60 segundos. Supera el umbral — BLOCK por tipo BRUTE_FORCE_SSH. El lead time es exactamente 60 segundos: el tiempo de la ventana del heurístico."*
+*"A los 60 segundos exactos el heurístico BF-SSH contó 15 intentos de autenticación desde esa IP en la ventana de 60 segundos. Tipo BRUTE_FORCE_SSH — bloqueado. El lead time de este ataque es exactamente 60 segundos: el tiempo de la ventana del heurístico."*
 
-📸 **CAPTURA — BRUTE_FORCE_SSH BLOCK en Terminal 1**
-
-*"La clave aquí: el IF solo ve flujos individuales. El heurístico detecta el patrón acumulado — eso es lo que delata al atacante."*
+📸 **CAPTURA — BRUTE_FORCE_SSH BLOCK en Terminal 1** ← capacidades 7, 5, 8
 
 ---
 
-## [8:00] Validación formal — 2 minutos
+## [7:30–8:00] Whitelist — tráfico legítimo intacto → muestra capacidad 14, 27
 
-*"Para cerrar muestro que el sistema pasa todos los criterios de aceptación formales del PPI."*
+*"Demuestro que el sistema no bloquea tráfico legítimo. Este Desktop está en la whitelist."*
 
-**En Desktop:**
-```bash
-ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/run_all.sh"
-```
-
-*"Esta suite verifica 16 criterios automáticamente. Los tres más importantes:"*
-
-*"CA-02: AUC del Isolation Forest = 0.8998 — supera el mínimo de 0.85."*  
-*"CA-09: Latencia P95 del pipeline = 34.7 milisegundos — el límite era 500ms, el sistema es 14 veces más rápido."*  
-*"CA-16: generé 119 flujos de tráfico normal en una sesión nueva, diferente a la de entrenamiento — tasa de falsos positivos 0.0%."*
-
-📸 **CAPTURA — 16/16 PASS en pantalla**
-
-*"16 de 16 criterios PASS. El sistema funciona, detecta, bloquea y no interrumpe el tráfico legítimo."*
-
----
-
----
-
-# ESCENARIOS ADICIONALES (si hay tiempo o el jurado pregunta)
-
----
-
-## Escenario 3 — Predictor XGBoost (1 min)
-
-*"Mientras ocurrían los ataques, la Terminal 2 registró esto:"*
-
-**Mostrar Terminal 2 (predictor.log):**
-```
-WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=77.XX%
-  score=-0.606X limits_15s=0 blocks_60s=1
-```
-*"P=77%: el predictor estimó 77% de probabilidad de que esa IP generara otro bloqueo. El XGBoost no detecta el flujo actual — predice el comportamiento futuro. Usa 9 features de historial, sin el score del IF para evitar data leakage."*
-
----
-
-## Escenario 4 — Tráfico normal no se bloquea (1 min)
-
-*"El sistema no bloquea tráfico legítimo. Desktop está en la whitelist."*
-
-**En Desktop:**
+**Ejecutar desde Desktop:**
 ```bash
 ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 ```
-**Lo que aparece:**
+**Aparece:**
 ```
 192.168.0.20 is NOT in set ppi_blocked.
 ```
-*"En la validación formal, 119 flujos nuevos de tráfico normal: FPR = 0.0%."*
+*"Nunca aparece bloqueado. En la validación formal generé 119 flujos nuevos de tráfico normal — tasa de falsos positivos exactamente 0.0%."*
 
 ---
 
-## Escenario 5 — Autoaprendizaje (30 seg, sin ejecutar)
+## [8:00–10:00] Validación formal — 16/16 PASS → muestra capacidades 24–28
 
-*"El sistema se reentrena solo. El XGBoost se actualiza diariamente a las 3am con los eventos del motor. El IF se reentrena los domingos a las 2am."*
+*"Para cerrar demuestro que el sistema pasa todos los criterios de aceptación del PPI de manera automatizada."*
+
+**Ejecutar desde Desktop:**
+```bash
+ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion/run_all.sh"
+```
+*"Tres resultados clave:"*
+*"CA-02: AUC Isolation Forest = 0.8998 — supera el mínimo de 0.85."*
+*"CA-09: Latencia P95 = 34.7ms — 14 veces más rápido que el límite de 500ms."*
+*"CA-16: FPR en 119 flujos nuevos = 0.0% — el sistema no bloqueó ningún flujo legítimo."*
+
+📸 **CAPTURA — 16/16 PASS en pantalla** ← capacidades 24–28
+
+*"16 de 16 criterios PASS. El sistema detecta, bloquea, aprende y no interrumpe el tráfico legítimo."*
+
+---
+
+---
+
+# ESCENARIOS ADICIONALES — si el jurado pregunta o hay tiempo
+
+---
+
+## Bloqueo progresivo y permanente (capacidades 10, 11) — 2 min
+
+*"Si la misma IP reincide, el bloqueo escala automáticamente."*
+
+```bash
+# Ver el contador actual de bloqueos
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/block_counts.json"
+```
+*"Primer bloqueo: 5 minutos. Segundo: 30 minutos. Tercero en adelante: permanente — timeout=0 en ipset significa sin expiración."*
+
+```bash
+# Verificar bloqueo permanente (si ya ocurrió):
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked"
+# IP sin timeout = PERMANENTE
+```
+
+---
+
+## Control manual enforce.sh (capacidad 15) — 1 min
+
+*"El operador puede intervenir manualmente en cualquier momento."*
+
+```bash
+# Desde el sensor:
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 BLOCK 120
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 LIMIT 300
+bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
+```
+*"BLOCK, LIMIT o UNBLOCK con timeout configurable. Se aplica en el servidor vía SSH al instante."*
+
+---
+
+## Dashboard web (capacidad 17) — 30 seg
+
+*"El sistema tiene un dashboard web con estadísticas en tiempo real."*
+
+Abrir en navegador: `http://192.168.0.110:8080`
+
+*"Muestra flows por segundo, anomalías, IPs bloqueadas activas y latencia del pipeline."*
+
+---
+
+## Autoaprendizaje F5 (capacidades 20, 21, 22, 23) — 1 min
+
+*"El sistema se reentrena con los datos que genera el propio motor."*
 
 ```bash
 ssh m4rk@192.168.0.110 "crontab -l"
+# domingo 02:00 → IF  |  diario 03:00 → XGBoost
+
+ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_f5_xgboost.txt"
+# AUC antes vs después de cada reentrenamiento
 ```
-*"Si el modelo nuevo tiene AUC menor al anterior, no se reemplaza — mecanismo anti-regresión."*
+*"Si el modelo nuevo tiene AUC menor al anterior, no se reemplaza — mecanismo anti-regresión. El motor detecta el nuevo archivo .pkl automáticamente y recarga sin reiniciar el servicio."*
 
 ---
 
@@ -233,27 +308,23 @@ ssh m4rk@192.168.0.110 "crontab -l"
 
 # REFERENCIA RÁPIDA — MÉTRICAS PARA RESPONDER AL JURADO
 
-| Pregunta | Respuesta |
+| Si preguntan... | La respuesta es |
 |---|---|
-| ¿AUC del IF? | **0.8998** (mínimo requerido 0.85) |
-| ¿Precision / Recall? | **99.54% / 99.40%** |
-| ¿Cuánto tarda en detectar? | HTTP Flood: **~35s** · BF-SSH: **60s** |
-| ¿Latencia del pipeline? | **P95 = 34.7ms** (límite 500ms) |
-| ¿AUC del XGBoost? | **0.9992** |
-| ¿Errores del XGBoost? | **14** de 12,488 (7 FP + 7 FN) |
-| ¿Falsos positivos? | **FPR = 0.0%** en 119 flujos nuevos |
-| ¿Criterios de aceptación? | **16/16 PASS** |
-| ¿Disponibilidad en F6? | **100%** en 40 corridas |
+| ¿El modelo tiene sobreajuste? | AUC=0.8998 en datos de PRUEBA (no entrenamiento) — FPR=0% en sesión nueva |
+| ¿Cuánto tarda en detectar? | HTTP Flood: ~35s · BF-SSH: 60s exactos |
+| ¿Qué pasa si hay falsos positivos? | Whitelist protege la infraestructura; FPR=0.0% en 119 flujos nuevos |
+| ¿Por qué τ1=−0.4459? | Maximiza índice de Youden: TPR=99.40%, FPR=20.47% — mejor equilibrio |
+| ¿Por qué FPR=20% en τ1 y no bajar? | Bajar FPR a 5% haría escapar SYN floods con score≈−0.49 |
+| ¿El XGBoost no tiene leakage? | v2 eliminó el score IF como feature — AUC pasó de 1.0000 (artificial) a 0.9992 real |
+| ¿Qué feature es más importante en XGBoost? | `block_count_60s` (24.37%) — comportamiento, no métrica del modelo |
+| ¿La latencia cumple? | P95=34.7ms — el requisito era <500ms, cumple 14× |
+| ¿Cuántos datos de entrenamiento? | 53,708 flujos normales (80%), 13,427 holdout (20%) |
+| ¿Qué métricas tiene el IF? | AUC=0.8998, Precision=99.54%, Recall=99.40%, F1=0.9947 |
 
 ---
 
----
+# DOCUMENTACIÓN DETALLADA — Comandos y resultados verificados
 
-# DOCUMENTACIÓN DETALLADA — ESCENARIOS COMPLETOS
-
-> Lo que sigue es la documentación técnica completa de cada escenario con todos los comandos y outputs verificados.
-
----
 ## PASO 0 — Estado limpio garantizado (HACER SIEMPRE ANTES DE LA DEMO)
 
 > Los pasos **0A** se ejecutan **directamente en la VM Kali**.  
