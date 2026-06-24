@@ -1,0 +1,41 @@
+============================================================
+MÉTRICAS OFFLINE — PPI UPeU 2026
+Generado: 2026-06-16 17:37
+============================================================
+
+DATOS
+  n_train_normal  : 53,708  (80% usado en entrenamiento)
+  n_holdout_normal: 13,427  (20% usado en evaluación)
+  n_anom_eval     : 598,285
+
+MODELO
+  algoritmo       : IsolationForest(n_estimators=300, contamination=0.05)
+  offset_interno  : -0.5660
+
+CURVA ROC
+  AUC-ROC         : 0.8998
+
+UMBRALES
+  tau1            : -0.4459   # PERMIT/LIMIT — Youden
+  tau1_tpr        : 0.9940   # TPR en tau1
+  tau1_fpr        : 0.2047   # FPR en tau1
+  tau2            : -0.6027   # LIMIT/BLOCK  — FPR<=2%
+  tau2_tpr        : 0.1827   # TPR en tau2
+  tau2_fpr        : 0.0199   # FPR en tau2
+
+MÉTRICAS EN tau1
+  precision       : 0.9954
+  recall          : 0.9940
+  f1_score        : 0.9947
+  fp              : 2748
+  fn              : 3560
+
+SEPARACIÓN DE SCORES
+  score_medio_normal: -0.3965 ± 0.0753
+  score_medio_anom  : -0.5420 ± 0.0900
+  delta_separacion  : 0.1454
+
+ACTUALIZAR EN motor_decision.py:
+  TAU1 = -0.4459   # PERMIT/LIMIT
+  TAU2 = -0.6027   # LIMIT/BLOCK
+============================================================

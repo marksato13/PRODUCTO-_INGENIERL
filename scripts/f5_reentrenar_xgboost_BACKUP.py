@@ -24,8 +24,6 @@ Cron sugerido (diario 03:00):
 
 import argparse
 import bisect
-import glob
-import gzip
 import math
 import os
 import re
@@ -54,15 +52,9 @@ FEATURES = [
     'proto_tcp', 'proto_udp', 'proto_icmp',
     'hora_sin', 'hora_cos',
     'limit_count_15s', 'block_count_60s',
-    'block_rate_60s',
     'is_block',
 ]
 # 'score' eliminado: data leakage (labels derivados de score). Consistente con f4.
-# 'block_rate_60s' (bloqueos/seg en ventana 60s) agregado 2026-06-24 para que
-# este script vuelva a coincidir con el modelo real en producción — f4_entrenar
-# _predictor_v2.py y predictor.py ya la usan (10 features) desde el 2026-06-23,
-# pero este script se quedó en 9 y nunca se actualizó (bug detectado al probar
-# la corrección de ventana/datos: "Feature shape mismatch, expected: 10, got 9").
 
 RE_EVENT = re.compile(
     r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ \| WARNING \| '
@@ -74,61 +66,30 @@ RE_EVENT = re.compile(
 
 TAU2 = -0.6027  # umbral BLOCK
 
-# Si --horas no se especifica, el cron diario (ventana 24h) casi siempre
-# encuentra <100 eventos y se autodescarta sin reentrenar (bug detectado
-# el 2026-06-24: 2 corridas de cron consecutivas con 91 y 0 eventos).
-# Con esta lista se amplía la ventana automáticamente hasta encontrar
-# suficientes eventos, sin requerir intervención manual. Tope en 168h (7d)
-# porque logrotate (/etc/logrotate.d/ppi) solo conserva 7 rotaciones diarias.
-ESCALADO_HORAS = [24, 72, 168]   # 1 día, 3 días, 7 días
-
-
-def archivos_log_disponibles(path):
-    """
-    Lista el log activo + rotados por logrotate (path.1, path.2.gz, ...).
-    /etc/logrotate.d/ppi rota motor_decision.log a diario con 'rotate 7' y
-    'delaycompress' (.1 sin comprimir, .2.gz en adelante comprimidos).
-    Sin esto, --horas >24 no encuentra más datos porque solo se leía el
-    archivo activo (bug detectado el 2026-06-24).
-    """
-    archivos = [path] if os.path.exists(path) else []
-    archivos += sorted(glob.glob(f"{path}.*"))
-    return archivos
-
-
-def _abrir(path):
-    return gzip.open(path, 'rt', errors='ignore') if path.endswith('.gz') \
-        else open(path, 'r', errors='ignore')
-
 
 def parse_log(path, desde_ts):
-    """Lee eventos LIMIT/BLOCK del log activo + rotados desde `desde_ts`."""
+    """Lee eventos LIMIT/BLOCK del log desde `desde_ts` en adelante."""
     events = []
-    for archivo in archivos_log_disponibles(path):
-        try:
-            with _abrir(archivo) as f:
-                for line in f:
-                    m = RE_EVENT.search(line)
-                    if not m:
-                        continue
-                    ts_str, src, dst, proto, score_s, decision = m.groups()
-                    ts = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
-                    if ts < desde_ts:
-                        continue
-                    dst_parts = dst.rsplit(':', 1)
-                    dest_port = int(dst_parts[1]) if len(dst_parts) == 2 and dst_parts[1].isdigit() else 0
-                    proto = proto.upper()
-                    events.append({
-                        'ts': ts,
-                        'src': src,
-                        'proto': proto,
-                        'score': float(score_s),
-                        'dest_port': dest_port,
-                        'decision': decision,
-                    })
-        except Exception as ex:
-            print(f"  AVISO: no se pudo leer {archivo}: {ex}")
-    events.sort(key=lambda e: e['ts'])
+    with open(path, 'r', errors='ignore') as f:
+        for line in f:
+            m = RE_EVENT.search(line)
+            if not m:
+                continue
+            ts_str, src, dst, proto, score_s, decision = m.groups()
+            ts = datetime.strptime(ts_str, '%Y-%m-%d %H:%M:%S')
+            if ts < desde_ts:
+                continue
+            dst_parts = dst.rsplit(':', 1)
+            dest_port = int(dst_parts[1]) if len(dst_parts) == 2 and dst_parts[1].isdigit() else 0
+            proto = proto.upper()
+            events.append({
+                'ts': ts,
+                'src': src,
+                'proto': proto,
+                'score': float(score_s),
+                'dest_port': dest_port,
+                'decision': decision,
+            })
     return events
 
 
@@ -186,7 +147,6 @@ def construir_dataset(events):
             math.cos(2 * math.pi * h / 24),
             len(lw),
             len(bw),
-            len(bw) / 60.0,   # block_rate_60s — igual fórmula que f4/predictor.py
             int(ev['decision'] == 'BLOCK'),  # is_block sin depender de score
         ])
         rows_y.append(label)
@@ -206,46 +166,33 @@ def auc_modelo_actual(X_test, y_test):
 # ─────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--horas', type=int, default=None,
-                        help='Ventana de log a usar (default: auto-escala 24h→30d hasta tener datos suficientes)')
+    parser.add_argument('--horas', type=int, default=24,
+                        help='Ventana de log a usar (default: 24h)')
     parser.add_argument('--forzar', action='store_true',
                         help='Reemplaza el modelo aunque el AUC sea menor')
     args = parser.parse_args()
 
     ahora = datetime.now()
     ahora_str = ahora.strftime('%Y-%m-%d %H:%M:%S')
+    desde = ahora - timedelta(hours=args.horas)
 
     print(f"\n{'='*60}")
     print(f"F5 — Reentrenamiento XGBoost  [{ahora_str}]")
     print(f"{'='*60}")
+    print(f"Ventana: últimas {args.horas}h  (desde {desde.strftime('%Y-%m-%d %H:%M')})")
 
-    # Si el usuario pasó --horas explícitamente, se respeta tal cual
-    # (sin autoescalar). Si no, se prueba 24h→30d hasta tener datos.
-    intentos_horas = [args.horas] if args.horas is not None else ESCALADO_HORAS
-
-    # ── [1] Leer log, autoescalando ventana si hace falta ─────
+    # ── [1] Leer log ──────────────────────────────────────────
+    print(f"\n[1] Leyendo {LOG} ...")
     if not os.path.exists(LOG):
         print(f"ERROR: No existe {LOG}")
         sys.exit(1)
 
-    events = []
-    horas_usadas = None
-    for h in intentos_horas:
-        desde = ahora - timedelta(hours=h)
-        print(f"\n[1] Leyendo {LOG} (ventana {h}h, desde {desde.strftime('%Y-%m-%d %H:%M')})...")
-        events = parse_log(LOG, desde)
-        print(f"  Eventos LIMIT+BLOCK en ventana: {len(events):,}")
-        if len(events) >= 100:
-            horas_usadas = h
-            break
-        print(f"  Insuficiente (<100) — ampliando ventana...")
+    events = parse_log(LOG, desde)
+    print(f"  Eventos LIMIT+BLOCK en ventana: {len(events):,}")
 
-    if horas_usadas is None:
-        print("\n  AVISO: ni con la ventana más amplia "
-              f"({intentos_horas[-1]}h) hay >=100 eventos — no se reentrena")
+    if len(events) < 100:
+        print("  AVISO: Muy pocos eventos (<100) — amplia la ventana con --horas")
         sys.exit(0)
-    if horas_usadas != intentos_horas[0]:
-        print(f"\n  Ventana final usada: {horas_usadas}h (autoescalada)")
 
     # ── [2] Construir dataset ─────────────────────────────────
     print("\n[2] Construyendo features + labels automáticos...")
@@ -306,12 +253,12 @@ def main():
     if not args.forzar:
         if auc_nuevo < 0.70:
             print(f"\n  AVISO: AUC={auc_nuevo:.4f} < 0.70 — modelo NO reemplazado")
-            _guardar_metricas(ahora_str, horas_usadas, len(events), auc_anterior, auc_nuevo, prec, rec, reemplazado=False)
+            _guardar_metricas(ahora_str, args.horas, len(events), auc_anterior, auc_nuevo, prec, rec, reemplazado=False)
             sys.exit(0)
         if auc_anterior is not None and (auc_nuevo - auc_anterior) < -0.05:
             print(f"\n  AVISO: AUC retrocedió {auc_anterior - auc_nuevo:.4f} — modelo NO reemplazado")
             print("  Usa --forzar para reemplazar de todas formas")
-            _guardar_metricas(ahora_str, horas_usadas, len(events), auc_anterior, auc_nuevo, prec, rec, reemplazado=False)
+            _guardar_metricas(ahora_str, args.horas, len(events), auc_anterior, auc_nuevo, prec, rec, reemplazado=False)
             sys.exit(0)
 
     # ── [8] Guardar ───────────────────────────────────────────
@@ -322,7 +269,7 @@ def main():
         f.write('\n'.join(FEATURES) + '\n')
     print(f"  Guardado: {MODEL_OUT}")
 
-    _guardar_metricas(ahora_str, horas_usadas, len(events), auc_anterior, auc_nuevo, prec, rec, reemplazado=True)
+    _guardar_metricas(ahora_str, args.horas, len(events), auc_anterior, auc_nuevo, prec, rec, reemplazado=True)
     print("\n✅ Reentrenamiento XGBoost completado\n")
 
 

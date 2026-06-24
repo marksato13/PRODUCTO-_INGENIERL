@@ -9,11 +9,6 @@ Produce (si AUC no retrocede > 0.02):
   models/scaler.pkl
   models/features.csv
   results/metricas_f5_if.txt    ← registro de la corrida
-  results/metricas_offline.txt  ← τ1/τ2 RECALCULADOS para el modelo nuevo
-                                   (el motor lee este archivo en cada arranque;
-                                   si no se recalcula aquí, el motor sigue
-                                   operando con umbrales calibrados para el
-                                   modelo VIEJO — bug detectado el 2026-06-24)
 
 Uso:
   python3 scripts/f5_reentrenar_if.py
@@ -37,8 +32,7 @@ import numpy as np
 import pandas as pd
 import joblib
 from sklearn.ensemble import IsolationForest
-from sklearn.metrics import (roc_auc_score, roc_curve,
-                             precision_score, recall_score, f1_score)
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
@@ -52,7 +46,6 @@ MODEL_IF   = f"{MODEL_DIR}/isolation_forest.pkl"
 MODEL_SC   = f"{MODEL_DIR}/scaler.pkl"
 MODEL_FEAT = f"{MODEL_DIR}/features.csv"
 METRICAS   = f"{RESULTS}/metricas_f5_if.txt"
-METRICAS_OFFLINE = f"{RESULTS}/metricas_offline.txt"  # archivo que lee el motor
 
 NORMAL_IPS = {'192.168.0.20', '192.168.0.120'}
 
@@ -133,106 +126,6 @@ def auc_modelo_existente(X_normal, X_anom):
     clf = joblib.load(MODEL_IF)
     scaler = joblib.load(MODEL_SC)
     return auc_modelo(clf, scaler, X_normal, X_anom), clf, scaler
-
-
-def recalibrar_umbrales(clf, scaler, df_holdout_normal):
-    """
-    Recalcula τ1/τ2 contra el modelo NUEVO y sobreescribe
-    results/metricas_offline.txt — el único archivo que motor_decision.py
-    lee al arrancar. Misma lógica que fase3_evaluar.py (Youden / FPR<=2%),
-    pero usando TODOS los archivos *_anom_*.gz (no solo los primeros 3).
-
-    Sin este paso, el motor sigue arrancando con τ1/τ2 calibrados para
-    el modelo ANTERIOR — bug detectado el 2026-06-24 (modelo del 22/06
-    corriendo con umbrales del 16/06, causando que escaneos de puertos
-    dejaran de bloquearse).
-    """
-    print("\n[6] Recalibrando τ1/τ2 contra el modelo nuevo...")
-
-    X_normal = scaler.transform(df_holdout_normal[FEATURES])
-    scores_n = clf.score_samples(X_normal)
-
-    archivos_b = sorted(glob.glob(f"{DATA_DIR}/*_anom_*.gz"))
-    if not archivos_b:
-        print("  AVISO: no hay archivos *_anom_*.gz — no se pudo recalibrar τ1/τ2")
-        return
-
-    anom_events = []
-    for path in archivos_b:
-        anom_events.extend(parse_flows(path, src_filter=None, max_flows=100_000))
-    # excluir IPs normales, igual que fase3_evaluar.py
-    anom_events = [e for e in anom_events if e.get('src_ip') not in NORMAL_IPS]
-
-    df_anom = extract_features(anom_events)[FEATURES].dropna()
-    df_anom = df_anom[df_anom['pkts_toserver'] > 0].reset_index(drop=True)
-    X_anom   = scaler.transform(df_anom)
-    scores_a = clf.score_samples(X_anom)
-
-    y_true  = np.array([0] * len(scores_n) + [1] * len(scores_a))
-    y_score = np.concatenate([-scores_n, -scores_a])
-    fpr_arr, tpr_arr, thresholds = roc_curve(y_true, y_score)
-    auc = roc_auc_score(y_true, y_score)
-    thresholds_if = -thresholds
-
-    youden   = tpr_arr - fpr_arr
-    idx_tau1 = np.argmax(youden)
-    tau1     = float(thresholds_if[idx_tau1])
-    tpr_tau1 = float(tpr_arr[idx_tau1])
-    fpr_tau1 = float(fpr_arr[idx_tau1])
-
-    candidatos = np.where(fpr_arr <= 0.02)[0]
-    idx_tau2 = candidatos[np.argmax(tpr_arr[candidatos])] if len(candidatos) > 0 else np.argmin(fpr_arr)
-    tau2     = float(thresholds_if[idx_tau2])
-    tpr_tau2 = float(tpr_arr[idx_tau2])
-    fpr_tau2 = float(fpr_arr[idx_tau2])
-
-    y_pred_n  = (scores_n <= tau1).astype(int)
-    y_pred_a  = (scores_a <= tau1).astype(int)
-    y_pred    = np.concatenate([y_pred_n, y_pred_a])
-    precision = precision_score(y_true, y_pred, zero_division=0)
-    recall    = recall_score(y_true, y_pred, zero_division=0)
-    f1        = f1_score(y_true, y_pred, zero_division=0)
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    with open(METRICAS_OFFLINE, 'w') as f:
-        f.write("=" * 60 + "\n")
-        f.write("MÉTRICAS OFFLINE — PPI UPeU 2026\n")
-        f.write(f"Generado: {timestamp}  (recalibrado por f5_reentrenar_if.py)\n")
-        f.write("=" * 60 + "\n\n")
-        f.write("DATOS\n")
-        f.write(f"  n_train_normal  : {len(df_holdout_normal) * 4:,}  (80% usado en entrenamiento)\n")
-        f.write(f"  n_holdout_normal: {len(df_holdout_normal):,}  (20% usado en evaluación)\n")
-        f.write(f"  n_anom_eval     : {len(df_anom):,}\n\n")
-        f.write("MODELO\n")
-        f.write(f"  algoritmo       : IsolationForest(n_estimators=300, contamination=0.05)\n")
-        f.write(f"  offset_interno  : {clf.offset_:.4f}\n\n")
-        f.write("CURVA ROC\n")
-        f.write(f"  AUC-ROC         : {auc:.4f}\n\n")
-        f.write("UMBRALES\n")
-        f.write(f"  tau1            : {tau1:.4f}   # PERMIT/LIMIT — Youden\n")
-        f.write(f"  tau1_tpr        : {tpr_tau1:.4f}   # TPR en tau1\n")
-        f.write(f"  tau1_fpr        : {fpr_tau1:.4f}   # FPR en tau1\n")
-        f.write(f"  tau2            : {tau2:.4f}   # LIMIT/BLOCK  — FPR<=2%\n")
-        f.write(f"  tau2_tpr        : {tpr_tau2:.4f}   # TPR en tau2\n")
-        f.write(f"  tau2_fpr        : {fpr_tau2:.4f}   # FPR en tau2\n\n")
-        f.write("MÉTRICAS EN tau1\n")
-        f.write(f"  precision       : {precision:.4f}\n")
-        f.write(f"  recall          : {recall:.4f}\n")
-        f.write(f"  f1_score        : {f1:.4f}\n\n")
-        f.write("SEPARACIÓN DE SCORES\n")
-        f.write(f"  score_medio_normal: {scores_n.mean():.4f} ± {scores_n.std():.4f}\n")
-        f.write(f"  score_medio_anom  : {scores_a.mean():.4f} ± {scores_a.std():.4f}\n")
-        f.write(f"  delta_separacion  : {scores_n.mean() - scores_a.mean():.4f}\n\n")
-        f.write("ACTUALIZAR EN motor_decision.py:\n")
-        f.write(f"  TAU1 = {tau1:.4f}   # PERMIT/LIMIT\n")
-        f.write(f"  TAU2 = {tau2:.4f}   # LIMIT/BLOCK\n")
-        f.write("=" * 60 + "\n")
-
-    print(f"  τ1 = {tau1:.4f}  (Youden: TPR={tpr_tau1:.1%}, FPR={fpr_tau1:.1%})")
-    print(f"  τ2 = {tau2:.4f}  (FPR≤2%: TPR={tpr_tau2:.1%}, FPR={fpr_tau2:.1%})")
-    print(f"  Guardado: {METRICAS_OFFLINE}")
-    print("  El motor debe reiniciarse para tomar los nuevos umbrales:")
-    print("    sudo systemctl restart ppi-motor.service")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -339,13 +232,8 @@ def main():
     print(f"  Guardado: {MODEL_SC}")
     print(f"  Guardado: {MODEL_FEAT}")
 
-    # Recalibrar τ1/τ2 contra el modelo nuevo — sin esto el motor sigue
-    # usando umbrales calculados para el modelo anterior tras el reinicio.
-    recalibrar_umbrales(clf_nuevo, scaler_nuevo, df_holdout_nuevo)
-
     _guardar_metricas(ahora, auc_anterior, auc_nuevo, len(df_train), reemplazado=True)
-    print("\n✅ Reentrenamiento IF completado — reinicia ppi-motor.service para "
-          "tomar el modelo Y los umbrales nuevos\n")
+    print("\n✅ Reentrenamiento IF completado — motor recargará modelo automáticamente\n")
 
 
 def _guardar_metricas(ahora, auc_anterior, auc_nuevo, n_flows, reemplazado):

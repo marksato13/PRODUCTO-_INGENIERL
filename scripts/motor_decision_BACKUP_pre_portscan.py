@@ -94,15 +94,6 @@ HTTP_VENTANA_SEG   = 30   # ventana de observación en segundos
 HTTP_UMBRAL_LIMIT  = 50   # requests en ventana → LIMIT
 HTTP_UMBRAL_BLOCK  = 100  # requests en ventana → BLOCK directo
 
-# ── Detector de Port Scan (puertos distintos en ventana corta) ─
-# El IF puntúa cada flujo de forma individual: un escaneo manda 1-2
-# paquetes por puerto, lo que cae dentro del rango normal por flujo.
-# Este heurístico cubre ese punto ciego contando puertos DISTINTOS
-# tocados por el mismo origen — variedad de puertos, no repetición.
-PORTSCAN_VENTANA_SEG  = 10   # ventana de observación en segundos
-PORTSCAN_UMBRAL_LIMIT = 8    # puertos distintos en ventana → LIMIT
-PORTSCAN_UMBRAL_BLOCK = 20   # puertos distintos en ventana → BLOCK directo
-
 # ─────────────────────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 logging.basicConfig(
@@ -411,27 +402,6 @@ def detectar_brute_force(ip, dest_port, ts_flow, ssh_intentos):
     return None
 
 
-def detectar_port_scan(ip, dest_port, ts_flow, port_scan_track):
-    """
-    Detector de escaneo de puertos.
-    Cuenta puertos DISTINTOS tocados por la misma IP en ventana corta
-    (independiente del score IF de cada flujo individual).
-    Retorna ('BLOCK', n_puertos) o ('LIMIT', n_puertos) si supera umbral, None si normal.
-    """
-    ahora = ts_flow if ts_flow else time.time()
-    ventana_inicio = ahora - PORTSCAN_VENTANA_SEG
-
-    port_scan_track[ip].append((ahora, dest_port))
-    port_scan_track[ip] = [t for t in port_scan_track[ip] if t[0] >= ventana_inicio]
-
-    n_puertos = len({p for _, p in port_scan_track[ip]})
-    if n_puertos >= PORTSCAN_UMBRAL_BLOCK:
-        return ('BLOCK', n_puertos)
-    elif n_puertos >= PORTSCAN_UMBRAL_LIMIT:
-        return ('LIMIT', n_puertos)
-    return None
-
-
 def main():
     log.info("=" * 60)
     log.info("Motor de decisión PPI — iniciando")
@@ -452,14 +422,12 @@ def main():
     bloqueados    = set()
     limitados     = set()
     _block_repeat_ts = {}
-    ssh_intentos    = defaultdict(list)   # ip → [timestamps] brute force SSH
-    http_requests   = defaultdict(list)   # ip → [timestamps] HTTP abuse
-    port_scan_track = defaultdict(list)   # ip → [(timestamp, dest_port)] port scan
+    ssh_intentos  = defaultdict(list)   # ip → [timestamps] brute force SSH
+    http_requests = defaultdict(list)   # ip → [timestamps] HTTP abuse
     total_flows   = 0
     total_anom    = 0
     total_bf      = 0
     total_http_ab = 0
-    total_pscan   = 0
     latencias_ms  = []                  # para calcular latencia media
     _kdrops_prev  = None                # kernel_drops última lectura stats
     _kdrops_ts    = time.time()         # timestamp de esa lectura
@@ -470,8 +438,6 @@ def main():
              f"umbral_limit={BF_UMBRAL_LIMIT} umbral_block={BF_UMBRAL_BLOCK}")
     log.info(f"HTTP Abuse      : ventana={HTTP_VENTANA_SEG}s "
              f"umbral_limit={HTTP_UMBRAL_LIMIT} umbral_block={HTTP_UMBRAL_BLOCK}")
-    log.info(f"Port Scan       : ventana={PORTSCAN_VENTANA_SEG}s "
-             f"umbral_limit={PORTSCAN_UMBRAL_LIMIT} umbral_block={PORTSCAN_UMBRAL_BLOCK}")
 
     for line in seguir_eve(EVE_PATH):
         try:
@@ -627,44 +593,6 @@ def main():
                 )
             # Continuar al análisis de score igual (no skip)
 
-        # ── Detector de Port Scan (override temporal) ─────────
-        pscan = detectar_port_scan(src_ip, dest_port, ts_flow, port_scan_track)
-        if pscan:
-            ps_accion, ps_n = pscan
-            _flow_anomaly = True
-            total_pscan += 1
-            if ps_accion == 'BLOCK' and src_ip not in bloqueados:
-                bloqueados.add(src_ip)
-                limitados.discard(src_ip)
-                resp = bloquear_ip(src_ip)
-                log.warning(
-                    f"PORT-SCAN | src={src_ip} dst={dest_ip}:{dest_port} "
-                    f"proto={proto} puertos_distintos={ps_n}/{PORTSCAN_VENTANA_SEG}s | BLOCK → {resp}"
-                )
-                telegram_alerta_ip(src_ip,
-                    f"🚨 PPI ALERTA — PORT SCAN\n"
-                    f"Accion           : BLOCK (DROP)\n"
-                    f"IP               : {src_ip}\n"
-                    f"Puertos distintos: {ps_n}/{PORTSCAN_VENTANA_SEG}s\n"
-                    f"Score            : {score:.4f}\n"
-                    f"Hora             : {datetime.now().strftime('%H:%M:%S')}"
-                )
-            elif ps_accion == 'LIMIT' and src_ip not in limitados and src_ip not in bloqueados:
-                limitados.add(src_ip)
-                resp = limitar_ip(src_ip)
-                log.warning(
-                    f"PORT-SCAN | src={src_ip} dst={dest_ip}:{dest_port} "
-                    f"proto={proto} puertos_distintos={ps_n}/{PORTSCAN_VENTANA_SEG}s | LIMIT → {resp}"
-                )
-                telegram_alerta_ip(src_ip,
-                    f"⚠️ PPI ALERTA — PORT SCAN\n"
-                    f"Accion           : LIMIT (100 pkt/s)\n"
-                    f"IP               : {src_ip}\n"
-                    f"Puertos distintos: {ps_n}/{PORTSCAN_VENTANA_SEG}s\n"
-                    f"Score            : {score:.4f}\n"
-                    f"Hora             : {datetime.now().strftime('%H:%M:%S')}"
-                )
-
         # ── Pre-alerta de tendencia (score medio < TAU_AVISO, aún PERMIT) ───
         if src_ip not in _score_hist:
             _score_hist[src_ip] = deque(maxlen=AVISO_MIN_FL)
@@ -766,14 +694,13 @@ def main():
         if total_flows % 10_000 == 0 and _score_hist:
             _score_hist.clear()
             _last_tg_alert.clear()
-            port_scan_track.clear()
 
         if total_flows % 500 == 0:
             lat_med = sum(latencias_ms) / len(latencias_ms) if latencias_ms else 0
             latencias_ms.clear()
             log.info(
                 f"Estadísticas | flows={total_flows} anomalías={total_anom} "
-                f"bf={total_bf} http_abuse={total_http_ab} port_scan={total_pscan} "
+                f"bf={total_bf} http_abuse={total_http_ab} "
                 f"bloqueados={len(bloqueados)} limitados={len(limitados)} "
                 f"latencia_media={lat_med:.2f}ms"
             )

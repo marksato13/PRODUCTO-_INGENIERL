@@ -1,0 +1,10 @@
+dest_port
+proto_tcp
+proto_udp
+proto_icmp
+hora_sin
+hora_cos
+limit_count_15s
+block_count_60s
+block_rate_60s
+is_block
