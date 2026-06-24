@@ -29,50 +29,47 @@ Monitorea todo el tráfico de red en tiempo real, detecta comportamiento anómal
 
 ## PASO 0 — Estado limpio garantizado (HACER SIEMPRE ANTES DE LA DEMO)
 
-> Ejecutar en orden desde Desktop (192.168.0.20). Tarda ~30 segundos.
-
-### ⚙️ CONFIGURACIÓN ÚNICA en Kali (una sola vez, desde la VM directamente)
-
-Para poder matar procesos de ataque desde Desktop sin contraseña, ejecutar una vez **dentro de la VM Kali** (no por SSH):
-
-```bash
-echo 'm4rk ALL=(ALL) NOPASSWD: /usr/bin/pkill, /bin/kill, /usr/bin/killall' | sudo tee /etc/sudoers.d/ppi-demo
-sudo chmod 440 /etc/sudoers.d/ppi-demo
-```
+> Los pasos **0A** se ejecutan **directamente en la VM Kali**.  
+> Los pasos **0B al 0G** se ejecutan desde **Desktop (192.168.0.20)**.
 
 ---
 
-### 0A — Verificar que Kali no tiene ningún ataque en curso
+### 0A — Kali: verificar y limpiar procesos de ataque
+> 🖥️ **Ejecutar directamente en la VM Kali** (abrir terminal en la VM)
 
+**Verificar si hay algún ataque corriendo:**
 ```bash
-ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap|nikto|siege' | grep -v grep || echo KALI_LIMPIA"
+ps aux | grep -E 'hping3|hydra|nmap|nikto|siege' | grep -v grep || echo KALI_LIMPIA
 ```
 
-**Resultado esperado (sin ataque activo):**
+**Resultado esperado (sin ataque):**
 ```
 KALI_LIMPIA
 ```
 
-**Resultado real verificado 2026-06-23** (con hping3 corriendo):
+**Resultado real verificado 2026-06-23** (con hping3 activo):
 ```
 root  1308  sudo hping3 -S -p 80 -i u5000 192.168.0.120
 root  1318  hping3 -S -p 80 -i u5000 192.168.0.120
 ```
 
-**Si aparecen procesos, matarlos** (contraseña sudo de Kali = `Cisco123` con C mayúscula):
+**Si hay procesos activos — matarlos (desde la misma VM Kali):**
 ```bash
-ssh m4rk@192.168.0.100 "echo 'Cisco123' | sudo -S pkill -9 hping3; echo 'Cisco123' | sudo -S pkill -9 hydra; echo 'Cisco123' | sudo -S pkill -9 nmap 2>/dev/null"
+sudo pkill -9 hping3
+sudo pkill -9 hydra
+sudo pkill -9 nmap
 sleep 2
-ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap' | grep -v grep || echo KALI_LIMPIA"
+ps aux | grep -E 'hping3|hydra|nmap' | grep -v grep || echo KALI_LIMPIA
 ```
+
 **Resultado verificado 2026-06-23:**
 ```
 KALI_LIMPIA
 ```
 
-> ⚠️ **Importante:** después de matar hping3, esperar **90 segundos** antes de reiniciar el motor.
-> Suricata tarda ~60s en vaciar los flows residuales del ataque.
-> Si reinicias el motor antes, arrancará con backlog y generará alertas falsas.
+> ⚠️ **Esperar 90 segundos** después de matar cualquier ataque antes de continuar.  
+> Suricata tarda ~60s en vaciar los flows residuales. Si reinicias el motor antes,  
+> arrancará con backlog y generará alertas falsas.
 
 ---
 
@@ -197,10 +194,12 @@ ssh m4rk@192.168.0.110 "tail -f /home/m4rk/ppi-surikata-producto/results/predict
 ### Qué demuestra
 Que el sistema detecta tráfico volumétrico anómalo, escala de LIMIT a BLOCK, y ejecuta el bloqueo real en el servidor — todo automáticamente.
 
-### Comando (ejecutar y dejar corriendo)
+### Comando
+> 🖥️ **Ejecutar directamente en la VM Kali:**
 ```bash
-ssh m4rk@192.168.0.100 "sudo hping3 -S -p 80 -i u5000 192.168.0.120"
+sudo hping3 -S -p 80 -i u5000 192.168.0.120
 ```
+> Dejar corriendo — no cerrar la terminal.
 
 ### Lo que aparece en `motor_decision.log` (verificado en vivo 2026-06-23)
 
@@ -239,8 +238,9 @@ Bloqueo #3 → timeout=0       (PERMANENTE)
 *"Si la misma IP reincide, el sistema la bloquea progresivamente: 5 minutos, luego 30 minutos, y a la tercera vez el bloqueo es permanente."*
 
 ### Parar el ataque
+> 🖥️ **En la VM Kali:** presionar `Ctrl+C` en la terminal donde corre hping3, o:
 ```bash
-ssh m4rk@192.168.0.100 "sudo pkill hping3"
+sudo pkill -9 hping3
 ```
 
 ---
@@ -252,14 +252,16 @@ ssh m4rk@192.168.0.100 "sudo pkill hping3"
 ### Qué demuestra
 Que el sistema tiene una segunda capa de detección heurística — no solo el Isolation Forest. Un ataque de fuerza bruta SSH se parece al SSH legítimo en las features de flujo, pero el heurístico lo detecta contando intentos.
 
-### Preparar (desbloquear Kali del escenario anterior)
+### Preparar (desde Desktop — desbloquear Kali)
 ```bash
+# Desde Desktop (192.168.0.20):
 bash /home/m4rk/ppi-surikata-producto/scripts/enforce.sh 192.168.0.100 UNBLOCK
 ```
 
 ### Comando
+> 🖥️ **Ejecutar directamente en la VM Kali:**
 ```bash
-ssh m4rk@192.168.0.100 "hydra -l root -P /usr/share/wordlists/fasttrack.txt ssh://192.168.0.120 -t 4"
+hydra -l root -P /usr/share/wordlists/fasttrack.txt ssh://192.168.0.120 -t 4
 ```
 
 ### Lo que aparece en `motor_decision.log`
