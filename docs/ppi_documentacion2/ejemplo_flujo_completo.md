@@ -31,31 +31,65 @@ Monitorea todo el tráfico de red en tiempo real, detecta comportamiento anómal
 
 > Ejecutar en orden desde Desktop (192.168.0.20). Tarda ~30 segundos.
 
+### ⚙️ CONFIGURACIÓN ÚNICA en Kali (una sola vez, desde la VM directamente)
+
+Para poder matar procesos de ataque desde Desktop sin contraseña, ejecutar una vez **dentro de la VM Kali** (no por SSH):
+
+```bash
+echo 'm4rk ALL=(ALL) NOPASSWD: /usr/bin/pkill, /bin/kill, /usr/bin/killall' | sudo tee /etc/sudoers.d/ppi-demo
+sudo chmod 440 /etc/sudoers.d/ppi-demo
+```
+
+---
+
 ### 0A — Verificar que Kali no tiene ningún ataque en curso
 
 ```bash
-ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap|nikto|ab |siege|curl.*loop|python.*flood' | grep -v grep"
+ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap|nikto|siege' | grep -v grep || echo KALI_LIMPIA"
 ```
-**Si no sale nada:** ✅ Kali limpia, continuar.  
-**Si sale algo:** matar el proceso antes de seguir:
+
+**Resultado esperado (sin ataque activo):**
+```
+KALI_LIMPIA
+```
+
+**Resultado real verificado 2026-06-23** (con hping3 corriendo):
+```
+root  1308  sudo hping3 -S -p 80 -i u5000 192.168.0.120
+root  1318  hping3 -S -p 80 -i u5000 192.168.0.120
+```
+
+**Si aparecen procesos, matarlos** (requiere NOPASSWD configurado arriba):
 ```bash
-ssh m4rk@192.168.0.100 "sudo pkill hping3; sudo pkill hydra; sudo pkill nmap"
+ssh m4rk@192.168.0.100 "sudo pkill -9 hping3; sudo pkill -9 hydra; sudo pkill -9 nmap"
+sleep 1
+ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap' | grep -v grep || echo KALI_LIMPIA"
 ```
+
+> **Nota importante:** si hping3 fue lanzado con sudo y NO configuraste NOPASSWD,
+> debes ir a la VM Kali directamente y ejecutar `sudo pkill hping3`,
+> o simplemente cierra la terminal donde lo lanzaste (Ctrl+C).
 
 ---
 
 ### 0B — Vaciar bloqueos del servidor (ipset en cero)
 
 ```bash
-ssh m4rk@192.168.0.120 "echo cisco123 | sudo -S ipset flush ppi_blocked && echo cisco123 | sudo -S ipset flush ppi_limited && echo IPSETS_VACIOS"
+ssh m4rk@192.168.0.120 "sudo ipset flush ppi_blocked && sudo ipset flush ppi_limited && echo IPSETS_VACIOS"
 ```
-**Esperado:** `IPSETS_VACIOS`
+**Resultado verificado 2026-06-23:**
+```
+IPSETS_VACIOS
+```
 
 Verificar que está realmente vacío:
 ```bash
-ssh m4rk@192.168.0.120 "echo cisco123 | sudo -S ipset list ppi_blocked | grep 'Number of entries'"
+ssh m4rk@192.168.0.120 "sudo ipset list ppi_blocked | grep 'Number of entries'"
 ```
-**Esperado:** `Number of entries: 0`
+**Resultado verificado:**
+```
+Number of entries: 0
+```
 
 ---
 
@@ -64,7 +98,10 @@ ssh m4rk@192.168.0.120 "echo cisco123 | sudo -S ipset list ppi_blocked | grep 'N
 ```bash
 ssh m4rk@192.168.0.110 "echo '{}' > /home/m4rk/ppi-surikata-producto/results/block_counts.json && cat /home/m4rk/ppi-surikata-producto/results/block_counts.json"
 ```
-**Esperado:** `{}`
+**Resultado verificado 2026-06-23:**
+```
+{}
+```
 
 ---
 
@@ -75,7 +112,12 @@ ssh m4rk@192.168.0.110 "echo cisco123 | sudo -S systemctl restart ppi-motor.serv
 sleep 6
 ssh m4rk@192.168.0.110 "systemctl is-active ppi-motor.service ppi-predictor.service"
 ```
-**Esperado:** `active` × 2
+**Resultado verificado 2026-06-23:**
+```
+REINICIADOS
+active
+active
+```
 
 ---
 
@@ -84,7 +126,13 @@ ssh m4rk@192.168.0.110 "systemctl is-active ppi-motor.service ppi-predictor.serv
 ```bash
 ssh m4rk@192.168.0.110 "systemctl is-active suricata ppi-motor.service ppi-predictor.service ppi-dashboard.service"
 ```
-**Esperado:** `active` × 4
+**Resultado verificado 2026-06-23:**
+```
+active
+active
+active
+active
+```
 
 📸 **CAPTURA aquí** — los 4 `active` en pantalla
 
@@ -95,14 +143,19 @@ ssh m4rk@192.168.0.110 "systemctl is-active suricata ppi-motor.service ppi-predi
 ```bash
 ssh m4rk@192.168.0.110 "tail -5 /home/m4rk/ppi-surikata-producto/results/motor_decision.log"
 ```
-**Esperado:** líneas de `INFO` de arranque, sin ningún `WARNING` ni `BLOCK`:
+**Resultado verificado 2026-06-23** (arranque limpio, sin ataques activos):
 ```
 INFO | Motor de decisión PPI — iniciando
-INFO | Modelo cargado | τ1=-0.4459 τ2=-0.6027
-INFO | Servidor init: OK | BLOCK=ipset+DROP | LIMIT=ipset+hashlimit(100pkt/s)
+INFO | Modelo cargado | umbral_base=-0.5742 | τ1=-0.4459 | τ2=-0.6027
+INFO | Servidor init: OK | BLOCK=ipset+DROP | LIMIT=ipset+hashlimit(100pkt/s) | τ1=-0.4459 τ2=-0.6027
 INFO | Block counts cargados: 0 IPs en historial
 INFO | Monitoreando /var/log/suricata/eve.json ...
+INFO | Brute Force SSH : ventana=60s umbral_limit=5 umbral_block=15
+INFO | HTTP Abuse      : ventana=30s umbral_limit=50 umbral_block=100
 ```
+
+> **Si ves WARNING o BLOCK inmediatamente:** hay tráfico anómalo activo (revisar 0A).
+> Si Kali tiene hping3 corriendo, el motor detecta y bloquea en ~2 segundos del arranque.
 
 ---
 
