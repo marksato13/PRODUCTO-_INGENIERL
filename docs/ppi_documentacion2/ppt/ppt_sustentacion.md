@@ -200,10 +200,10 @@ F3 — Motor de decisión + control inline    (motor_decision.py — servicio 24
 
 F4 — Predictor XGBoost v2                 (predictor.py — ciclo 10s)
   Entrada : motor_decision.log (eventos LIMIT+BLOCK) · predictor_modelo_v2.pkl
-  Proceso : 9 features comportamentales · predict_proba() → P ∈ [0,1]
+  Proceso : 10 features comportamentales · predict_proba() → P ∈ [0,1]
             P ≥ 0.70 → ALERTA-PREDICTIVA (Telegram 🚨 + dashboard 🔴)
   Salida  : predictor.log · Telegram alertas · dashboard panel predictor
-  AUC-ROC = 0.9992 · 9 features sin score (leakage corregido)
+  AUC-ROC = 0.9992 · 10 features sin score (leakage corregido)
 
 F5 — Aprendizaje continuo                 (cron en sensor 192.168.0.110)
   IF:      domingos 02:00 → reentrena con nuevas capturas normales

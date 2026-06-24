@@ -176,6 +176,9 @@ def construir_features(state: IPState, t: float) -> np.ndarray:
     hora  = datetime.fromtimestamp(t)
     h     = hora.hour + hora.minute / 60.0
 
+    block_count = len(state.blocks)
+    block_rate = block_count / 60.0  # bloqueos por segundo en ventana 60s
+    
     return np.array([[
         state.last_port,
         int(proto == 'TCP'),
@@ -185,6 +188,7 @@ def construir_features(state: IPState, t: float) -> np.ndarray:
         math.cos(2 * math.pi * h / 24),
         len(state.limits),
         len(state.blocks),
+        block_rate,
         int(state.last_score <= -0.6027),   # is_block (score <= τ2)
     ]])
 

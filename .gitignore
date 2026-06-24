@@ -19,3 +19,5 @@ scripts/validation/suricata_revision.txt
 !docs/*.zip
 config/telegram.conf
 !results/validacion_*.log
+results/motor_decision.log.1
+results/predictor.log.1

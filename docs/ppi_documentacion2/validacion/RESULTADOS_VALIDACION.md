@@ -57,7 +57,7 @@
 - Test set: 12,488 muestras (20% estratificado, nunca visto en entrenamiento)
 - AUC-ROC = **0.9992**
 - Errores: 7 FP + 7 FN = **14 totales** de 12,488 (0.11%)
-- 9 features comportamentales (sin score IF — leakage corregido)
+- 10 features comportamentales (sin score IF — leakage corregido)
 
 ### F5 — Aprendizaje continuo
 - **IF:** cron domingos 02:00 — última corrida 2026-06-22 02:27 → reemplazado=SI (AUC estable 0.9548)

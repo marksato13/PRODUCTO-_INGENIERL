@@ -54,6 +54,7 @@ FEATURES = [
     'proto_tcp', 'proto_udp', 'proto_icmp',
     'hora_sin', 'hora_cos',
     'limit_count_15s', 'block_count_60s',
+    'block_rate_60s',
     'is_block',
 ]
 # 'score' eliminado: labels derivados de score → data leakage.
@@ -177,6 +178,7 @@ for ev in events:
         'hora_cos':        math.cos(2 * math.pi * hora / 24),
         'limit_count_15s': len(dq_l),
         'block_count_60s': len(dq_b),
+        'block_rate_60s':  len(dq_b) / 60.0,
         'is_block':        int(action == 'BLOCK'),
         'label':           label,
     })

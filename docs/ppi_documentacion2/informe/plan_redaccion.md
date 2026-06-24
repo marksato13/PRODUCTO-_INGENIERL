@@ -94,7 +94,7 @@
 - IF: cada domingo 02:00 (crontab)
 - XGBoost: cada día 03:00 (crontab)
 - hot-reload del predictor: sin reinicio del servicio
-- 9 features comportamentales (tabla) — corrección de data leakage
+- 10 features comportamentales (tabla) — corrección de data leakage
 
 **15. Pipeline F6 — Validación**
 - 40 corridas: 9 escenarios × repeticiones

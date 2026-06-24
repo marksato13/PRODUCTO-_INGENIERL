@@ -39,7 +39,7 @@ ENTRADAS  [f4_entrenar_predictor_v2.py — entrenamiento, una vez]
 ENTRADAS  [predictor.py — operación continua]
   results/motor_decision.log              (lectura cada INTERVALO=10s)
   models/predictor_modelo_v2.pkl         (XGBoost cargado, hot-reload)
-  models/features_predictor_v2.txt       (9 features en orden)
+  models/features_predictor_v2.txt       (10 features en orden)
 
 PROCESO  [f4_entrenar_predictor_v2.py]
   Parsear log → extraer eventos LIMIT+BLOCK
@@ -53,7 +53,7 @@ PROCESO  [f4_entrenar_predictor_v2.py]
 
 PROCESO  [predictor.py — cada 10s]
   Leer nuevas líneas de motor_decision.log
-  Por cada IP con eventos recientes: calcular 9 features
+  Por cada IP con eventos recientes: calcular 10 features
   clf.predict_proba(X)[:,1] → P ∈ [0,1]
   P < 0.40      → SILENCIO
   0.40 ≤ P < 0.70 → AVISO (dashboard amarillo)

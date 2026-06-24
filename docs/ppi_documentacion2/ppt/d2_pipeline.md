@@ -36,7 +36,7 @@
         </mxCell>
 
         <!-- F5 APRENDIZAJE CONTINUO -->
-        <mxCell id="f5" value="&lt;b&gt;&lt;font style=&apos;font-size:14px;&apos;&gt;F5b&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;b&gt;APRENDIZAJE&lt;br&gt;CONTINUO&lt;/b&gt;&lt;br&gt;&lt;hr/&gt;f5_reentrenar_if.py&lt;br&gt;f5_reentrenar_xgboost.py&lt;br&gt;&lt;br&gt;XGBoost v2:&lt;br&gt;diario (03:00)&lt;br&gt;9 features comport.&lt;br&gt;AUC = 0.9992&lt;br&gt;Split 80/20 estrat.&lt;br&gt;&lt;br&gt;IF: semanal (dom 02:00)&lt;br&gt;&lt;br&gt;hot-reload sin reinicio&lt;br&gt;Guarda solo si&lt;br&gt;AUC no retrocede&lt;br&gt;&lt;br&gt;&lt;font color=&apos;#2d6a0b&apos;&gt;Output:&lt;/font&gt;&lt;br&gt;predictor_modelo_v2.pkl&lt;br&gt;isolation_forest.pkl" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=top;" vertex="1" parent="1">
+        <mxCell id="f5" value="&lt;b&gt;&lt;font style=&apos;font-size:14px;&apos;&gt;F5b&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;b&gt;APRENDIZAJE&lt;br&gt;CONTINUO&lt;/b&gt;&lt;br&gt;&lt;hr/&gt;f5_reentrenar_if.py&lt;br&gt;f5_reentrenar_xgboost.py&lt;br&gt;&lt;br&gt;XGBoost v2:&lt;br&gt;diario (03:00)&lt;br&gt;10 features comport.&lt;br&gt;AUC = 0.9992&lt;br&gt;Split 80/20 estrat.&lt;br&gt;&lt;br&gt;IF: semanal (dom 02:00)&lt;br&gt;&lt;br&gt;hot-reload sin reinicio&lt;br&gt;Guarda solo si&lt;br&gt;AUC no retrocede&lt;br&gt;&lt;br&gt;&lt;font color=&apos;#2d6a0b&apos;&gt;Output:&lt;/font&gt;&lt;br&gt;predictor_modelo_v2.pkl&lt;br&gt;isolation_forest.pkl" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;verticalAlign=top;" vertex="1" parent="1">
           <mxGeometry x="1140" y="60" width="230" height="560" as="geometry"/>
         </mxCell>
 

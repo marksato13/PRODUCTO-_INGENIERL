@@ -41,7 +41,7 @@ Tráfico de red
 ┌─────────────────────────────────────────────────────────────────┐
 │  F4 — PREDICTOR XGBOOST v2                                      │
 │  predictor.py (lee motor_decision.log en tiempo real)           │
-│  9 features comportamentales (sin score — leakage corregido)   │
+│  10 features comportamentales (sin score — leakage corregido)   │
 │  AUC=0.9992 · Split 80/20 estratificado                        │
 │  P<40%→silencio · 40-70%→AVISO · ≥70%→ALERTA-PREDICTIVA       │
 │  Output: predicciones en dashboard · alertas Telegram           │
@@ -91,7 +91,7 @@ docs/ppi_documentacion2/
 │   ├── F1_captura_datos.md          F1: Suricata, escenarios, capturas .gz
 │   ├── F2_deteccion_if.md           F2: IF n=300, 14 features, τ1/τ2, AUC=0.8998
 │   ├── F3_control_motor.md          F3: motor_decision.py, ipset, dashboard, Telegram
-│   ├── F4_prediccion_v2.md          F4: XGBoost v2, 9 features, AUC=0.9992
+│   ├── F4_prediccion_v2.md          F4: XGBoost v2, 10 features, AUC=0.9992
 │   ├── F5_aprendizaje.md            F5: cron IF/XGBoost, hot-reload, protección AUC
 │   └── F6_validacion.md             F6: 40 corridas, métricas, validaciones en vivo
 │

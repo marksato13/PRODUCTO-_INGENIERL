@@ -161,7 +161,7 @@ Members:
 WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=77.XX%
   score=-0.606X limits_15s=0 blocks_60s=1
 ```
-*"En Terminal 2 el predictor XGBoost calculó P=77%: 77% de probabilidad de que esa IP genere otro bloqueo. El XGBoost no analiza el flujo actual — predice comportamiento futuro usando 9 features de historial."*
+*"En Terminal 2 el predictor XGBoost calculó P=77%: 77% de probabilidad de que esa IP genere otro bloqueo. El XGBoost no analiza el flujo actual — predice comportamiento futuro usando 10 features de historial."*
 
 📸 **CAPTURA — ALERTA-PREDICTIVA P=XX% en Terminal 2** ← capacidad 16
 
@@ -602,7 +602,7 @@ WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=77.XX%
 | | Isolation Forest (F2+F3) | XGBoost Predictor (F4) |
 |---|---|---|
 | Pregunta | ¿Este flujo es anómalo ahora? | ¿Esta IP va a atacar de nuevo? |
-| Entrada | 14 features del flujo actual | 9 features de comportamiento histórico |
+| Entrada | 14 features del flujo actual | 10 features de comportamiento histórico |
 | Salida | PERMIT / LIMIT / BLOCK | Probabilidad P(%) de reincidencia |
 | Reacción | Inmediata (por flujo) | Cada 10 segundos |
 

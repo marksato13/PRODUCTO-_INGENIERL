@@ -115,7 +115,7 @@ El historial se persiste en `results/block_counts.json` y se recarga en cada rei
 
 #### L6 — Data leakage XGBoost corregido (AUC=1.0 → 0.9992)
 **Qué era:** el feature `score` (IF decision function) tenía 64.7% de importancia. Los labels se derivan de los mismos umbrales de `score` → data leakage. AUC=1.0 era matemáticamente inevitable.
-**✅ Mitigación implementada (2026-06-22):** `score` removido de features en `f4_entrenar_predictor_v2.py` y `predictor.py`. El modelo ahora usa 9 features comportamentales:
+**✅ Mitigación implementada (2026-06-22):** `score` removido de features en `f4_entrenar_predictor_v2.py` y `predictor.py`. El modelo ahora usa 10 features comportamentales:
 
 | Feature | Importancia | Interpretación |
 |---|---|---|

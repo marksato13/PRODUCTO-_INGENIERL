@@ -184,7 +184,7 @@ El predictor (`predictor.py`) lee el archivo `results/motor_decision.log` en tie
 
 El etiquetado para entrenamiento es automático: si dentro de los 60 segundos siguientes a un evento se observa otro BLOCK de la misma IP, el evento se etiqueta como `label=1` (ataque sostenido); en caso contrario, `label=0` (anomalía puntual o falso positivo). Este esquema de etiquetado no requiere intervención humana y permite reentrenamiento continuo con datos operativos reales.
 
-#### 3.5.3 Características del modelo (9 features)
+#### 3.5.3 Características del modelo (10 features)
 
 Tras la corrección del data leakage identificado durante la validación (sección 4.5.3), el modelo opera con nueve características comportamentales:
 
