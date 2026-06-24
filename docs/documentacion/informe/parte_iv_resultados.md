@@ -207,14 +207,14 @@ Para los escenarios con mayor riesgo operativo (SSH Brute Force, HTTP Abuse), lo
 
 Durante la validación pre-defensa se detectó que el predictor XGBoost incluía el `score` del Isolation Forest como feature de entrenamiento. Dado que los labels se derivan de los umbrales del mismo `score`, existía una correlación directa entre feature y label (data leakage), resultando en AUC=1.0000 artefactual.
 
-La corrección consistió en eliminar `score` de la lista de features en `f4_entrenar_predictor_v2.py`, `f5_reentrenar_xgboost.py` y `predictor.py`, y derivar la feature binaria `is_block` desde la columna `decision` del log (no desde el score). El modelo reentrenado con 10 features comportamentales obtuvo AUC=0.9991. El feature  (bloques por segundo en ventana de 60s) permite al modelo distinguir ataques en aceleración de residuos históricos, mejorando la predicción de persistencia., que sigue siendo alto pero responde a una razón legítima: en el laboratorio, un host que inicia un UDP flood lo mantiene durante toda la corrida, lo cual hace que las features `proto_udp` y `block_count_60s` sean predictores genuinamente efectivos de persistencia.
+La corrección consistió en eliminar `score` de la lista de features en `f4_entrenar_predictor_v2.py`, `f5_reentrenar_xgboost.py` y `predictor.py`, y derivar la feature binaria `is_block` desde la columna `decision` del log (no desde el score). El modelo con 10 features comportamentales (incluyendo  para capturar velocidad del ataque) obtuvo AUC=0.9991. El feature  (bloques por segundo en ventana de 60s) permite al modelo distinguir ataques en aceleración de residuos históricos, mejorando la predicción de persistencia., que sigue siendo alto pero responde a una razón legítima: en el laboratorio, un host que inicia un UDP flood lo mantiene durante toda la corrida, lo cual hace que las features `proto_udp` y `block_count_60s` sean predictores genuinamente efectivos de persistencia.
 
 **Tabla 4.9 — Features del predictor XGBoost v2 (post-corrección)**
 
 | Feature | Importancia | Interpretación |
 |---|---|---|
-| `block_count_60s` | 57.29% | Historial de bloqueos recientes de la IP |
-| `is_block` | 38.22% | Evento actual es BLOCK del Isolation Forest |
+| `block_count_60s` | 55.47% | Historial de bloqueos recientes de la IP |
+| `is_block` | 6.64% | Evento actual es BLOCK del Isolation Forest |
 | `limit_count_15s` | 1.72% | Acumulación de eventos sospechosos en 15s |
 | `is_block` | 0.92% | Acción actual (BLOCK vs LIMIT) |
 | `dest_port` | 0.89% | Puerto objetivo |
@@ -235,7 +235,7 @@ La tabla 4.10 consolida el cumplimiento de los criterios de aceptación definido
 | CA-F1-01 | Pipeline ejecuta sin errores manuales | 100% automatizado | 47 capturas procesadas | ✅ |
 | CA-F2-01 | AUC-ROC del modelo | ≥ 0.80 | 0.8998 | ✅ |
 | CA-F3-01 | Latencia P95 por flujo | < 500 ms | 34.8 ms | ✅ |
-| CA-F4-01 | AUC-ROC predictor XGBoost | > 0.70 | 0.9992 | ✅ |
+| CA-F4-01 | AUC-ROC predictor XGBoost | > 0.70 | 0.9991 | ✅ |
 | CA-F5-01 | Scripts de reentrenamiento ejecutan sin error | Sin fallo | Validado 2026-06-22 | ✅ |
 | CA-F6-01 | Disponibilidad del sistema | 100% en 40 corridas | 40/40 | ✅ |
 | CA-F6-02 | ITL (Interrupción de Tráfico Legítimo) | 0% | 0% | ✅ |

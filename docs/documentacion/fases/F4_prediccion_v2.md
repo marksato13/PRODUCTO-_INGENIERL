@@ -1,6 +1,6 @@
 # F4 — Predicción Inteligente (XGBoost v2)
 **Estado: ✅ IMPLEMENTADA Y VALIDADA**  
-**Resultado:** AUC-ROC=0.9992 | FP+FN=14/12,488 | ALERTA-PREDICTIVA validada P=77.39%
+**Resultado:** AUC-ROC=0.9991 | FP+FN=14/12,705 | ALERTA-PREDICTIVA validada P=77.39%
 
 ---
 
@@ -61,8 +61,8 @@ PROCESO  [predictor.py — cada 10s]
   Verificar mtime del .pkl → hot-reload si cambió (F5)
 
 SALIDAS
-  models/predictor_modelo_v2.pkl         (XGBoost serializado, AUC=0.9992)
-  models/features_predictor_v2.txt       (9 features)
+  models/predictor_modelo_v2.pkl         (XGBoost serializado, AUC=0.9991)
+  models/features_predictor_v2.txt       (10 features)
   results/metricas_predictor_v2.txt      (AUC, Precision, Recall, matriz confusión)
   results/predictor.log                  (AVISO / ALERTA-PREDICTIVA por IP)
   Telegram mensajes                       (ALERTA-PREDICTIVA P≥0.70, dedup 300s)
@@ -92,8 +92,8 @@ Son preguntas distintas con valor operativo diferente:
 
 | Feature | Importancia | Cómo se calcula | Por qué importa |
 |---|---|---|---|
-| `block_count_60s` | **57.29%** | Nº BLOCKs de esta IP en últimos 60s | Historial de reincidencia — predictor más fuerte |
-| `is_block` | **38.22%** | 1 si score ≤ τ2 en evento actual | Confirma que el evento actual es un BLOCK del IF |
+| `block_count_60s` | **55.47%** | Nº BLOCKs de esta IP en últimos 60s | Historial de reincidencia — predictor más fuerte |
+| `is_block` | **6.64%** | 1 si score ≤ τ2 en evento actual | Confirma que el evento actual es un BLOCK del IF |
 | `limit_count_15s` | **1.72%** | Nº LIMITs de esta IP en últimos 15s | Acumulación de eventos sospechosos previos |
 | `is_block` | 1.22% | 1 si el evento actual fue BLOCK | Diferencia entre "límite sospechoso" y "BLOCK confirmado" |
 | `dest_port` | 0.84% | Puerto destino del flujo | :22=SSH, :80=HTTP, :53=UDP → contexto del ataque |
@@ -124,7 +124,7 @@ FEATURES_v2 = ['dest_port', 'proto_tcp', 'proto_udp', 'proto_icmp',
                 'hora_sin', 'hora_cos', 'limit_count_15s', 'block_count_60s',
                 'is_block']  # ← score eliminado
 ```
-El modelo aprende patrones comportamentales reales. AUC=0.9992 sobre test set separado — sin trampa.
+El modelo aprende patrones comportamentales reales. AUC=0.9991 sobre test set separado — sin trampa.
 
 ---
 
@@ -164,11 +164,11 @@ python3 scripts/f4_entrenar_predictor_v2.py
 
 | Métrica | Valor |
 |---|---|
-| Dataset total | 62,436 eventos LIMIT+BLOCK |
+| Dataset total | 63,524 eventos LIMIT+BLOCK |
 | label=1 (sostenido) | 5,790 (9.3%) |
 | label=0 (puntual) | 56,646 (90.7%) |
 | Split train/test | 49,948 / 12,488 |
-| **AUC-ROC** | **0.9992** |
+| **AUC-ROC** | **0.9991** |
 | Precision (sostenido) | 99.40% |
 | Recall (sostenido) | 99.40% |
 | **FP + FN en test** | **14** (7+7 de 12,488) |
@@ -242,4 +242,4 @@ Comportamiento correcto: el XGBoost predijo correctamente que el ataque continua
 
 ## Argumento de defensa
 
-> "El XGBoost cierra la brecha que el IF no puede cubrir: la dimensión temporal. Un IDS que solo clasifica flujo por flujo no distingue un scan único de una campaña sostenida. El XGBoost, alimentado con los contadores de ventana temporal del propio motor, hace exactamente eso con AUC=0.9992. El dato más importante para la defensa es que detectamos y corregimos data leakage durante el desarrollo — la versión v1 tenía AUC=1.0000 artificial. Al eliminarlo, el AUC bajó a 0.9992 y el modelo ahora generaliza correctamente a datos nuevos."
+> "El XGBoost cierra la brecha que el IF no puede cubrir: la dimensión temporal. Un IDS que solo clasifica flujo por flujo no distingue un scan único de una campaña sostenida. El XGBoost, alimentado con los contadores de ventana temporal del propio motor, hace exactamente eso con AUC=0.9991. El dato más importante para la defensa es que detectamos y corregimos data leakage durante el desarrollo — la versión v1 tenía AUC=1.0000 artificial. Al eliminarlo, el AUC bajó a 0.9991 y el modelo ahora generaliza correctamente a datos nuevos."

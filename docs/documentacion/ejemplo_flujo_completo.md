@@ -35,7 +35,7 @@
 | 23 | Hot-reload de modelos | Motor detecta cambio en .pkl | log: `Modelo recargado (hot-reload)` | automático |
 | 24 | AUC Isolation Forest = 0.8998 | Mostrar métricas | `cat metricas_offline.txt` | inmediato |
 | 25 | Precision 99.54% / Recall 99.40% | Mostrar métricas | `cat metricas_offline.txt` | inmediato |
-| 26 | AUC XGBoost v2 = 0.9992 | Mostrar métricas | `cat metricas_predictor_v2.txt` | inmediato |
+| 26 | AUC XGBoost v2 = 0.9991 | Mostrar métricas | `cat metricas_predictor_v2.txt` | inmediato |
 | 27 | FPR = 0.0% en datos nuevos (CA-16) | Mostrar resultado | `RESULTADOS_VALIDACION.md` → 119 flujos | inmediato |
 | 28 | 16/16 criterios PASS | `run_all.sh` | Terminal → 16 líneas PASS | ~2 min |
 | 29 | 40 corridas F6 en CSV | Mostrar archivo | `head resultados_f6_completo.csv` | inmediato |
@@ -315,8 +315,8 @@ ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_f5
 | ¿Qué pasa si hay falsos positivos? | Whitelist protege la infraestructura; FPR=0.0% en 119 flujos nuevos |
 | ¿Por qué τ1=−0.4459? | Maximiza índice de Youden: TPR=99.40%, FPR=20.47% — mejor equilibrio |
 | ¿Por qué FPR=20% en τ1 y no bajar? | Bajar FPR a 5% haría escapar SYN floods con score≈−0.49 |
-| ¿El XGBoost no tiene leakage? | v2 eliminó el score IF como feature — AUC pasó de 1.0000 (artificial) a 0.9992 real |
-| ¿Qué feature es más importante en XGBoost? | `is_block` (38.22%) — comportamiento, no métrica del modelo |
+| ¿El XGBoost no tiene leakage? | v2 eliminó el score IF como feature — AUC pasó de 1.0000 (artificial) a 0.9991 real |
+| ¿Qué feature es más importante en XGBoost? | `is_block` (6.64%) — comportamiento, no métrica del modelo |
 | ¿La latencia cumple? | P95=34.7ms — el requisito era <500ms, cumple 14× |
 | ¿Cuántos datos de entrenamiento? | 53,708 flujos normales (80%), 13,427 holdout (20%) |
 | ¿Qué métricas tiene el IF? | AUC=0.8998, Precision=99.54%, Recall=99.40%, F1=0.9947 |
@@ -688,7 +688,7 @@ ssh m4rk@192.168.0.110 "bash /home/m4rk/ppi-surikata-producto/scripts/validacion
 | IF | τ1 — límite PERMIT/LIMIT | **−0.4459** |
 | IF | τ2 — límite LIMIT/BLOCK | **−0.6027** |
 | Motor | Latencia P95 del pipeline | **34.768ms** |
-| XGBoost v2 | AUC-ROC | **0.9992** |
+| XGBoost v2 | AUC-ROC | **0.9991** |
 | XGBoost v2 | Errores totales (de 12,488) | **14** (7 FP + 7 FN) |
 | Sistema | Lead time HTTP Flood | **~5s** (heurístico 100req/30s) |
 | Sistema | Lead time BF-SSH | **60s** (heurístico 15intentos/60s) |

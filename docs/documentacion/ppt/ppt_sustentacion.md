@@ -443,7 +443,7 @@ OE1 — Pipeline F1+F2                OE2 — Modelo IF (F2)         OE3 — Mot
 >
 > "OE2: AUC de 0.8998 —por encima del criterio de 0.80—, Precision y Recall del 99%. Los umbrales derivados estadísticamente de la curva ROC. El FPR de 20.47% en τ1 es la única limitación conocida, pero el FPR operativo es cero porque la whitelist protege todos los hosts legítimos. Adicionalmente, validamos con 119 flujos normales nuevos de una sesión diferente — FPR 0.0%, el modelo generaliza correctamente."
 >
-> "OE3: 40 corridas, latencia P95 de 34.8ms — catorce veces por debajo del límite —, disponibilidad 100%, cero interrupciones de tráfico legítimo. Lead time 62s y 60s. XGBoost AUC 0.9992. Bloqueo permanente validado en vivo. Telegram recibido. 16 de 16 criterios de aceptación: todos PASS."
+> "OE3: 40 corridas, latencia P95 de 34.8ms — catorce veces por debajo del límite —, disponibilidad 100%, cero interrupciones de tráfico legítimo. Lead time 62s y 60s. XGBoost AUC 0.9991. Bloqueo permanente validado en vivo. Telegram recibido. 16 de 16 criterios de aceptación: todos PASS."
 
 ---
 
@@ -553,7 +553,7 @@ Trabajos futuros
 - [x] Whitelist Desktop — 0 BLOCK/LIMIT en 120 req HTTP
 - [x] XGBoost ALERTA-PREDICTIVA P=77.39% en SYN Flood
 - [x] metricas_offline.txt: AUC=0.8998, τ1=−0.4459, τ2=−0.6027
-- [x] metricas_predictor_v2.txt: AUC=0.9992, FP=7, FN=7
+- [x] metricas_predictor_v2.txt: AUC=0.9991, FP=7, FN=7
 - [x] latencia_pipeline.txt: P95=34.768ms
 
 ### Por hacer antes de la sustentación

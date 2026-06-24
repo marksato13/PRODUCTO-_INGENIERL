@@ -54,18 +54,20 @@ Si el modelo hubiera memorizado los datos (overfitting), tendría 0 errores en t
 
 ---
 
-## Features del modelo (9) — importancia real
+## Features del modelo (10) — importancia real
 
 | Feature           | Importancia | Qué captura                                    |
 |-------------------|-------------|------------------------------------------------|
-| block_count_60s   | 57.29%      | UDP floods son casi siempre sostenidos          |
-| is_block          | 38.22%      | Frecuencia de bloqueos en últimos 60 segundos  |
-| limit_count_15s   | 1.72%       | SYN flood y BF SSH sostenidos son TCP          |
-| is_block          | 1.22%       | Si el evento actual llegó como BLOCK           |
-| dest_port         | 0.84%       | Puerto destino (80=HTTP flood, 22=BF SSH)      |
-| hora_cos / hora_sin | ~0.6%    | Patrón horario del ataque                      |
-| limit_count_15s   | 0.22%       | Frecuencia LIMIT previa                        |
-| proto_icmp        | 0.00%       | Redundante con block_count_60s para floods ICMP|
+| block_count_60s   | 55.47%      | Cantidad de BLOCKs de esta IP en ventana 60s   |
+| block_rate_60s    | 35.65%      | Velocidad (blocks/seg) — distingue aceleración |
+| is_block          | 6.64%       | Evento actual clasificado BLOCK por IF          |
+| hora_cos          | 0.61%       | Componente temporal (coseno)                   |
+| limit_count_15s   | 0.53%       | LIMITs de esta IP en últimos 15s               |
+| hora_sin          | 0.49%       | Componente temporal (seno)                     |
+| dest_port         | 0.38%       | Puerto destino (80=HTTP, 22=SSH)               |
+| proto_tcp         | 0.12%       | Protocolo TCP                                  |
+| proto_udp         | 0.10%       | Protocolo UDP                                  |
+| proto_icmp        | 0.00%       | Protocolo ICMP                                 |
 
 **Nota:** `score` del IF fue eliminado de features en v2 por leakage. El modelo aprendió patrones comportamentales genuinos, no a repetir la decisión del IF.
 

@@ -133,14 +133,14 @@
 | Telegram BLOCK alerta | ✅ HTTP 200 + recibida | 07:25 |
 | Whitelist Desktop (120 req HTTP) | ✅ 0 BLOCK/LIMIT | Motor log + ipset |
 | Dashboard web SSE | ✅ Predictor P=55% activo | Captura 09:05 |
-| Data leakage XGBoost corregido | AUC 1.0→0.9992 | commit ad573f0 |
+| Data leakage XGBoost corregido | AUC 1.0→0.9991 + block_rate_60s | commit ad573f0 |
 
 **18. Análisis de limitaciones**
 - Tabla completa L1–L10 con severidad, mitigación e impacto residual
 - FPR=20.47%: análisis del trade-off con TPR (por qué no se baja τ1)
 - Lead time ~62s: inherente a arquitectura basada en Netflow
 - AVISO-DETERMINISTA: condición no alcanzable en lab con Kali (explicación)
-- Comparativa: AUC IF (0.8998) vs AUC XGBoost (0.9992) — propósitos distintos
+- Comparativa: AUC IF (0.8998) vs AUC XGBoost (0.9991) — propósitos distintos
 
 ---
 

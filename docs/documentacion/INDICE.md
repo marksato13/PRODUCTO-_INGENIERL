@@ -42,7 +42,7 @@ Tráfico de red
 │  F4 — PREDICTOR XGBOOST v2                                      │
 │  predictor.py (lee motor_decision.log en tiempo real)           │
 │  10 features comportamentales (sin score — leakage corregido)   │
-│  AUC=0.9992 · Split 80/20 estratificado                        │
+│  AUC=0.9991 · 10 features · Split 80/20 estratificado                        │
 │  P<40%→silencio · 40-70%→AVISO · ≥70%→ALERTA-PREDICTIVA       │
 │  Output: predicciones en dashboard · alertas Telegram           │
 └──────────────────────────────┬──────────────────────────────────┘
@@ -91,7 +91,7 @@ docs/ppi_documentacion2/
 │   ├── F1_captura_datos.md          F1: Suricata, escenarios, capturas .gz
 │   ├── F2_deteccion_if.md           F2: IF n=300, 14 features, τ1/τ2, AUC=0.8998
 │   ├── F3_control_motor.md          F3: motor_decision.py, ipset, dashboard, Telegram
-│   ├── F4_prediccion_v2.md          F4: XGBoost v2, 10 features, AUC=0.9992
+│   ├── F4_prediccion_v2.md          F4: XGBoost v2, 10 features (block_rate_60s), AUC=0.9991
 │   ├── F5_aprendizaje.md            F5: cron IF/XGBoost, hot-reload, protección AUC
 │   └── F6_validacion.md             F6: 40 corridas, métricas, validaciones en vivo
 │
@@ -136,7 +136,7 @@ docs/ppi_documentacion2/
 | IF (F2) | AUC-ROC | **0.8998** |
 | IF (F2) | Precision / Recall / F1 | 99.54% / 99.40% / 0.9947 |
 | IF (F2) | Latencia P95 (por flujo) | **34.8 ms** (< 500ms ✅) |
-| XGBoost (F4) | AUC-ROC (sin leakage) | **0.9992** |
+| XGBoost (F4) | AUC-ROC (sin leakage) | **0.9991** |
 | Sistema (F6) | Disponibilidad | **100%** |
 | Sistema (F6) | ITL | **0%** |
 | Sistema (F3/F6) | Lead time SYN Flood | **~62 s** |
