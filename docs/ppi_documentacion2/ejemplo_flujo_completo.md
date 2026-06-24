@@ -316,7 +316,7 @@ ssh m4rk@192.168.0.110 "cat /home/m4rk/ppi-surikata-producto/results/metricas_f5
 | ¿Por qué τ1=−0.4459? | Maximiza índice de Youden: TPR=99.40%, FPR=20.47% — mejor equilibrio |
 | ¿Por qué FPR=20% en τ1 y no bajar? | Bajar FPR a 5% haría escapar SYN floods con score≈−0.49 |
 | ¿El XGBoost no tiene leakage? | v2 eliminó el score IF como feature — AUC pasó de 1.0000 (artificial) a 0.9992 real |
-| ¿Qué feature es más importante en XGBoost? | `block_count_60s` (24.37%) — comportamiento, no métrica del modelo |
+| ¿Qué feature es más importante en XGBoost? | `is_block` (38.22%) — comportamiento, no métrica del modelo |
 | ¿La latencia cumple? | P95=34.7ms — el requisito era <500ms, cumple 14× |
 | ¿Cuántos datos de entrenamiento? | 53,708 flujos normales (80%), 13,427 holdout (20%) |
 | ¿Qué métricas tiene el IF? | AUC=0.8998, Precision=99.54%, Recall=99.40%, F1=0.9947 |

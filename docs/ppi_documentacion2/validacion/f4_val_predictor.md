@@ -58,9 +58,9 @@ Si el modelo hubiera memorizado los datos (overfitting), tendría 0 errores en t
 
 | Feature           | Importancia | Qué captura                                    |
 |-------------------|-------------|------------------------------------------------|
-| proto_udp         | 51.95%      | UDP floods son casi siempre sostenidos          |
-| block_count_60s   | 24.37%      | Frecuencia de bloqueos en últimos 60 segundos  |
-| proto_tcp         | 20.79%      | SYN flood y BF SSH sostenidos son TCP          |
+| block_count_60s   | 57.29%      | UDP floods son casi siempre sostenidos          |
+| is_block          | 38.22%      | Frecuencia de bloqueos en últimos 60 segundos  |
+| limit_count_15s   | 1.72%       | SYN flood y BF SSH sostenidos son TCP          |
 | is_block          | 1.22%       | Si el evento actual llegó como BLOCK           |
 | dest_port         | 0.84%       | Puerto destino (80=HTTP flood, 22=BF SSH)      |
 | hora_cos / hora_sin | ~0.6%    | Patrón horario del ataque                      |

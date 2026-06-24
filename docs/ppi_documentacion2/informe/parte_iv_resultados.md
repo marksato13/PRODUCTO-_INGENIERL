@@ -213,9 +213,9 @@ La corrección consistió en eliminar `score` de la lista de features en `f4_ent
 
 | Feature | Importancia | Interpretación |
 |---|---|---|
-| `proto_udp` | 51.95% | UDP floods son sostenidos por naturaleza |
-| `block_count_60s` | 24.37% | Reincidencia previa predice reincidencia futura |
-| `proto_tcp` | 20.79% | SYN floods son campañas prolongadas |
+| `block_count_60s` | 57.29% | Historial de bloqueos recientes de la IP |
+| `is_block` | 38.22% | Evento actual es BLOCK del Isolation Forest |
+| `limit_count_15s` | 1.72% | Acumulación de eventos sospechosos en 15s |
 | `is_block` | 0.92% | Acción actual (BLOCK vs LIMIT) |
 | `dest_port` | 0.89% | Puerto objetivo |
 | `hora_cos`, `hora_sin` | 0.62% | Patrón temporal |

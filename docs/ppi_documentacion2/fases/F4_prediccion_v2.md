@@ -92,9 +92,9 @@ Son preguntas distintas con valor operativo diferente:
 
 | Feature | Importancia | Cómo se calcula | Por qué importa |
 |---|---|---|---|
-| `proto_udp` | **51.95%** | 1 si proto==UDP, 0 si no | UDP floods (B3) son casi siempre sostenidos por naturaleza |
-| `block_count_60s` | **24.37%** | Nº BLOCKs de esta IP en los últimos 60s | Reincidencia previa predice reincidencia futura |
-| `proto_tcp` | **20.79%** | 1 si proto==TCP | SYN floods y BF SSH sostenidos son TCP |
+| `block_count_60s` | **57.29%** | Nº BLOCKs de esta IP en últimos 60s | Historial de reincidencia — predictor más fuerte |
+| `is_block` | **38.22%** | 1 si score ≤ τ2 en evento actual | Confirma que el evento actual es un BLOCK del IF |
+| `limit_count_15s` | **1.72%** | Nº LIMITs de esta IP en últimos 15s | Acumulación de eventos sospechosos previos |
 | `is_block` | 1.22% | 1 si el evento actual fue BLOCK | Diferencia entre "límite sospechoso" y "BLOCK confirmado" |
 | `dest_port` | 0.84% | Puerto destino del flujo | :22=SSH, :80=HTTP, :53=UDP → contexto del ataque |
 | `hora_cos` | 0.33% | cos(hora/24 × 2π) | Componente temporal — ataques nocturnos vs diurnos |

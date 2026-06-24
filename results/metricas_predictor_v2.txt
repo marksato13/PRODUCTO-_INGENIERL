@@ -1,47 +1,47 @@
 ============================================================
 MÉTRICAS PREDICTOR v2 — XGBoost LIMIT+BLOCK
-Generado: 2026-06-22 07:57
+Generado: 2026-06-23 21:04
 ============================================================
 
 DATASET
-  total_eventos     : 62,436
-  BLOCK             : 12,425
-  LIMIT             : 50,011
-  label_1_sostenido : 5,790  (9.3%)
-  label_0_puntual   : 56,646  (90.7%)
-  split_train       : 49,948
-  split_test        : 12,488
+  total_eventos     : 64,189
+  BLOCK             : 14,174
+  LIMIT             : 50,015
+  label_1_sostenido : 7,503  (11.7%)
+  label_0_puntual   : 56,686  (88.3%)
+  split_train       : 51,351
+  split_test        : 12,838
 
 MODELO
   algoritmo         : XGBoost (n=300, depth=4, lr=0.05)
-  scale_pos_weight  : 9.78
+  scale_pos_weight  : 7.56
   features          : 9
 
 MÉTRICAS (umbral=0.50)
-  AUC-ROC           : 0.9992
+  AUC-ROC           : 0.9991
 
               precision    recall  f1-score   support
 
-           0     0.9994    0.9994    0.9994     11330
-           1     0.9940    0.9940    0.9940      1158
+           0     0.9996    0.9986    0.9991     11337
+           1     0.9894    0.9967    0.9930      1501
 
-    accuracy                         0.9989     12488
-   macro avg     0.9967    0.9967    0.9967     12488
-weighted avg     0.9989    0.9989    0.9989     12488
+    accuracy                         0.9984     12838
+   macro avg     0.9945    0.9976    0.9961     12838
+weighted avg     0.9984    0.9984    0.9984     12838
 
 MATRIZ CONFUSIÓN
-  TN=11,323  FP=7
-  FN=7  TP=1,151
+  TN=11,321  FP=16
+  FN=5  TP=1,496
 
 FEATURE IMPORTANCE
-proto_udp          0.519452
-block_count_60s    0.243667
-proto_tcp          0.207913
-is_block           0.012194
-dest_port          0.008366
-hora_cos           0.003285
-hora_sin           0.002946
-limit_count_15s    0.002177
+block_count_60s    0.572921
+is_block           0.382227
+limit_count_15s    0.017212
+hora_sin           0.012062
+hora_cos           0.008883
+dest_port          0.004379
+proto_udp          0.001352
+proto_tcp          0.000964
 proto_icmp         0.000000
 
 UMBRALES DE ALERTA

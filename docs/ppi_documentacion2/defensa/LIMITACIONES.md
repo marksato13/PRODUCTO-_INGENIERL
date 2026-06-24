@@ -77,7 +77,7 @@ El sistema tiene **10 limitaciones identificadas**. Las 3 críticas tienen mitig
 
 #### L3 — Predictor no anticipa primer BLOCK en ataques graduales (CA-F4-02)
 **Qué es:** para B5 HTTP Abuse y B6 BF SSH, el predictor produce P≈0.02% durante la fase LIMIT. Solo dispara ALERTA después del primer BLOCK.
-**Por qué existe:** el feature `limit_count_15s` tiene solo 0.8% de importancia en XGBoost. En el modelo actual (sin leakage), `proto_udp` (51.95%) y `block_count_60s` (24.37%) son los predictores dominantes. Sin BLOCKs previos de la IP, `block_count_60s`=0 y P permanece bajo.
+**Por qué existe:** el feature `limit_count_15s` tiene solo 0.8% de importancia en XGBoost. En el modelo actual (sin leakage), `block_count_60s` (57.29%) y `is_block` (38.22%) son los predictores dominantes. Sin BLOCKs previos de la IP, `block_count_60s`=0 y P permanece bajo.
 **✅ Mitigación implementada:** regla determinista en `predictor.py` — si `limit_count_15s >= 5` de la misma IP Y no hubo alerta en los últimos 300s → disparar `AVISO-DETERMINISTA` directo, sin esperar probabilidad XGBoost.
 **Argumento defensa:** El predictor predice persistencia de ataques ya detectados. Para ataques graduales, la regla determinista complementa al XGBoost cuando la señal estadística aún es débil. Ambos mecanismos son capas defensivas independientes.
 
@@ -119,9 +119,9 @@ El historial se persiste en `results/block_counts.json` y se recarga en cada rei
 
 | Feature | Importancia | Interpretación |
 |---|---|---|
-| `proto_udp` | 51.95% | UDP floods son ataques sostenidos por definición |
-| `block_count_60s` | 24.37% | Reincidencia previa predice reincidencia futura |
-| `proto_tcp` | 20.79% | SYN floods son campañas prolongadas |
+| `block_count_60s` | 57.29% | Reincidencia en 60s — predictor dominante |
+| `is_block` | 38.22% | Evento actual supera τ2 del Isolation Forest |
+| `limit_count_15s` | 1.72% | Acumulación de eventos sospechosos previos |
 | Resto (6 features) | 3.68% | Puerto, hora, conteo LIMITs, is_block |
 
 **Resultado:** AUC=**0.9992** — alto pero explicable: ataques de lab son sostenidos por naturaleza.
