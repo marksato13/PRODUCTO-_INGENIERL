@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dashboard en tiempo real — PPI Surikata
+Dashboard en tiempo real — PPI Suricata
 Uso: python3 dashboard.py [--interval N]
 """
 import re, os, sys, time, subprocess, argparse

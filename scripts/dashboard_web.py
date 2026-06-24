@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dashboard Web — PPI Surikata  |  UPeU 2026
+Dashboard Web — PPI Suricata  |  UPeU 2026
 Con sidebar, SSE en tiempo real y panel de alertas sincronizado con Telegram.
 Acceso: http://192.168.0.110:8080
 """
@@ -359,10 +359,25 @@ def api_unblock():
 
 @app.route("/api/clear",methods=["POST"])
 def api_clear():
+    # Limpia también flows_total/anom_total/bf_total/http_total: sin esto,
+    # tras un /api/clear el panel seguía mostrando los acumulados de la
+    # corrida anterior (la línea "Estadísticas" del motor solo se reimprime
+    # cada 500 flows, así que en una demo corta nunca llega a refrescarlos).
     with lock:
         state["eventos"].clear()
         state["block_counter"] = 0
-    return jsonify({"ok":True,"msg":"Alertas limpiadas"})
+        state["flows_total"] = 0
+        state["anom_total"] = 0
+        state["bf_total"] = 0
+        state["http_total"] = 0
+        state["latencia"] = 0.0
+        state["last_stats_ts"] = None
+        state["gaps_hist"].clear()
+    with sse_lock:
+        for q in sse_clients:
+            try: q.put_nowait({"type":"cleared"})
+            except: pass
+    return jsonify({"ok":True,"msg":"Alertas y estadísticas limpiadas"})
 
 @app.route("/api/block",methods=["POST"])
 def api_block():
@@ -395,7 +410,7 @@ HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PPI-Surikata | Dashboard</title>
+<title>PPI-Suricata | Dashboard</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
@@ -532,31 +547,31 @@ body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,sans
 .alerts-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 
 /* Feed de alertas */
-.alerts-feed{display:flex;flex-direction:column;gap:8px}
+.alerts-feed{display:flex;flex-direction:column;gap:10px}
 .alert-card{
   background:var(--card);border:1px solid var(--border);border-radius:10px;
-  padding:14px 16px;display:flex;gap:14px;cursor:pointer;
+  padding:18px 20px;display:flex;gap:16px;cursor:pointer;
   transition:background .15s,border-color .15s;position:relative
 }
 .alert-card:hover{background:var(--card2);border-color:var(--blue)}
-.alert-card.BLOCK{border-left:4px solid var(--red)}
-.alert-card.LIMIT{border-left:4px solid var(--yellow)}
+.alert-card.BLOCK{border-left:6px solid var(--red)}
+.alert-card.LIMIT{border-left:6px solid var(--yellow)}
 .alert-card.new-alert{animation:alertIn .4s ease}
 @keyframes alertIn{from{transform:translateY(-8px);opacity:0}to{transform:translateY(0);opacity:1}}
 .alert-left{display:flex;flex-direction:column;align-items:center;gap:4px;
-  min-width:46px;padding-top:2px}
-.alert-icon-big{font-size:1.4rem}
-.alert-ts-small{font-size:.65rem;font-family:monospace;color:var(--muted);
+  min-width:54px;padding-top:2px}
+.alert-icon-big{font-size:1.9rem}
+.alert-ts-small{font-size:.75rem;font-family:monospace;color:var(--muted);
   text-align:center;white-space:nowrap}
 .alert-center{flex:1;min-width:0}
-.alert-row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
-.alert-ip{font-size:.95rem;font-weight:700;font-family:monospace}
-.alert-arrow{color:var(--muted);font-size:.8rem}
-.alert-dst{font-size:.8rem;font-family:monospace;color:var(--muted)}
-.alert-row2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
-.alert-tipo-big{font-size:.85rem;font-weight:600}
-.alert-score{font-family:monospace;font-size:.8rem;color:var(--muted)}
-.alert-gravedad{font-size:.72rem;color:var(--muted);font-style:italic}
+.alert-row1{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.alert-ip{font-size:1.2rem;font-weight:700;font-family:monospace}
+.alert-arrow{color:var(--muted);font-size:.95rem}
+.alert-dst{font-size:.95rem;font-family:monospace;color:var(--muted)}
+.alert-row2{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.alert-tipo-big{font-size:1.1rem;font-weight:700}
+.alert-score{font-family:monospace;font-size:.95rem;color:var(--muted)}
+.alert-gravedad{font-size:.85rem;color:var(--muted);font-style:italic}
 .alert-right{display:flex;flex-direction:column;gap:6px;align-items:flex-end;
   min-width:80px;flex-shrink:0}
 .btn-sm{font-size:.72rem;padding:4px 10px;border-radius:6px;cursor:pointer;
@@ -673,7 +688,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
 <aside class="sidebar" id="sidebar">
   <div class="sb-brand">
     <span class="sb-logo">PPI</span>
-    <span class="sb-name">Surikata IPS</span>
+    <span class="sb-name">Suricata IPS</span>
   </div>
   <nav class="sb-nav">
     <div class="sb-item active" onclick="goView('dashboard',this)">
@@ -725,7 +740,7 @@ tbody td{padding:6px 10px;vertical-align:middle}
 
   <!-- Topbar -->
   <div class="topbar">
-    <span class="topbar-title"><span>PPI</span>-Surikata — Detección Temprana de Anomalías · UPeU 2026</span>
+    <span class="topbar-title"><span>PPI</span>-Suricata — Detección Temprana de Anomalías · UPeU 2026</span>
     <div class="topbar-right">
       <span class="chip live" id="sse-chip"><i class="bi bi-circle-fill" style="font-size:.45rem"></i> EN VIVO</span>
       <button class="sound-btn" id="sound-btn" onclick="toggleSound()">
