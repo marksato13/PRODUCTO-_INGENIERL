@@ -19,7 +19,7 @@ MAX_EVT = 3000
 
 RE_EVENTO = re.compile(
     r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"
-    r".*?\| (?:WARNING|ERROR) \| (ANOMALÍA|SOSPECHOSO|BRUTE-FORCE|HTTP-ABUSE)"
+    r".*?\| (?:WARNING|ERROR) \| (ANOMALÍA|SOSPECHOSO|BRUTE-FORCE|HTTP-ABUSE|PORT-SCAN)"
     r".*?src=([\d.]+).*?dst=([\d.]+):(\d+).*?proto=(\w+)"
     r"(?:.*?score=([-\d.]+))?"
     r"(?:.*?grado=(\w+))?"
@@ -75,11 +75,15 @@ def procesar_linea(linea: str, push=True):
         score = score or "N/A"
         try:    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
         except: ts = datetime.now()
+        # PORT-SCAN no trae tipo= en el log (igual que BRUTE-FORCE/HTTP-ABUSE);
+        # se mapea al tipo ya soportado por el frontend (TIPO_IC/GRAVEDAD)
+        # en vez de caer en el genérico ANOMALIA_GENERICA.
+        tipo_default = "PORT_SCAN" if tl == "PORT-SCAN" else "ANOMALIA_GENERICA"
         ev = {
             "ts": ts_str[11:19], "ts_dt": ts.isoformat(), "date": ts_str[:10],
             "src": src, "dst": dst, "port": port, "proto": proto,
             "score": score, "grado": grado or "—",
-            "tipo": tipo or "ANOMALIA_GENERICA", "accion": accion,
+            "tipo": tipo or tipo_default, "accion": accion,
             "byte_ratio": byte_ratio or "—", "pkt_rate": pkt_rate or "—",
         }
         with lock:
