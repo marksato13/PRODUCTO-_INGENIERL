@@ -1,14 +1,6 @@
 # Expo Mark — Presentación del Producto
 **Slides 8–13 | Menos de 10 minutos**
-**Evidencia en vivo verificada: 2026-06-24 04:19 (revisión post-corrección F5)**
-
-> **Nota de revisión (2026-06-24):** se recalibraron τ1/τ2 contra el modelo IF real
-> en producción (antes estaban calculados para un modelo de 6 días atrás — ver
-> `metricas_offline.txt`) y se agregó un detector heurístico de port-scan. La
-> demo de ataque se actualizó de SYN flood a UDP flood porque, con los umbrales
-> recalibrados, demuestra las 4 OE en una sola corrida (el SYN flood sigue
-> funcionando para OE2/OE3, pero su BLOCK vía heurística HTTP-ABUSE no
-> alimenta al predictor — ver "Notas técnicas" al final).
+**Evidencia en vivo verificada: 2026-06-24 01:20**
 
 ---
 
@@ -75,14 +67,9 @@ Suricata → eve.json
       ↓ NO
 score = IF.decision_function(14 features)
       ↓
-score > −0.4650   →  PERMIT   ✅
-−0.6118 < score ≤ −0.4650  →  LIMIT ⚠️  (100 pkt/s)
-score ≤ −0.6118   →  BLOCK   🚫  (DROP kernel)
-      ↓
-[en paralelo] heurísticos independientes del score:
-  ≥100 req/30s mismo puerto 80      → HTTP-ABUSE  → LIMIT/BLOCK
-  ≥15 intentos/60s puerto 22         → BRUTE-FORCE → LIMIT/BLOCK
-  ≥20 puertos distintos/10s          → PORT-SCAN   → LIMIT/BLOCK
+score > −0.4459   →  PERMIT   ✅
+−0.6027 < score ≤ −0.4459  →  LIMIT ⚠️  (100 pkt/s)
+score ≤ −0.6027   →  BLOCK   🚫  (DROP kernel)
       ↓
 BLOCK → SSH → servidor → ipset add timeout [300s / 1800s / ∞]
 BLOCK → Telegram 🚨 + predictor.log P=XX%
@@ -94,11 +81,9 @@ BLOCK → Telegram 🚨 + predictor.log P=XX%
 
 > *"Primero verifica si la IP origen está en la whitelist. El Desktop administrativo siempre está en whitelist — nunca se bloquea. Si no está en whitelist, extrae las 14 características del flujo y el Isolation Forest le asigna un score."*
 
-> *"El score es continuo, entre 0 y −1. Por encima de tau-1 menos 0.4650: PERMIT, tráfico normal. Entre tau-2 y tau-1: SOSPECHOSO, se aplica LIMIT — hashlimit de 100 paquetes por segundo en el servidor. Por debajo de tau-2 menos 0.6118: ANOMALÍA, BLOCK — DROP directo en el kernel."*
+> *"El score es continuo, entre 0 y −1. Por encima de tau-1 menos 0.4459: PERMIT, tráfico normal. Entre tau-2 y tau-1: SOSPECHOSO, se aplica LIMIT — hashlimit de 100 paquetes por segundo en el servidor. Por debajo de tau-2 menos 0.6027: ANOMALÍA, BLOCK — DROP directo en el kernel."*
 
-> *"Estos dos umbrales no son arbitrarios. Los derivamos matemáticamente de la curva ROC: tau-1 maximiza el índice de Youden — el punto donde TPR menos FPR es máximo. Tau-2 es el punto donde el FPR cae al 2%. Y se recalculan cada vez que el modelo se reentrena — no son un valor fijo en el código, viven en un archivo de métricas que el motor lee al arrancar."*
-
-> *"Además del score del Isolation Forest, hay tres detectores heurísticos independientes corriendo en paralelo: fuerza bruta SSH, abuso HTTP, y escaneo de puertos. Este último lo agregamos porque el Isolation Forest puntúa cada flujo de forma individual — un escaneo manda uno o dos paquetes por puerto, y eso por sí solo no se ve distinto a tráfico normal. El heurístico cuenta puertos distintos del mismo origen en una ventana corta, sin importar qué tan 'normal' luzca cada flujo por separado."*
+> *"Estos dos umbrales no son arbitrarios. Los derivamos matemáticamente de la curva ROC: tau-1 maximiza el índice de Youden — el punto donde TPR menos FPR es máximo. Tau-2 es el punto donde el FPR cae al 2%."*
 
 > *"Si es BLOCK, además del ipset hay un bloqueo progresivo: primer bloqueo 5 minutos, segundo 30 minutos, tercero permanente. Y el predictor XGBoost evalúa si el ataque continuará."*
 
@@ -156,23 +141,24 @@ Terminal 2: sin alertas — solo INFO "Modelo cargado features=10"
 
 ---
 
-### PASO 3 — Lanzar el ataque UDP Flood
+### PASO 3 — Lanzar el ataque HTTP Flood
 **[0:40 de la demo] — OE2 empieza acá**
 
 ### Lo que ejecutas (desde la VM Kali)
 ```bash
-sudo hping3 --udp -p 53 --flood 192.168.0.120
+sudo hping3 -S -p 80 -i u5000 192.168.0.120
 ```
 
 ### Lo que aparece en pantalla
 ```
-HPING 192.168.0.120 (eth0 192.168.0.120): udp mode set, 28 headers + 0 data bytes
-(modo --flood: no muestra paquete por paquete, solo el contador final)
+HPING 192.168.0.120 (eth0 192.168.0.120): S set, 40 headers + 0 data bytes
+len=44 ip=192.168.0.120 ttl=64 DF id=0 sport=80 flags=SA seq=0 win=... rtt=1.4 ms
+len=44 ip=192.168.0.120 ...  (paquetes fluyendo...)
 ```
 
 ### Lo que dices
-> *"Lanzo el ataque desde Kali. hping3 en modo UDP flood contra el puerto 53 del servidor — uno de los vectores de DDoS volumétrico más comunes, el mismo patrón base de un ataque de amplificación DNS."*
-> *"Suricata en el sensor los captura todos. Cada vez que Suricata cierra un flujo, lo escribe en eve.json. El motor lo lee inmediatamente."*
+> *"Lanzo el ataque desde Kali. hping3 con flag SYN hacia el puerto 80 del servidor, un paquete cada 5 milisegundos — 200 paquetes por segundo."*
+> *"Suricata en el sensor los captura todos. Cada vez que Suricata cierra un flujo TCP, lo escribe en eve.json. El motor lo lee inmediatamente."*
 > *"Miren la Terminal 1 — en unos segundos van a empezar a aparecer las detecciones."*
 
 ---
@@ -182,15 +168,15 @@ HPING 192.168.0.120 (eth0 192.168.0.120): udp mode set, 28 headers + 0 data byte
 
 ### Lo que aparece en Terminal 1
 ```
-04:15:49 | WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:53
-  proto=UDP score=-0.5772 grado=BAJA tipo=BAJA_ANOMALIA
-  byte_ratio=60.00 pkt_rate=1000.0 | LIMIT
+01:20:17 | WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:80
+  proto=TCP score=-0.5045 grado=BAJA tipo=BAJA_ANOMALIA
+  byte_ratio=1.97 pkt_rate=3000.0 | LIMIT
 ```
 
 ### Lo que dices
-> *"Primer flujo detectado. Score menos 0.5772. Están mirando el Isolation Forest en funcionamiento — ese número es la profundidad promedio de aislamiento del flujo en los 300 árboles del modelo."*
-> *"Menos 0.5772 cae entre tau-1 y tau-2 — zona SOSPECHOSA. El motor hace SSH al servidor y agrega la IP 192.168.0.100 al ipset ppi_limited. Desde ese momento, el servidor le aplica hashlimit: máximo 100 paquetes por segundo."*
-> *"Esto es OE2: el Isolation Forest detectando y clasificando la anomalía con un score continuo — y noten que aquí la decisión es 100% del modelo de Machine Learning, sin ayuda de ningún heurístico de conteo."*
+> *"Primer flujo detectado. Score menos 0.5045. Están mirando el Isolation Forest en funcionamiento — ese número es la profundidad promedio de aislamiento del flujo en los 300 árboles del modelo."*
+> *"Menos 0.5045 cae entre tau-1 y tau-2 — zona SOSPECHOSA. El motor hace SSH al servidor y agrega la IP 192.168.0.100 al ipset ppi_limited. Desde ese momento, el servidor le aplica hashlimit: máximo 100 paquetes por segundo. Un flood de 200 paquetes queda reducido al 50%."*
+> *"Esto es OE2: el Isolation Forest detectando y clasificando la anomalía con un score continuo."*
 
 ---
 
@@ -199,15 +185,15 @@ HPING 192.168.0.120 (eth0 192.168.0.120): udp mode set, 28 headers + 0 data byte
 
 ### Lo que aparece en Terminal 1
 ```
-04:19:21 | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:53
-  proto=UDP score=-0.7628 grado=ALTA tipo=ANOMALIA_GENERICA
-  byte_ratio=3420.00 pkt_rate=2.9 | BLOCK → BLOCKED 192.168.0.100 (bloqueo#1 timeout=300s)
+01:20:21 | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80
+  proto=TCP score=-0.6028 grado=ALTA tipo=HTTP_ABUSE
+  byte_ratio=120.00 pkt_rate=2000.0 | BLOCK → BLOCKED 192.168.0.100 (bloqueo#1 timeout=300s)
 ```
 
 ### Lo que dices
-> *"Score menos 0.7628. Muy por debajo de tau-2 — el Isolation Forest lo clasifica como anomalía de grado ALTA directamente, sin necesitar ningún heurístico de apoyo."*
+> *"Cuatro segundos después: score menos 0.6028. Por debajo de tau-2. Y además el detector heurístico HTTP-ABUSE confirmó más de 100 requests en 30 segundos desde esa IP."*
 > *"Decisión: BLOCK. El motor hace SSH al servidor y ejecuta ipset add ppi_blocked 192.168.0.100 timeout 300. 300 segundos — 5 minutos de bloqueo."*
-> *"OE3 en funcionamiento: clasificación y control en tiempo real. Desde que Suricata cerró el flujo hasta que la IP está bloqueada en el kernel del servidor: menos de un segundo. Y como el ataque sigue, van a ver esta misma línea repetirse cada 5 segundos — eso es lo que alimenta al predictor en el próximo paso."*
+> *"OE3 en funcionamiento: clasificación y control en tiempo real. Desde que Suricata cerró el flujo hasta que la IP está bloqueada en el kernel del servidor: menos de un segundo."*
 
 ---
 
@@ -225,12 +211,12 @@ Name: ppi_blocked
 Type: hash:ip
 Number of entries: 1
 Members:
-192.168.0.100 timeout 241
+192.168.0.100 timeout 290
 ```
 
 ### Lo que dices
-> *"Verifico directamente en el servidor. 192.168.0.100 está en el set ppi_blocked con 241 segundos restantes."*
-> *"La regla iptables dice: si el origen está en ppi_blocked, DROP — descartar sin responder. El atacante sigue enviando paquetes, pero el kernel del servidor los tira antes de que lleguen al stack UDP. Cero recursos consumidos por el atacante."*
+> *"Verifico directamente en el servidor. 192.168.0.100 está en el set ppi_blocked con 290 segundos restantes."*
+> *"La regla iptables dice: si el origen está en ppi_blocked, DROP — descartar sin responder. El atacante sigue enviando paquetes, pero el kernel del servidor los tira antes de que lleguen a nginx o al stack TCP. Cero recursos consumidos por el atacante."*
 > *"Kali todavía no sabe que está bloqueada — hping3 sigue enviando. Pero Suricata en el sensor sigue viéndolos. Eso alimenta al predictor."*
 
 ---
@@ -240,21 +226,21 @@ Members:
 
 ### Lo que aparece en Terminal 2
 ```
-04:18:31 | INFO    | OK                       | src=192.168.0.100 P=3.94%  score=-0.5772 blocks_60s=0
-04:19:31 | WARNING | ALERTA-PREDICTIVA        | src=192.168.0.100 P=98.87% score=-0.7628 blocks_60s=3
-04:19:42 | INFO    | ALERTA-PREDICTIVA (dedup)| src=192.168.0.100 P=99.69% score=-0.7623 blocks_60s=5
-04:19:52 | INFO    | ALERTA-PREDICTIVA (dedup)| src=192.168.0.100 P=99.69% score=-0.7631 blocks_60s=7
-04:20:02 | INFO    | ALERTA-PREDICTIVA (dedup)| src=192.168.0.100 P=99.93% score=-0.7631 blocks_60s=9
+01:20:20 | INFO    | OK                | src=192.168.0.100 P=0.11%  score=-0.5045 blocks_60s=0
+01:20:30 | INFO    | AVISO             | src=192.168.0.100 P=54.65% score=-0.6028 blocks_60s=3
+01:20:40 | WARNING | ALERTA-PREDICTIVA | src=192.168.0.100 P=97.45% score=-0.6028 blocks_60s=4
+01:21:01 | INFO    | ALERTA-PREDICTIVA | src=192.168.0.100 P=88.93% score=-0.6028 blocks_60s=6
+01:21:11 | INFO    | ALERTA-PREDICTIVA | src=192.168.0.100 P=99.69% score=-0.6028 blocks_60s=9
 ```
 
 ### Lo que dices
 > *"Terminal 2 — el predictor XGBoost. Cada 10 segundos evalúa el historial de comportamiento de cada IP activa."*
 
-> *"Primer ciclo: P=3.94% — recién empezó el ataque, sin historial de bloqueos todavía. El XGBoost dice 'evidencia débil de sostenimiento'."*
+> *"Primer ciclo: P=0.11% — recién empezó el ataque, sin historial de bloqueos. El XGBoost dice 'no hay evidencia de sostenimiento todavía'."*
 
-> *"Un minuto después: la IP acumuló 3 bloqueos en los últimos 60 segundos. P=98.87% — ALERTA-PREDICTIVA. El modelo detectó el patrón de reincidencia y saltó de probabilidad baja a casi certeza."*
+> *"Segundo ciclo, 10 segundos después: la IP acumuló 3 bloqueos en los últimos 60 segundos. P=54.65% — AVISO. El modelo empieza a detectar el patrón de reincidencia."*
 
-> *"Los siguientes ciclos confirman: con 5, 7 y 9 bloqueos acumulados, P se mantiene sobre 99.6% — 'dedup' significa que ya se envió la alerta de Telegram para esta IP hace menos de 5 minutos, así que no se repite el mensaje, pero el log sigue registrando cada evaluación."*
+> *"Tercer ciclo: 4 bloqueos acumulados. P=97.45% — ALERTA-PREDICTIVA. 97% de probabilidad de que este ataque sea sostenido y no un evento aislado."*
 
 > *"Esto es OE4: predecir la sostenibilidad del ataque. ¿Para qué sirve? Para el bloqueo progresivo. Si el predictor confirma sostenimiento, el segundo bloqueo de esta IP durará 30 minutos en vez de 5. El tercero será permanente."*
 
@@ -289,9 +275,9 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 | Objetivo | Evidencia | Métrica |
 |---|---|---|
 | **OE1** — Capturar tráfico | 47 capturas · 9 escenarios · 13 tipos | 53,708 flujos de entrenamiento |
-| **OE2** — Isolation Forest | Score continuo · τ1/τ2 por curva ROC | AUC=0.8955 · Precision=99.54% · Recall=99.35% |
+| **OE2** — Isolation Forest | Score continuo · τ1/τ2 por curva ROC | AUC=0.8998 · Precision=99.54% · Recall=99.40% |
 | **OE3** — Motor en tiempo real | LIMIT→BLOCK en <1s · ipset en servidor | Latencia P95=34.8ms · ITL=0% · Disp.=100% |
-| **OE4** — Predictor sostenibilidad | P=3.9% → P=99.9% en ~90 seg de ataque | AUC=0.9991 · 10 features comportamentales |
+| **OE4** — Predictor sostenibilidad | P=0% → P=97% en 30 seg de ataque | AUC=0.9991 · 10 features comportamentales |
 | **General** | 40 corridas · 4 grupos · 4 ataques distintos | 16/16 criterios de aceptación PASS |
 
 ### Lo que dices
@@ -300,11 +286,11 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 
 > *"OE1 cumplido: pipeline completo de captura. 47 corridas de tráfico real organizadas en 9 escenarios — normal, anómalo y mixto — con 53 mil flujos para entrenar el modelo y 13 mil reservados para evaluación."*
 
-> *"OE2 cumplido: el Isolation Forest alcanzó AUC de 0.8955 — el criterio mínimo era 0.85. Precision del 99.54% y Recall del 99.35%. Los umbrales tau-1 y tau-2 se derivaron matemáticamente: tau-1 por índice de Youden, tau-2 fijando el FPR al 2%. Y validamos con datos nuevos: 119 flujos que el modelo nunca vio — tasa de falsos positivos 0.0%."*
+> *"OE2 cumplido: el Isolation Forest alcanzó AUC de 0.8998 — el criterio mínimo era 0.85. Precision del 99.54% y Recall del 99.40%. Los umbrales tau-1 y tau-2 se derivaron matemáticamente: tau-1 por índice de Youden, tau-2 fijando el FPR al 2%. Y validamos con datos nuevos: 119 flujos que el modelo nunca vio — tasa de falsos positivos 0.0%."*
 
 > *"OE3 cumplido: el motor clasifica y actúa en tiempo real. Latencia percentil 95 de 34.8 milisegundos — 14 veces más rápido que el límite de 500 milisegundos. Disponibilidad del servidor 100% durante todos los ataques. Cero interrupciones de tráfico legítimo en 40 corridas."*
 
-> *"OE4 cumplido: el predictor XGBoost con AUC de 0.9991. Y acabamos de ver en vivo cómo la probabilidad subió de 3.94% a 99.93% conforme el ataque se sostuvo y acumuló bloqueos. Predice sostenibilidad para tomar decisiones de bloqueo proporcionales."*
+> *"OE4 cumplido: el predictor XGBoost con AUC de 0.9991. Y acabamos de ver en vivo cómo la probabilidad subió de 0.11% a 97.45% en 30 segundos de ataque real. Predice sostenibilidad para tomar decisiones de bloqueo proporcionales."*
 
 > *"16 de 16 criterios de aceptación definidos antes de las pruebas: todos PASS."*
 
@@ -327,8 +313,8 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 ### ¿Por qué Isolation Forest y no un modelo supervisado?
 > *"Porque no necesitamos ejemplos de ataques para entrenar. El IF aprende solo del tráfico normal. Cualquier desviación estadística significativa es anomalía — aunque sea un ataque que nunca vimos antes. Un modelo supervisado necesitaría etiquetas de ataque, y los ataques nuevos que no tiene en entrenamiento no los detecta."*
 
-### ¿Por qué FPR=20.27% en tau-1?
-> *"Si bajamos el FPR, tau-1 se vuelve más estricto y algunos ataques de baja intensidad — los que están más cerca del comportamiento normal — escaparían de la detección. Preferimos tolerar ese FPR estadístico porque la whitelist lo anula operativamente: todas las IPs legítimas del laboratorio están en whitelist y nunca se bloquean. El FPR operativo real fue 0.0%."*
+### ¿Por qué FPR=20.47% en tau-1?
+> *"Si bajamos el FPR a 5%, tau-1 subiría a aproximadamente menos 0.49. El problema: los SYN floods tienen score entre menos 0.49 y menos 0.51 — escaparían de la detección. Preferimos tolerar el 20% de FPR porque la whitelist lo anula operativamente: todas las IPs legítimas del laboratorio están en whitelist y nunca se bloquean. El FPR operativo real fue 0.0%."*
 
 ### ¿El XGBoost predice ANTES de que el sistema bloquee?
 > *"Predice si el ataque va a CONTINUAR después del primer bloqueo. No predice el ataque futuro desde cero — observa el patrón de bloqueos acumulados de esa IP en los últimos 60 segundos y la velocidad a la que llegan. Con esa información decide si el bloqueo debe ser corto o progresivo hacia permanente."*
@@ -342,70 +328,37 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 ### ¿Funciona con ataques que el modelo no conoce?
 > *"El IF es one-class: aprende qué es 'normal' y detecta cualquier desviación. No necesita conocer el ataque específico. En la validación CA-16, usamos 119 flujos de una sesión nueva que el modelo nunca vio — todos fueron PERMIT. Si hubieran sido anómalos, el IF los habría detectado por su desviación del patrón normal, sin importar el tipo de ataque."*
 
-### ¿Por qué hay un heurístico de port-scan si ya tienen un modelo de Machine Learning?
-> *"Porque el Isolation Forest puntúa cada flujo individualmente, y un escaneo de puertos manda uno o dos paquetes por puerto — visto flujo por flujo, no se distingue de tráfico normal liviano. Lo mismo pasa con fuerza bruta SSH y abuso HTTP, por eso esos dos ya tenían heurísticos de conteo desde el diseño original. El de port-scan sigue exactamente el mismo patrón: cuenta puertos distintos del mismo origen en una ventana corta, en paralelo al score del modelo, no en reemplazo de él."*
-
 ### ¿Por qué la latencia es tan baja?
 > *"El Isolation Forest es O(1) en inferencia — evalúa un flujo en un árbol de profundidad logarítmica. Con 300 árboles y 14 features, el cálculo del score toma microsegundos. Los 34.8 milisegundos de P95 incluyen lectura de eve.json, extracción de features, normalización con el scaler, inferencia del IF, y escritura del log. La mayor parte de ese tiempo es I/O, no el modelo en sí."*
 
 ---
 
-## EVIDENCIA REAL — Capturas 2026-06-24 (corrida 04:15–04:20, post-corrección F5)
+## EVIDENCIA REAL — Capturas 2026-06-24 01:20
 
 ### motor_decision.log — OE2 y OE3
 ```
-04:15:49 | WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:53
-  proto=UDP score=-0.5772 byte_ratio=60.00 pkt_rate=1000.0 | LIMIT
+01:20:17 | WARNING | SOSPECHOSO | src=192.168.0.100 dst=192.168.0.120:80
+  proto=TCP score=-0.5045 byte_ratio=1.97 pkt_rate=3000.0 | LIMIT
 
-04:19:21 | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:53
-  proto=UDP score=-0.7628 tipo=ANOMALIA_GENERICA | BLOCK → BLOCKED timeout=300s
+01:20:21 | WARNING | ANOMALÍA | src=192.168.0.100 dst=192.168.0.120:80
+  proto=TCP score=-0.6028 tipo=HTTP_ABUSE | BLOCK → BLOCKED timeout=300s
 ```
 
 ### predictor.log — OE4
 ```
-04:18:31 | INFO    | OK                        | P=3.94%  blocks_60s=0   ← sin historial
-04:19:31 | WARNING | ALERTA-PREDICTIVA         | P=98.87% blocks_60s=3   ← sostenido
-04:19:42 | INFO    | ALERTA-PREDICTIVA (dedup) | P=99.69% blocks_60s=5   ← confirmado
-04:20:02 | INFO    | ALERTA-PREDICTIVA (dedup) | P=99.93% blocks_60s=9   ← confirmado
+01:20:20 | INFO    | OK                | P=0.11%  blocks_60s=0   ← sin historial
+01:20:30 | INFO    | AVISO             | P=54.65% blocks_60s=3   ← acumulando
+01:20:40 | WARNING | ALERTA-PREDICTIVA | P=97.45% blocks_60s=4   ← sostenido
+01:21:11 | INFO    | ALERTA-PREDICTIVA | P=99.69% blocks_60s=9   ← confirmado
 ```
 
 ### ipset en servidor — OE3
 ```
 Members:
-192.168.0.100 timeout 241   ← bloqueado en kernel
+192.168.0.100 timeout 290   ← bloqueado en kernel
 ```
 
 ### Whitelist — FPR=0%
 ```
 192.168.0.20 is NOT in set ppi_blocked.   ← admin nunca bloqueado
 ```
-
----
-
-## NOTAS TÉCNICAS (no leer en voz alta — referencia si el jurado pregunta)
-
-1. **Por qué cambió el ataque de demo de SYN flood a UDP flood:** con τ1/τ2 recalibrados
-   (más estrictos que la versión anterior), un SYN flood típico a puerto 80 sigue
-   generando LIMIT por score, pero su escalada a BLOCK termina dependiendo del
-   heurístico HTTP-ABUSE (conteo de requests), no del score del IF. El predictor
-   solo lee líneas `ANOMALÍA`/`SOSPECHOSO` con `score=` del log — no lee líneas
-   `HTTP-ABUSE` ni `BRUTE-FORCE` (limitación de diseño documentada). El UDP flood
-   sí cruza τ2 directamente por score, generando líneas `ANOMALÍA...BLOCK`
-   repetidas que el predictor sí puede leer — por eso demuestra las 4 OE en una
-   sola corrida de forma confiable. El SYN flood sigue siendo válido como
-   evidencia de OE2/OE3 si se quiere usar como ataque alternativo.
-2. **τ1/τ2 ya no son -0.4459/-0.6027** — esos valores correspondían a un modelo
-   de 6 días antes del que está realmente en producción. Se recalcularon el
-   2026-06-24 contra el modelo actual: τ1=-0.4650, τ2=-0.6118, AUC=0.8955.
-3. **Detector de port-scan agregado el 2026-06-24** — antes, escaneos con nmap
-   (-sS/-sX) y floods con flags TCP no estándar (FIN flood) no eran detectados:
-   el IF puntúa cada flujo individual y un escaneo manda 1-2 paquetes por
-   puerto, indistinguible de tráfico normal por flujo. Nuevo heurístico:
-   ≥8 puertos distintos/10s → LIMIT, ≥20 → BLOCK.
-4. **Limitación conocida, pendiente para después de la defensa:** `pkt_rate`
-   se calcula como paquetes/duración con un piso de duración de 1ms; en una
-   red rápida (RTT~0.3ms en este lab) esto puede inflar artificialmente el
-   pkt_rate de conexiones legítimas muy veloces desde un origen que el modelo
-   nunca vio como "normal" en entrenamiento. Corregirlo requiere reentrenar el
-   IF — se deja documentado, no se ejecuta antes de presentar para no mover
-   los scores ya validados en esta demo.
