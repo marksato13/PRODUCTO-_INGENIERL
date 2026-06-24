@@ -59,16 +59,20 @@ root  1308  sudo hping3 -S -p 80 -i u5000 192.168.0.120
 root  1318  hping3 -S -p 80 -i u5000 192.168.0.120
 ```
 
-**Si aparecen procesos, matarlos** (requiere NOPASSWD configurado arriba):
+**Si aparecen procesos, matarlos** (contraseña sudo de Kali = `Cisco123` con C mayúscula):
 ```bash
-ssh m4rk@192.168.0.100 "sudo pkill -9 hping3; sudo pkill -9 hydra; sudo pkill -9 nmap"
-sleep 1
+ssh m4rk@192.168.0.100 "echo 'Cisco123' | sudo -S pkill -9 hping3; echo 'Cisco123' | sudo -S pkill -9 hydra; echo 'Cisco123' | sudo -S pkill -9 nmap 2>/dev/null"
+sleep 2
 ssh m4rk@192.168.0.100 "ps aux | grep -E 'hping3|hydra|nmap' | grep -v grep || echo KALI_LIMPIA"
 ```
+**Resultado verificado 2026-06-23:**
+```
+KALI_LIMPIA
+```
 
-> **Nota importante:** si hping3 fue lanzado con sudo y NO configuraste NOPASSWD,
-> debes ir a la VM Kali directamente y ejecutar `sudo pkill hping3`,
-> o simplemente cierra la terminal donde lo lanzaste (Ctrl+C).
+> ⚠️ **Importante:** después de matar hping3, esperar **90 segundos** antes de reiniciar el motor.
+> Suricata tarda ~60s en vaciar los flows residuales del ataque.
+> Si reinicias el motor antes, arrancará con backlog y generará alertas falsas.
 
 ---
 
@@ -107,12 +111,15 @@ ssh m4rk@192.168.0.110 "echo '{}' > /home/m4rk/ppi-surikata-producto/results/blo
 
 ### 0D — Reiniciar motor y predictor (limpiar memoria interna)
 
+> ⚠️ Ejecutar este paso SOLO DESPUÉS de que el paso 0A confirmó `KALI_LIMPIA` y esperaste 90 segundos.
+> Si hay flows residuales en eve.json el motor los procesa como ataque activo.
+
 ```bash
 ssh m4rk@192.168.0.110 "echo cisco123 | sudo -S systemctl restart ppi-motor.service ppi-predictor.service && echo REINICIADOS"
 sleep 6
 ssh m4rk@192.168.0.110 "systemctl is-active ppi-motor.service ppi-predictor.service"
 ```
-**Resultado verificado 2026-06-23:**
+**Resultado verificado 2026-06-23** (ejecutado 90s después de matar hping3):
 ```
 REINICIADOS
 active
@@ -154,8 +161,14 @@ INFO | Brute Force SSH : ventana=60s umbral_limit=5 umbral_block=15
 INFO | HTTP Abuse      : ventana=30s umbral_limit=50 umbral_block=100
 ```
 
-> **Si ves WARNING o BLOCK inmediatamente:** hay tráfico anómalo activo (revisar 0A).
-> Si Kali tiene hping3 corriendo, el motor detecta y bloquea en ~2 segundos del arranque.
+> **Si ves WARNING o BLOCK inmediatamente:** el motor arrancó con backlog de Suricata.
+> Solución: volver al paso 0A, verificar que Kali está limpia, esperar 90s y repetir 0D.
+
+> **Si ves `Block counts cargados: N IPs`** (N > 0): limpiar block_counts antes de reiniciar:
+> ```bash
+> ssh m4rk@192.168.0.110 "echo '{}' > /home/m4rk/ppi-surikata-producto/results/block_counts.json"
+> ```
+> Luego repetir el paso 0D.
 
 ---
 
