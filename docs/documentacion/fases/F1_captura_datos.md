@@ -197,7 +197,7 @@ python3 scripts/eda_features.py
 | `eda_05_dest_ports.png` | Puertos destino más frecuentes | :80 (HTTP), :22 (SSH), :53 (UDP) dominan en ataques |
 | `eda_06_stats_tabla.png` | Estadísticas completas (μ, σ, min, max) | `pkt_rate` normal: μ=18, anómalo: μ=8,420 |
 
-> **Imágenes:** `docs/ppi_documentacion2/imagenes/F1_captura/`
+> **Imágenes:** `docs/documentacion/imagenes/F1_captura/`
 
 ---
 

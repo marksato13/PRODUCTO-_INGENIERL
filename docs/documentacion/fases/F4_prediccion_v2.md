@@ -222,8 +222,8 @@ Comportamiento correcto: el XGBoost predijo correctamente que el ataque continua
 
 | Imagen | Ruta |
 |---|---|
-| Curva ROC XGBoost v2 | `docs/ppi_documentacion2/imagenes/F4_predictor/f4_roc_comparacion.png` |
-| SHAP — importancia de features | `docs/ppi_documentacion2/imagenes/F4_predictor/f4_shap_importancia.png` |
+| Curva ROC XGBoost v2 | `docs/documentacion/imagenes/F4_predictor/f4_roc_comparacion.png` |
+| SHAP — importancia de features | `docs/documentacion/imagenes/F4_predictor/f4_shap_importancia.png` |
 
 ---
 

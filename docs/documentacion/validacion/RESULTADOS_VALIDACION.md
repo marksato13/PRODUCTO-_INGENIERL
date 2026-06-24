@@ -85,7 +85,7 @@ Capturar tráfico normal nuevo (diferente sesión/horario) y verificar FPR del I
 cd /home/m4rk/ppi-surikata-producto
 source /home/m4rk/ppi-sensor/venv/bin/activate
 # Ver instrucciones completas:
-cat docs/ppi_documentacion2/validacion/f2_val_datos_nuevos.md
+cat docs/documentacion/validacion/f2_val_datos_nuevos.md
 ```
 
 Criterio: FPR ≤ 0.30 en la nueva captura → CA-16 ✅ PASS

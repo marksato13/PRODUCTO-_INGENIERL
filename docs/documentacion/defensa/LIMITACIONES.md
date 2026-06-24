@@ -171,7 +171,7 @@ El historial se persiste en `results/block_counts.json` y se recarga en cada rei
 
 - `docs/informe_resultados/limitaciones_detalladas.md` — análisis técnico profundo L1, L2, L3
 - `docs/informe_resultados/puntos_debiles_defensa.md` — Q&A preparado para el jurado
-- `docs/ppi_documentacion2/F4_prediccion_v2.md §CAs` — validaciones en vivo
-- `docs/ppi_documentacion2/F2_deteccion_if.md` — umbrales y curva ROC
+- `docs/documentacion/F4_prediccion_v2.md §CAs` — validaciones en vivo
+- `docs/documentacion/F2_deteccion_if.md` — umbrales y curva ROC
 - `config/whitelist.conf` — IPs excluidas de bloqueo (editable)
 - `results/block_counts.json` — historial de bloqueos progresivos (generado en runtime)

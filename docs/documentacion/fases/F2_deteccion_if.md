@@ -228,8 +228,8 @@ results/
 
 | Imagen | Ruta |
 |---|---|
-| Curva ROC con τ1/τ2 | `docs/ppi_documentacion2/imagenes/F2_modelo_IF/f2_auc_roc_curva.png` |
-| Distribución scores normal vs anómalo | `docs/ppi_documentacion2/imagenes/F2_modelo_IF/f2_distribucion_scores.png` |
+| Curva ROC con τ1/τ2 | `docs/documentacion/imagenes/F2_modelo_IF/f2_auc_roc_curva.png` |
+| Distribución scores normal vs anómalo | `docs/documentacion/imagenes/F2_modelo_IF/f2_distribucion_scores.png` |
 
 ---
 

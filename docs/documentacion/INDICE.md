@@ -84,7 +84,7 @@ Tráfico de red
 ## Estructura de carpetas
 
 ```
-docs/ppi_documentacion2/
+docs/documentacion/
 ├── INDICE.md                        ← este archivo
 │
 ├── fases/                           ← especificación técnica de cada fase

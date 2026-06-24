@@ -102,16 +102,11 @@ PROCESO  [f6_corridas.py — 40 corridas, ~40 minutos]
     Final (31-40)    → bloqueo consolidado → disponibilidad sostenida
 
 SALIDAS
-  results/resultados_f6_completo.csv   (40 filas, 14 columnas)
-  results/resultados_normal.csv        (10 filas)
-  results/resultados_mixto.csv         (10 filas)
-  results/resultados_reeval.csv        (10 filas)
-  results/resultados_final.csv         (10 filas)
-  results/graficas_f6/*.png            (7 figuras 300 DPI)
-  results/reports/auc_por_escenario.txt
-  docs/bitacora/bitacora_escenarios.txt (64 entradas)
+  results/resultados_f6_completo.csv             (40 filas, 18 columnas)
+  docs/documentacion/imagenes/F6_validacion/     (7 figuras 300 DPI)
+  docs/bitacora/bitacora_escenarios.txt          (64 entradas)
 
-MÉTRICAS EN EL CSV (14 columnas):
+MÉTRICAS EN EL CSV (18 columnas):
   corrida, grupo, escenario, fecha, hora_inicio, hora_fin, duracion_s,
   disponibilidad, flows_normal, flows_anom, bloqueados, limitados,
   latencia_ms, lead_time_s, mtta_s, mttc_s, tie_pct, itl_pct
@@ -125,19 +120,15 @@ MÉTRICAS EN EL CSV (14 columnas):
 ```bash
 # Batch de 40 corridas (tarda ~40 min incluyendo pausas)
 python3 scripts/f6_corridas.py
-# → results/resultados_f6_completo.csv   (40 filas)
-# → results/resultados_normal.csv        (10 filas)
-# → results/resultados_mixto.csv         (10 filas)
-# → results/resultados_reeval.csv        (10 filas)
-# → results/resultados_final.csv         (10 filas)
+# → results/resultados_f6_completo.csv   (40 filas, 18 columnas)
 
 # AUC por escenario
 python3 scripts/auc_por_escenario.py
-# → results/reports/auc_por_escenario.txt
+# → imprime en stdout / guardar manualmente si se necesita
 
 # 7 gráficas PNG 300 DPI
 python3 scripts/generar_graficas_f6.py
-# → results/graficas_f6/*.png
+# → docs/documentacion/imagenes/F6_validacion/*.png
 ```
 
 ---
@@ -206,7 +197,7 @@ Telegram recibido: `08:31:37 — 🚨 BRUTE_FORCE_SSH | BLOCK | IP: 192.168.0.10
 
 ## Suite de validación automatizada
 
-La carpeta `scripts/validacion/` y `docs/ppi_documentacion2/validacion/` implementan validación reproducible por script:
+La carpeta `scripts/validacion/` y `docs/documentacion/validacion/` implementan validación reproducible por script:
 
 ```bash
 # Ejecutar 16 CAs automáticamente (F1–F6)
@@ -229,7 +220,7 @@ CA-16 nueva data: PASS    (FPR=0.0% en 119 flows nuevos)
 TOTAL: 16/16 criterios PASS ✅
 ```
 
-Log completo: `results/validacion_20260622_150405.log`
+Log de esa ejecución archivado (eliminado del repo — los CAs de la tabla arriba son la evidencia)
 
 ---
 
@@ -237,12 +228,12 @@ Log completo: `results/validacion_20260622_150405.log`
 
 | Imagen | Ruta |
 |---|---|
-| Disponibilidad 40 corridas | `docs/ppi_documentacion2/imagenes/F6_validacion/f6_01_disponibilidad.png` |
-| Flujos anómalos por escenario | `docs/ppi_documentacion2/imagenes/F6_validacion/f6_02_flows_anomalos.png` |
-| Timeline lead time | `docs/ppi_documentacion2/imagenes/F6_validacion/f6_03_timeline_deteccion.png` |
-| ITL = 0% todas las corridas | `docs/ppi_documentacion2/imagenes/F6_validacion/f6_04_itl.png` |
-| Latencia del pipeline | `docs/ppi_documentacion2/imagenes/F6_validacion/f6_06_latencia_pipeline.png` |
-| Panel resumen 7-en-1 | `docs/ppi_documentacion2/imagenes/F6_validacion/f6_07_panel_resumen.png` |
+| Disponibilidad 40 corridas | `docs/documentacion/imagenes/F6_validacion/f6_01_disponibilidad.png` |
+| Flujos anómalos por escenario | `docs/documentacion/imagenes/F6_validacion/f6_02_flows_anomalos.png` |
+| Timeline lead time | `docs/documentacion/imagenes/F6_validacion/f6_03_timeline_deteccion.png` |
+| ITL = 0% todas las corridas | `docs/documentacion/imagenes/F6_validacion/f6_04_itl.png` |
+| Latencia del pipeline | `docs/documentacion/imagenes/F6_validacion/f6_06_latencia_pipeline.png` |
+| Panel resumen 7-en-1 | `docs/documentacion/imagenes/F6_validacion/f6_07_panel_resumen.png` |
 
 ---
 

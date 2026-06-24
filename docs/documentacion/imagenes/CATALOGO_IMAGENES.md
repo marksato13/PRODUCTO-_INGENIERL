@@ -1,6 +1,6 @@
 # Catálogo de Imágenes — PPI UPeU 2026
 
-**Carpeta:** `docs/ppi_documentacion2/imagenes/`  
+**Carpeta:** `docs/documentacion/imagenes/`  
 **Estado:** ✅ existente | ⏳ captura pendiente (manual) | 🔧 generar con script
 
 ---
