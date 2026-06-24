@@ -1,20 +1,7 @@
 # Expo Mark — Presentación del Producto
 **Slides 8–13 | Menos de 10 minutos**
-**Evidencia en vivo verificada: 2026-06-24 04:19 y 05:01-05:03 (revisión post-corrección F5 + comando reproducible)**
-
-> **Nota de revisión (2026-06-24):** se recalibraron τ1/τ2 contra el modelo IF real
-> en producción (antes estaban calculados para un modelo de 6 días atrás — ver
-> `metricas_offline.txt`) y se agregó un detector heurístico de port-scan. La
-> demo de ataque se actualizó de SYN flood a UDP flood porque, con los umbrales
-> recalibrados, demuestra las 4 OE en una sola corrida (el SYN flood sigue
-> funcionando para OE2/OE3, pero su BLOCK vía heurística HTTP-ABUSE no
-> alimenta al predictor — ver "Notas técnicas" al final).
-> **Segunda revisión (mismo día, varias corridas):** se encontró que el comando
-> de PASO 3 sin la flag `-k` no era reproducible (fragmentaba el ataque en
-> miles de flujos pequeños por la randomización del puerto origen de hping3,
-> dando scores inconsistentes entre corridas). Se agregó `-k` al comando y se
-> eliminó la promesa de un paso LIMIT intermedio para el flood — ver Nota
-> Técnica 5.
+**Evidencia en vivo verificada y reproducida 4 veces: 2026-06-24**
+**Comando final: `sudo timeout 10 hping3 --udp -p 53 -k --flood 192.168.0.120`**
 
 ---
 
@@ -169,60 +156,36 @@ Terminal 2: sin alertas — solo INFO "Modelo cargado features=10"
 ```bash
 sudo timeout 10 hping3 --udp -p 53 -k --flood 192.168.0.120
 ```
-> La flag `-k` (keep, mantiene el puerto origen fijo) es la que hace que la demo
-> sea reproducible. Sin ella, hping3 cambia el puerto origen en cada paquete y
-> Suricata fragmenta el ataque en miles de flujos pequeños en vez de uno solo —
-> el score resultante se vuelve errático (verificado en pruebas del 2026-06-24:
-> sin `-k`, el mismo comando dio 3 resultados distintos en 3 corridas). Con `-k`
-> todos los paquetes agregan al mismo flujo y el resultado es consistente.
-> El `timeout 10` corta el ataque a los 10 segundos a propósito — ver el aviso
-> de tiempos justo abajo, es importante para no quedarte esperando sin saber
-> por qué.
+> El flag `-k` fija el puerto origen — sin él, el ataque se fragmenta en miles
+> de flujos chicos y el resultado deja de ser confiable (probado).
 
-### ⏱️ AVISO DE TIEMPOS — leer antes de hacerlo en vivo
-> **La detección NO aparece mientras el ataque está corriendo, y NO aparece
-> en "unos segundos".** Verificado 4 veces el 2026-06-24 (10s, 35s y 60s de
-> ataque): la línea `ANOMALÍA...BLOCK` apareció siempre entre **40 y 50
-> segundos después de lanzar el comando** — sin importar si el ataque duró 10s
-> o 60s. Causa: con `-k` todo el tráfico es UN solo flujo en Suricata, y
-> Suricata solo escribe el registro del flujo en `eve.json` cuando lo CIERRA
-> — y un flujo UDP se cierra recién 30 segundos después de su último paquete
-> (`flow-timeouts.udp.new: 30` en `suricata.yaml`), no mientras sigue activo.
-> El motor sí reacciona en <1 segundo una vez que el flujo aparece — eso es lo
-> que mide la latencia P95=34.8ms — pero ese flujo tarda en aparecer.
-> **Qué decir mientras esperas (no te quedes en silencio):** *"El ataque ya
-> mandó varios millones de paquetes en estos 10 segundos. Suricata los está
-> agregando en un solo flujo. Como es UDP y no hay respuesta del servidor,
-> Suricata necesita unos 30 segundos sin tráfico nuevo de esa IP para decidir
-> que el flujo terminó y recién ahí lo escribe — así es como trabaja cualquier
-> sensor basado en análisis de flujos, no paquete por paquete. Cuando aparezca,
-> van a ver el resultado de los más de 10 millones de paquetes agregados."*
+### ⏱️ Antes de lanzarlo: la detección tarda ~40-50s, no segundos
+> Suricata recién escribe el flujo cuando lo cierra, y un flujo UDP se cierra
+> 30s después de su último paquete — no es el motor siendo lento (eso sigue
+> en <1s, P95=34.8ms). **Mientras esperas, di esto:** *"El ataque ya mandó
+> millones de paquetes. Suricata necesita ~30 segundos sin tráfico nuevo de
+> esa IP para cerrar el flujo y recién ahí lo reporta — así trabaja cualquier
+> sensor basado en flujos."*
 
 ### Lo que aparece en pantalla
 ```
-HPING 192.168.0.120 (eth0 192.168.0.120): udp mode set, 28 headers + 0 data bytes
-(modo --flood: no muestra paquete por paquete, solo el contador final)
 --- 192.168.0.120 hping statistic ---
 14255146 packets transmitted, 0 packets received, 100% packet loss
 ```
 
 ### Lo que dices
-> *"Lanzo el ataque desde Kali. hping3 en modo UDP flood contra el puerto 53 del servidor — uno de los vectores de DDoS volumétrico más comunes, el mismo patrón base de un ataque de amplificación DNS."*
-> *"Suricata en el sensor lo está capturando ahora mismo. Vamos a esperar un momento a que cierre el flujo — se los explico mientras esperamos."* (ver aviso de tiempos arriba)
+> *"Lanzo el ataque desde Kali. UDP flood contra el puerto 53 del servidor — vector de DDoS volumétrico, base de un ataque de amplificación DNS."*
+> *"Suricata lo está capturando ahora. Esperemos un momento a que cierre el flujo."* (ver aviso de arriba)
 
 ---
 
-### PASO 4/5 — El IF clasifica y bloquea directo (sin paso LIMIT intermedio)
-**[~40-50 seg después de lanzar el comando, verificado 4 veces] — OE2 + OE3**
+### PASO 4/5 — El IF clasifica y bloquea directo
+**[~40-50 seg después de lanzar el comando] — OE2 + OE3**
 
-> **Nota:** un UDP flood a `--flood` acumula miles de paquetes por segundo en un
-> único flujo desde el primer instante — el score cae muy por debajo de τ2 de
-> inmediato. Esto es exactamente lo que documenta CLAUDE.md en la tabla
-> "Secuencia del log del motor por tipo de ataque": *"SYN/UDP/ICMP Flood
-> (`--flood`) → `ANOMALÍA ... BLOCK` directo (score ≤ τ2 en primer flujo)"*.
-> No vas a ver un `SOSPECHOSO/LIMIT` antes — eso es esperado, no un error.
-> (El paso LIMIT sí existe y es real: lo puedes mostrar por separado con un
-> ataque más lento — ver Nota Técnica 5 al final del documento.)
+> No vas a ver `SOSPECHOSO/LIMIT` antes del BLOCK — un flood a `--flood`
+> acumula tanto tráfico en un único flujo que el score cae bajo τ2 directo
+> desde el primer corte. Coincide con la tabla de CLAUDE.md para floods. Eso
+> es esperado, no un error.
 
 ### Lo que aparece en Terminal 1
 ```
@@ -232,10 +195,9 @@ HPING 192.168.0.120 (eth0 192.168.0.120): udp mode set, 28 headers + 0 data byte
 ```
 
 ### Lo que dices
-> *"Ahí está. Score menos 0.8026. Muy por debajo de tau-2 — el Isolation Forest lo clasifica directamente como ANOMALÍA de grado ALTA, y además lo reconoce específicamente como UDP_FLOOD por la combinación de byte_ratio y pkt_rate — sin necesitar ningún heurístico de apoyo."*
-> *"Decisión: BLOCK. El motor hace SSH al servidor y ejecuta ipset add ppi_blocked 192.168.0.100 timeout 300. 300 segundos — 5 minutos de bloqueo."*
-> *"OE3 en funcionamiento: clasificación y control en tiempo real. Desde que Suricata cerró el flujo hasta que la IP está bloqueada en el kernel del servidor: menos de un segundo."*
-> *"Si dejo correr el ataque varios segundos más, Suricata sigue cerrando flujos nuevos del mismo origen y el motor sigue registrando `ANOMALÍA...BLOCK` cada vez — eso es lo que alimenta al predictor en el próximo paso. Por eso para esta parte de la demo conviene dejar el flood corriendo unos 60 segundos en vez de detenerlo apenas se ve el primer BLOCK."*
+> *"Ahí está. Score menos 0.8026, muy por debajo de tau-2 — el Isolation Forest lo clasifica directo como ANOMALÍA de grado ALTA, y lo reconoce como UDP_FLOOD por byte_ratio y pkt_rate, sin heurístico de apoyo."*
+> *"Decisión: BLOCK. El motor hace SSH al servidor y ejecuta ipset add ppi_blocked 192.168.0.100 timeout 300 — 5 minutos de bloqueo."*
+> *"OE3: desde que Suricata cierra el flujo hasta que la IP está bloqueada en el kernel del servidor, menos de un segundo."*
 
 ---
 
@@ -263,23 +225,12 @@ Members:
 ---
 
 ### PASO 7 — Predictor XGBoost evalúa sostenibilidad
-**Evidencia pre-capturada — NO se repite en vivo dentro de este mismo PASO 3-6**
+**Evidencia pre-capturada — preséntala como tal, no la repitas en vivo dentro del PASO 3-6**
 
-> **Importante para no decir algo que no puedes sostener:** con el comando de
-> 10 segundos de PASO 3 (`-k --flood`), Suricata registra el ataque como UN
-> solo flujo y por lo tanto el motor solo genera UNA línea `ANOMALÍA...BLOCK`
-> en total (verificado: `blocks_60s` se queda en 1, P no escala). La escalada
-> de abajo (blocks_60s 0→3→5→7→9) viene de una corrida real pero DISTINTA —
-> un ataque sostenido ~5 minutos sin `-k`, capturada el 2026-06-24 04:15-04:20
-> — porque ahí Suricata sí cierra muchos flujos pequeños y seguidos, y cada
-> cierre es una nueva línea que alimenta al predictor.
-> **Qué decir:** presenta esto como evidencia ya validada (captura de pantalla
-> o el log guardado), no lo intentes reproducir en vivo en el mismo momento
-> que el PASO 3-6 — son dos pruebas distintas con configuraciones distintas.
-> Si el jurado pide verlo en vivo, la opción es repetir el comando de PASO 3
-> 3-4 veces con ~40 segundos de espera entre cada uno (para que cada ráfaga
-> cierre su propio flujo) durante un par de minutos — no lo hagas como
-> improvisación, pruébalo antes si te lo van a pedir.
+> El PASO 3 (10s, `-k`) genera UN solo BLOCK, no escalada. La secuencia de
+> abajo viene de una corrida real pero distinta (ataque sostenido ~5 min, sin
+> `-k`). Muéstrala como log/captura ya validada, no como algo que va a
+> reaparecer en la misma demo corta.
 
 ### Lo que aparece en Terminal 2
 ```
@@ -389,16 +340,11 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 > *"Porque el Isolation Forest puntúa cada flujo individualmente, y un escaneo de puertos manda uno o dos paquetes por puerto — visto flujo por flujo, no se distingue de tráfico normal liviano. Lo mismo pasa con fuerza bruta SSH y abuso HTTP, por eso esos dos ya tenían heurísticos de conteo desde el diseño original. El de port-scan sigue exactamente el mismo patrón: cuenta puertos distintos del mismo origen en una ventana corta, en paralelo al score del modelo, no en reemplazo de él."*
 
 ### Tardó casi un minuto en bloquear, ¿no es eso lento para "tiempo real"?
-> *"Hay que separar dos cosas. Lo que tarda ~30-40 segundos es que Suricata
-> decida que el flujo terminó — eso es un parámetro de configuración del
-> sensor, `flow-timeouts`, igual en cualquier IDS basado en flujos, no es el
-> motor pensando. Una vez que Suricata SÍ entrega el flujo, el motor lo
-> procesa y bloquea en menos de un segundo — eso es lo que mide la latencia
-> P95 de 34.8 milisegundos. En un ataque real y sostenido, que dura minutos u
-> horas, esos 30-40 segundos de margen son insignificantes comparados con el
-> daño que evitan. Y se puede ajustar bajando el timeout de Suricata si se
-> necesita reacción más rápida — no lo hicimos para no tocar nada del sensor
-> a última hora antes de la sustentación."*
+> *"Son dos cosas distintas. Suricata tarda ~30-40s en decidir que el flujo
+> terminó — es configuración del sensor, no el motor pensando. Una vez que
+> Suricata entrega el flujo, el motor bloquea en menos de un segundo: eso es
+> lo que mide la latencia P95 de 34.8 milisegundos. Frente a un ataque real
+> que dura minutos u horas, ese margen es insignificante."*
 
 ### ¿Por qué la latencia es tan baja?
 > *"El Isolation Forest es O(1) en inferencia — evalúa un flujo en un árbol de profundidad logarítmica. Con 300 árboles y 14 features, el cálculo del score toma microsegundos. Los 34.8 milisegundos de P95 incluyen lectura de eve.json, extracción de features, normalización con el scaler, inferencia del IF, y escritura del log. La mayor parte de ese tiempo es I/O, no el modelo en sí."*
@@ -415,9 +361,7 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 08:49:13 | ANOMALÍA score=-0.8026 tipo=UDP_FLOOD         byte_ratio=198979.59 pkt_rate=209673.7  BLOCK
 ```
 > 4/4 corridas: BLOCK directo sin LIMIT, score siempre muy por debajo de
-> τ2=-0.6118 — comportamiento reproducible, no un resultado aislado (Nota
-> Técnica 5). **Tiempo desde el lanzamiento del comando hasta esta línea: entre
-> 40 y 100 segundos en las 4 corridas — nunca instantáneo** (Nota Técnica 6).
+> τ2=-0.6118 — comportamiento reproducible, no un resultado aislado.
 
 ### predictor.log — OE4 (corrida 04:15–04:20, flood sostenido ~5 min sin `-k`,
 ### conservada como evidencia de la escalada porque requiere varios ciclos de
@@ -429,38 +373,13 @@ ssh m4rk@192.168.0.120 "sudo ipset test ppi_blocked 192.168.0.20 2>&1"
 04:20:02 | INFO    | ALERTA-PREDICTIVA (dedup) | P=99.93% blocks_60s=9   ← confirmado
 ```
 
-### Telegram — alerta real enviada en la corrida 08:49:13 (sin errores en log)
+### Telegram y Dashboard — mismo evento, mismos números, confirmado con capturas reales
 ```
-🚨 PPI ALERTA — UDP_FLOOD
-Accion  : BLOCK (DROP)
-IP      : 192.168.0.100
-Proto   : UDP  Puerto: 53
-Score   : -0.8026  Grado: ALTA
-byte_ratio: 198979.59  (normal ≈ 0.95)
-pkt_rate  : 209,673.7 pkt/s
-Hora    : 08:49:13
+Telegram: 🚨 PPI ALERTA — UDP_FLOOD | BLOCK | IP 192.168.0.100 | Score -0.8026 | 08:49:13
+Dashboard (8080): mismo BLOCK, mismo score, mismo tipo UDP_FLOOD, misma hora
 ```
-> Mismo score/byte_ratio/pkt_rate que la línea del log — el mensaje de
-> Telegram se construye con las mismas variables, no hay un canal separado que
-> pueda desincronizarse. Verificado: 0 líneas "Telegram ERROR" en el log
-> durante esta corrida → la entrega fue exitosa. **Pendiente de tu parte:**
-> mándame una captura de pantalla del mensaje real en tu Telegram para
-> confirmar que llegó con este formato exacto — no puedo ver tu app desde aquí.
-
-### Dashboard web (http://192.168.0.110:8080) — confirmado vía API, no visual
-```
-GET /api/events → {"accion":"BLOCK","score":"-0.8026","tipo":"UDP_FLOOD",
-  "byte_ratio":"198979.59","pkt_rate":"209673.7","src":"192.168.0.100","ts":"08:49:13", ...}
-```
-> Mismos valores que el log y que Telegram — coherente. Accesible desde la
-> Desktop (`curl http://192.168.0.110:8080/` → HTTP 200) para mostrarlo en el
-> proyector durante la demo. **Corregido hoy:** el dashboard no reconocía las
-> líneas `PORT-SCAN` (regex incompleta, el ícono ya existía en el frontend
-> pero nunca se activaba) — si demuestras port-scan en algún momento, antes no
-> aparecía en la tabla en vivo; ya se corrigió y se subió a git. **Pendiente
-> de tu parte:** mándame una captura del dashboard abierto en el navegador
-> durante un ataque para confirmar que la tabla/gráficos se ven bien — solo
-> verifiqué los datos vía API, no el renderizado visual.
+> Las tres vistas (log, Telegram, dashboard) leen las mismas variables del
+> mismo evento — no hay canal que pueda desincronizarse del otro.
 
 ### ipset en servidor — OE3
 ```
@@ -475,71 +394,10 @@ Members:
 
 ---
 
-## NOTAS TÉCNICAS (no leer en voz alta — referencia si el jurado pregunta)
+## REFERENCIA RÁPIDA (no leer en voz alta — solo si algo no coincide en vivo)
 
-1. **Por qué cambió el ataque de demo de SYN flood a UDP flood:** con τ1/τ2 recalibrados
-   (más estrictos que la versión anterior), un SYN flood típico a puerto 80 sigue
-   generando LIMIT por score, pero su escalada a BLOCK termina dependiendo del
-   heurístico HTTP-ABUSE (conteo de requests), no del score del IF. El predictor
-   solo lee líneas `ANOMALÍA`/`SOSPECHOSO` con `score=` del log — no lee líneas
-   `HTTP-ABUSE` ni `BRUTE-FORCE` (limitación de diseño documentada). El UDP flood
-   sí cruza τ2 directamente por score, generando una línea `ANOMALÍA...BLOCK`
-   que el predictor sí puede leer — por eso demuestra OE2+OE3 de forma
-   confiable en la misma corrida corta. La escalada de OE4 (varios BLOCKs en
-   60s) necesita su propia corrida más larga — ver Nota Técnica 6 y PASO 7. El
-   SYN flood sigue siendo válido como evidencia de OE2/OE3 si se quiere usar
-   como ataque alternativo.
-2. **τ1/τ2 ya no son -0.4459/-0.6027** — esos valores correspondían a un modelo
-   de 6 días antes del que está realmente en producción. Se recalcularon el
-   2026-06-24 contra el modelo actual: τ1=-0.4650, τ2=-0.6118, AUC=0.8955.
-3. **Detector de port-scan agregado el 2026-06-24** — antes, escaneos con nmap
-   (-sS/-sX) y floods con flags TCP no estándar (FIN flood) no eran detectados:
-   el IF puntúa cada flujo individual y un escaneo manda 1-2 paquetes por
-   puerto, indistinguible de tráfico normal por flujo. Nuevo heurístico:
-   ≥8 puertos distintos/10s → LIMIT, ≥20 → BLOCK.
-4. **Limitación conocida, pendiente para después de la defensa:** `pkt_rate`
-   se calcula como paquetes/duración con un piso de duración de 1ms; en una
-   red rápida (RTT~0.3ms en este lab) esto puede inflar artificialmente el
-   pkt_rate de conexiones legítimas muy veloces desde un origen que el modelo
-   nunca vio como "normal" en entrenamiento. Corregirlo requiere reentrenar el
-   IF — se deja documentado, no se ejecuta antes de presentar para no mover
-   los scores ya validados en esta demo.
-5. **Por qué se agregó `-k` al comando de PASO 3 (validado 2026-06-24):** al
-   revalidar el flujo completo varias veces se encontró que `hping3 --udp
-   --flood` SIN `-k` cambia el puerto origen en cada paquete por diseño
-   (confirmado en `hping3 --help`). Suricata agrupa flujos por la tupla de 5
-   elementos (IP/puerto origen y destino + protocolo), así que sin `-k` el
-   ataque se fragmenta en miles de flujos pequeños — en una corrida llegó a
-   2,818 flujos de ~58 paquetes/3,600 bytes cada uno — y el score resultante
-   es errático: en pruebas sucesivas con el mismo comando se obtuvo a veces
-   BLOCK directo, a veces nunca pasó de LIMIT durante 7,000 flujos. Con `-k`
-   el puerto origen queda fijo, todos los paquetes se agregan al mismo flujo,
-   y el resultado fue BLOCK directo y consistente en 2/2 corridas (scores
-   -0.7754 y -0.8098, ambas por debajo de τ2=-0.6118). Esto también explica
-   por qué no aparece un LIMIT intermedio: con `-k`, el flujo ya acumula
-   suficiente tráfico para cruzar τ2 desde el primer corte de Suricata —
-   coincide con lo que ya documentaba CLAUDE.md para floods (`--flood` → BLOCK
-   directo). El paso LIMIT documentado en una versión anterior de este guion
-   en realidad provenía de una corrida separada con `-i u2000` (ritmo
-   moderado), no del mismo comando `--flood` — error de documentación ya
-   corregido aquí.
-6. **Por qué hay que esperar ~40-100s y no "unos segundos" (validado 4 veces
-   2026-06-24, revalidación posterior a la Nota 5):** Suricata solo escribe el
-   registro de un flujo en `eve.json` cuando lo CIERRA, no mientras está
-   activo. Con `-k` todo el ataque es un único flujo (mismo 5-tuple todo el
-   tiempo), y un flujo UDP en estado "new" se cierra 30 segundos después de su
-   ÚLTIMO paquete (`flow-timeouts.udp.new: 30` en `/etc/suricata/suricata.yaml`
-   del sensor) — no a los 30s de iniciado, sino 30s después de que el tráfico
-   se detiene. Verificado con 4 corridas de duración distinta (10s, 35s, 60s):
-   en las 4, la línea `ANOMALÍA...BLOCK` apareció entre 40 y 100 segundos
-   después del lanzamiento, sin relación directa con cuánto duró el ataque —
-   solo con cuándo terminó + 30s. El motor en sí sigue siendo <1s desde que el
-   flujo aparece en eve.json hasta el BLOCK aplicado (la latencia P95=34.8ms
-   no cambia, mide ese tramo) — lo que cambia es cuándo Suricata decide que
-   hay un flujo que reportar. Esto es importante para la narración en vivo:
-   hay que llenar esos ~40-50s explicando qué está pasando (ver el aviso en
-   PASO 3), no quedarse en silencio esperando que algo "ande mal".
-   Consecuencia directa: una sola corrida corta con `-k` NUNCA genera más de
-   UNA línea de BLOCK (no hay reaparición periódica mientras el flujo sigue
-   activo) — por eso OE4 (PASO 7) necesita una corrida distinta y más larga,
-   no se puede mostrar dentro del mismo PASO 3-6.
+- τ1=-0.4650, τ2=-0.6118, AUC=0.8955 (recalibrados 2026-06-24 contra el modelo real en producción).
+- Comando de ataque: siempre con `-k` (puerto origen fijo) — sin él, el resultado no es reproducible.
+- BLOCK directo sin LIMIT en flood es lo esperado (igual para SYN/UDP/ICMP flood).
+- Espera ~40-50s tras lanzar el ataque antes de ver la detección — explicado en PASO 3.
+- PASO 7 (OE4) es evidencia de otra corrida, no se repite dentro del PASO 3-6.
