@@ -21,3 +21,14 @@ config/telegram.conf
 !results/validacion_*.log
 results/motor_decision.log.1
 results/predictor.log.1
+
+# Logs rotatados (grandes)
+results/motor_decision.log*
+results/predictor.log*
+# Python cache
+scripts/__pycache__/
+*.pyc
+# Backups y temporales
+*.bak
+models/predictor_modelo_v2_*backup*.pkl
+models/predictor_modelo_v2_*sesgado*.pkl

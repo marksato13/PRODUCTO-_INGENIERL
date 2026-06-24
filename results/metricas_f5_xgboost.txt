@@ -1,3 +1,0 @@
-2026-06-22 02:26:15 | horas=720 | events=62115 | auc_anterior=1.0000 | auc_nuevo=0.9999 | precision=0.9851 | recall=0.9962 | reemplazado=SI
-2026-06-22 08:04:46 | horas=24 | events=517 | auc_anterior=0.9762 | auc_nuevo=0.9583 | precision=0.9796 | recall=0.9796 | reemplazado=SI
-2026-06-22 08:05:05 | horas=24 | events=517 | auc_anterior=0.9583 | auc_nuevo=0.9583 | precision=0.9796 | recall=0.9796 | reemplazado=SI
