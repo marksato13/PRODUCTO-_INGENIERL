@@ -90,6 +90,16 @@ def procesar_linea(linea: str, push=True):
             state["eventos"].append((ts, ev))
             if accion == "BLOCK":
                 state["block_counter"] += 1
+            # Conteo en vivo: la línea "Estadísticas" del motor (que fija
+            # flows_total/anom_total con el total real, incluyendo PERMIT)
+            # solo se imprime cada 500 flujos — en una demo corta nunca
+            # llega, y el panel mostraba "BLOCK: 1" con "FLOWS TOTAL: 0"
+            # (inconsistente). Mientras no llega esa línea, se incrementa
+            # aquí con lo que sí se ve evento por evento; la línea
+            # "Estadísticas" sigue siendo la fuente de verdad y la
+            # sobreescribe con el total completo en cuanto aparece.
+            state["flows_total"] += 1
+            state["anom_total"] += 1
         if push:
             push_sse(ev)
         return
@@ -1270,13 +1280,24 @@ function initSSE(){
     const ev = JSON.parse(e.data);
     if(ev.type==='predictor'){actualizarPredictor(ev);return;}
     if(ev.type==='stats_gap'){actualizarGap(ev);return;}
+    // Eventos de control sin datos de flujo (ej. "cleared" tras /api/clear)
+    // no tienen accion/src/score — si se cuelan aquí salen tarjetas "undefined".
+    if(!ev.accion) return;
 
-    // 1. Guardar en allEvents
-    allEvents.unshift(ev);
-    if(allEvents.length>500) allEvents.pop();
+    // 1. Guardar en allEvents (evita duplicar si llega el mismo evento 2 veces,
+    // p.ej. por una reconexión SSE que reabre una conexión vieja sin cerrarla)
+    const yaExisteAll = allEvents[0] && allEvents[0].ts===ev.ts &&
+      allEvents[0].src===ev.src && allEvents[0].score===ev.score;
+    if(!yaExisteAll){
+      allEvents.unshift(ev);
+      if(allEvents.length>500) allEvents.pop();
+    }
 
     // 2. Agregar al feed de alertas (BLOCK y LIMIT)
     if(ev.accion==='BLOCK'||ev.accion==='LIMIT'){
+      const yaExisteAlert = alertsData[0] && alertsData[0].ts===ev.ts &&
+        alertsData[0].src===ev.src && alertsData[0].score===ev.score;
+      if(yaExisteAlert) return;
       alertsData.unshift(ev);
       if(alertsData.length>100) alertsData.pop();
 
@@ -1635,8 +1656,12 @@ async function fetchStats(){
     document.getElementById('s-flows').textContent = s.flows_total.toLocaleString();
     document.getElementById('s-bf').textContent    = s.bf_total;
     document.getElementById('s-http').textContent  = s.http_total;
-    document.getElementById('s-lat').textContent   = s.latencia.toFixed(1)+'ms';
-    document.getElementById('s-lat2').textContent  = s.latencia.toFixed(1)+'ms';
+    // "0.0ms" se mostraba aunque aún no hubiera ninguna medición real
+    // (el motor solo publica latencia_media en la línea "Estadísticas",
+    // cada 500 flujos) — confunde con un 0 real. "—" hasta tener datos.
+    const latTxt = s.latencia>0 ? s.latencia.toFixed(1)+'ms' : '—';
+    document.getElementById('s-lat').textContent   = latTxt;
+    document.getElementById('s-lat2').textContent  = latTxt;
     document.getElementById('s-fmin').textContent  = s.flujos_min;
     document.getElementById('uptime-chip').textContent = s.uptime;
 
