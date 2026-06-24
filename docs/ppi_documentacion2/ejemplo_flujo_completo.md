@@ -1,29 +1,68 @@
-# Demo del Sistema — Qué hace, qué muestro, qué digo
+# Demo del Sistema — Guion de Sustentación
 **PPI UPeU 2026 · Rubén Mark Salazar Tocas**  
-**Basado en comportamiento real verificado 2026-06-22/23**
+**Comandos y resultados verificados en vivo 2026-06-22/23**
 
 ---
 
-## Lo que mi sistema hace (en una oración)
+## En una oración
 
-Monitorea todo el tráfico de red en tiempo real, detecta comportamiento anómalo con Isolation Forest, y bloquea al atacante directamente en el servidor — sin intervención humana — en segundos.
+El sistema detecta tráfico anómalo con Isolation Forest y bloquea al atacante en el servidor — automáticamente, sin intervención humana, en segundos.
 
 ---
 
-## Qué puede demostrar el sistema en vivo
+## Plan de demo según el tiempo disponible
 
-| Capacidad | Cómo se ve | Dónde se ve |
+> Elegir un plan antes de entrar. El Paso 0 es obligatorio en todos.
+
+| Plan | Tiempo | Qué mostrar | Lo que el jurado ve |
+|---|---|---|---|
+| **MÍNIMO** | 5 min | Paso 0 + Escenario 1 | Detección real + bloqueo en servidor |
+| **ESTÁNDAR** | 10 min | Paso 0 + E1 + E2 + Validación | Los dos tipos de ataque + 16/16 PASS |
+| **COMPLETO** | 15 min | Paso 0 + E1 + E2 + E3 + E4 + Validación | Todo el sistema end-to-end |
+
+### Desglose de tiempos
+
+| Bloque | Contenido | Tiempo |
 |---|---|---|
-| Detección de flujos anómalos | Score IF < τ → LIMIT o BLOCK en el log | `motor_decision.log` |
-| Escalada progresiva LIMIT → BLOCK | Primero limita velocidad, luego bloquea total | `motor_decision.log` |
-| Bloqueo real en el servidor | IP en `ppi_blocked` con timeout | `ipset list` en 192.168.0.120 |
-| Detección HTTP Abuse | >100 requests/30s → BLOCK | Log: `HTTP-ABUSE` |
-| Detección Brute Force SSH | >15 intentos/60s → BLOCK | Log: `BRUTE_FORCE_SSH` |
-| Predicción de reincidencia | P=XX% → ALERTA-PREDICTIVA | `predictor.log` |
-| Notificación al operador | Mensaje en Telegram | Celular |
-| Tráfico legítimo intacto | Desktop nunca aparece en log | `ipset test` → NOT in set |
-| Autoaprendizaje | Modelos se reentrenan solos | `crontab -l` + métricas F5 |
-| Validación formal | 16 criterios automatizados PASS | `run_all.sh` |
+| **Paso 0** | Limpiar estado, verificar servicios | 2–3 min |
+| **Escenario 1** | hping3 → LIMIT → HTTP-ABUSE BLOCK → ipset | 3–4 min |
+| **Escenario 2** | hydra → BF-SSH BLOCK | 2–3 min |
+| **Escenario 3** | predictor.log → ALERTA-PREDICTIVA P=XX% | 1 min |
+| **Escenario 4** | Tráfico normal → FPR=0%, NOT in set | 1 min |
+| **Validación** | `run_all.sh` → 16/16 PASS | 1–2 min |
+
+> **Recomendación:** ir con el plan ESTÁNDAR (10 min). Si el jurado pregunta algo, tienes los otros escenarios listos para mostrar.
+
+---
+
+## Qué le interesa ver al jurado
+
+| Pregunta del jurado | Dónde está la respuesta |
+|---|---|
+| ¿Funciona en tiempo real? | `motor_decision.log` con BLOCK apareciendo mientras el ataque corre |
+| ¿Realmente bloquea? | `sudo ipset list ppi_blocked` en el servidor con timeout |
+| ¿Detecta diferentes ataques? | Escenario 1 (hping3) + Escenario 2 (hydra) |
+| ¿No bloquea tráfico legítimo? | `ipset test 192.168.0.20 NOT in set` + CA-16 FPR=0% |
+| ¿Qué métricas tiene el modelo? | AUC=0.8998, Precision=99.54%, Latencia P95=34.7ms |
+| ¿Aprende solo? | `crontab -l` + `metricas_f5_xgboost.txt` |
+| ¿Está validado formalmente? | `run_all.sh` → 16/16 PASS |
+
+---
+
+## Capacidades del sistema (referencia rápida)
+
+| Capacidad | Cómo se ve | Dónde |
+|---|---|---|
+| Detección IF con score | LIMIT o BLOCK en log con `score=-0.XXXX` | `motor_decision.log` |
+| Escalada LIMIT → BLOCK | Primero limita, luego bloquea | mismo log |
+| Bloqueo real en servidor | IP con timeout en ppi_blocked | `ipset list` en 192.168.0.120 |
+| HTTP Abuse heurístico | `>100 req/30s → HTTP-ABUSE BLOCK` | log: `HTTP-ABUSE` |
+| Brute Force SSH heurístico | `>15 intentos/60s → BRUTE_FORCE_SSH BLOCK` | log: `ANOMALÍA` |
+| Predictor XGBoost | `P=XX% → ALERTA-PREDICTIVA` | `predictor.log` |
+| Telegram | Alerta al celular en segundos | celular del operador |
+| Tráfico legítimo intacto | Desktop nunca bloqueado | `ipset test` |
+| Autoaprendizaje | Cron diario/semanal, anti-regresión | `crontab -l`, métricas F5 |
+| Validación formal | 16/16 PASS automático | `run_all.sh` |
 
 ---
 
